@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "MeguProxy",
+  "name": "meguproxy-fork",
   "version": "1.3",
-  "description": "Управление проксированием сайтов по правилам средствами SOCKS/HTTP.",
+  "description": "Форк MeguProxy: управление проксированием сайтов по правилам средствами SOCKS/HTTP.",
   "permissions": [
     "proxy",
     "storage",
@@ -22,7 +22,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "MeguProxy",
+    "default_title": "meguproxy-fork",
     "default_icon": {
       "64": "icon.png"
     }
