@@ -13,6 +13,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     pPass: document.getElementById("proxyPass"), saveProxy: document.getElementById("saveProxyBtn"),
     pStatus: document.getElementById("proxyStatus"), lUrl: document.getElementById("listUrl"),
     lAct: document.getElementById("listAction"), addList: document.getElementById("addListBtn"),
+    refreshLists: document.getElementById("refreshListsBtn"),
     toggleLists: document.getElementById("toggleListsBtn"), lCont: document.getElementById("listsContainer"),
     lStatus: document.getElementById("listStatus")
   };
@@ -75,9 +76,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     currentLists.forEach(l => {
       const div = document.createElement("div"); div.className = "list-item";
       const infoDiv = document.createElement("div"); infoDiv.className = "info"; infoDiv.title = l.url;
-      const isPac = l.format === "pac" || !!l.pacScript;
+      const isPac = l.format === "pac" || !!l.pacIndex;
       const typ = l.type === "block" ? "🛑 Блок" : (isPac ? "📜 PAC" : "🚀 Прокси");
-      infoDiv.textContent = `[${typ}] ${isPac ? "скрипт" : `${(l.domains || []).length} шт.`}`;
+      const count = isPac ? `${l.domainCount || 0} дом. / ${l.ipCount || 0} IP` : `${(l.domains || []).length} шт.`;
+      infoDiv.textContent = `[${typ}] ${count}`;
       infoDiv.appendChild(document.createElement("br"));
       const span = document.createElement("span"); span.style.color = "#b5bac1"; span.style.fontSize = "10px"; span.textContent = l.url;
       infoDiv.appendChild(span);
@@ -199,6 +201,17 @@ document.addEventListener("DOMContentLoaded", async () => {
         els.addList.textContent = "Скачать и применить список";
         if (res && res.success) { els.lUrl.value = ""; flash(els.lStatus, "Список применен!"); }
         else flash(els.lStatus, (res && res.error) ? String(res.error).slice(0, 180) : "Ошибка скачивания", "#ff6b6b");
+    });
+  });
+
+  els.refreshLists.addEventListener("click", () => {
+    if (!currentLists.length) return flash(els.lStatus, "Списков нет", "#ff6b6b");
+    els.refreshLists.textContent = "Обновление...";
+    api.runtime.sendMessage({ action: "refreshLists" }, (res) => {
+      if (api.runtime.lastError) {}
+      els.refreshLists.textContent = "Обновить списки";
+      if (res && res.success) flash(els.lStatus, `Обновлено: ${res.updated || 0}`);
+      else flash(els.lStatus, (res && res.error) ? String(res.error).slice(0, 180) : "Ошибка обновления", "#ff6b6b");
     });
   });
 

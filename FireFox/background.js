@@ -3,17 +3,16 @@ let proxyRules = [];
 let proxyLists = [];
 
 let pE = {}, pS = {}, bE = {}, bS = {};
+const tabHosts = {};
+const tabProxied = {};
 
 function normalizeRule(rule) {
   return String(rule || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^www\./, "");
 }
 
 function isPacUrl(url) {
-  try {
-    return /\.(pac|dat)$/i.test(new URL(url).pathname);
-  } catch (e) {
-    return /\.pac(\?|#|$)/i.test(String(url || ""));
-  }
+  try { return /\.(pac|dat)$/i.test(new URL(url).pathname); }
+  catch (e) { return /\.pac(\?|#|$)/i.test(String(url || "")); }
 }
 
 function isPacText(text) {
@@ -21,274 +20,301 @@ function isPacText(text) {
 }
 
 function isPacList(list) {
-  return list && (list.format === "pac" || (!!list.pacScript && isPacText(list.pacScript)));
+  return list && (list.format === "pac" || !!list.pacIndex);
 }
 
-function parseRemoteList(url, text) {
+function parseList(text) {
+  const domains = new Set();
+  const lines = String(text || "").split("\n");
+  for (let line of lines) {
+    line = line.trim().toLowerCase();
+    if (!line || line.startsWith("!") || line.startsWith("#")) continue;
+    const matchHosts = line.match(/^(?:0\.0\.0\.0|127\.0\.0\.1)\s+([^\s]+)/);
+    if (matchHosts) { domains.add(matchHosts[1]); continue; }
+    if (line.startsWith("||")) {
+      let endIdx = line.indexOf("^");
+      if (endIdx === -1) endIdx = line.indexOf("/");
+      if (endIdx === -1) endIdx = line.indexOf(":");
+      if (endIdx === -1) endIdx = line.length;
+      const domain = line.substring(2, endIdx).split("$")[0];
+      if (domain) domains.add(domain);
+      continue;
+    }
+    if (/^([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,}$/i.test(line)) domains.add(line);
+  }
+  return Array.from(domains);
+}
+
+function ingestRemote(url, type, text) {
   if (isPacText(text)) {
-    return { format: "pac", domains: [], pacScript: String(text).replace(/^\uFEFF/, "") };
+    const pacIndex = PacParse.parsePacAssets(text);
+    return {
+      id: Date.now(),
+      url,
+      type,
+      format: "pac",
+      domains: Object.keys(pacIndex.exact || {}).slice(0, 50),
+      ips: Object.keys(pacIndex.ipSet || {}).slice(0, 20),
+      domainCount: pacIndex.domainCount,
+      ipCount: pacIndex.ipCount,
+      pacIndex,
+      updatedAt: Date.now()
+    };
   }
   const domains = parseList(text);
   if (isPacUrl(url) && domains.length === 0) {
     const preview = String(text || "").replace(/\s+/g, " ").trim().slice(0, 180);
     throw new Error(preview ? `Ответ не похож на PAC-файл: ${preview}` : "Пустой ответ вместо PAC-файла");
   }
-  return { format: "txt", domains, pacScript: "" };
-}
-
-function wrapRemotePac(pacSource, fnName) {
-  return (
-    "var " + fnName + " = (function() {\n" +
-    String(pacSource || "") +
-    "\n  return (typeof FindProxyForURL === 'function') ? FindProxyForURL : function(u, h) { return 'DIRECT'; };\n" +
-    "})();\n"
-  );
-}
-
-function pacFnName(list) {
-  return "FindProxyForURL_pac" + String(list.id).replace(/\D/g, "");
-}
-
-function hasTxtRouting() {
-  if (proxyRules.length) return true;
-  return proxyLists.some(list => !isPacList(list) && Array.isArray(list.domains) && list.domains.length > 0);
-}
-
-function singleDirectPacUrl() {
-  const pacs = proxyLists.filter(isPacList);
-  if (pacs.length !== 1) return "";
-  if (pacs[0].type === "block") return "";
-  if (hasTxtRouting()) return "";
-  return pacs[0].url || "";
+  return { id: Date.now(), url, type, format: "txt", domains, ips: [], domainCount: domains.length, ipCount: 0, updatedAt: Date.now() };
 }
 
 function rebuildMaps() {
   pE = {}; pS = {}; bE = {}; bS = {};
   proxyRules.forEach(r => {
     r = normalizeRule(r);
+    if (!r) return;
     if (r.startsWith("*.")) pS["." + r.slice(2)] = 1;
-    else pE[r] = 1;
+    else { pE[r] = 1; pS["." + r] = 1; }
   });
   proxyLists.forEach(list => {
     if (isPacList(list)) return;
     const tExact = list.type === "block" ? bE : pE;
     const tSuffix = list.type === "block" ? bS : pS;
     (list.domains || []).forEach(d => {
+      d = normalizeRule(d);
+      if (!d) return;
       if (d.startsWith("*.")) tSuffix["." + d.slice(2)] = 1;
       else { tExact[d] = 1; tSuffix["." + d] = 1; }
     });
   });
 }
 
-function parseList(text) {
-  const domains = new Set();
-  const lines = text.split('\n');
-  for (let line of lines) {
-    line = line.trim().toLowerCase();
-    if (!line || line.startsWith('!') || line.startsWith('#')) continue;
-    const matchHosts = line.match(/^(?:0\.0\.0\.0|127\.0\.0\.1)\s+([^\s]+)/);
-    if (matchHosts) { domains.add(matchHosts[1]); continue; }
-    if (line.startsWith('||')) {
-      let endIdx = line.indexOf('^');
-      if (endIdx === -1) endIdx = line.indexOf('/');
-      if (endIdx === -1) endIdx = line.indexOf(':');
-      if (endIdx === -1) endIdx = line.length;
-      let domain = line.substring(2, endIdx).split('$')[0];
-      if (domain) domains.add(domain);
-      continue;
-    }
-    if (/^([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,}$/i.test(line)) {
-      domains.add(line);
-    }
+function matchMaps(host, exact, suffix) {
+  host = (host || "").toLowerCase();
+  if (!host) return false;
+  if (exact[host]) return true;
+  const parts = host.split(".");
+  let current = "";
+  for (let i = parts.length - 1; i >= 0; i--) {
+    current = "." + parts[i] + current;
+    if (suffix[current]) return true;
   }
-  return Array.from(domains);
+  return false;
 }
 
-function buildPacScript() {
+function pacDecision(host) {
+  for (let i = 0; i < proxyLists.length; i++) {
+    const list = proxyLists[i];
+    if (!isPacList(list) || !list.pacIndex) continue;
+    if (PacParse.hostMatchesIndex(host, list.pacIndex)) {
+      return list;
+    }
+  }
+  return null;
+}
+
+function isBlockedHost(host) {
+  return matchMaps(host, bE, bS);
+}
+
+function isProxiedHost(host) {
+  if (matchMaps(host, pE, pS)) return true;
+  const list = pacDecision(host);
+  return !!(list && list.type !== "block");
+}
+
+function decideProxy(url) {
+  let host = "";
+  try { host = new URL(url).hostname; } catch (e) { return { type: "direct" }; }
+  host = (host || "").toLowerCase();
+  if (!host) return { type: "direct" };
+  if (isBlockedHost(host)) return { type: "http", host: "127.0.0.1", port: 9 };
+  if (matchMaps(host, pE, pS)) return PacParse.userProxyToFirefox(proxyConfig);
+  const list = pacDecision(host);
+  if (!list) return { type: "direct" };
+  if (list.type === "block") return { type: "http", host: "127.0.0.1", port: 9 };
+  const first = list.pacIndex && list.pacIndex.proxies && list.pacIndex.proxies[0];
+  if (first) return PacParse.proxyToFirefox(first);
+  return PacParse.userProxyToFirefox(proxyConfig);
+}
+
+function onProxyRequest(requestInfo) {
+  try { return decideProxy(requestInfo.url); }
+  catch (e) { return { type: "direct" }; }
+}
+
+function applyProxy() {
   rebuildMaps();
-  const proxyStr = `${proxyConfig.type === "socks" ? "SOCKS5" : "PROXY"} ${proxyConfig.host}:${proxyConfig.port}`;
-  const pacParts = [];
-  const pacCalls = [];
-  proxyLists.forEach(list => {
-    if (!isPacList(list) || !list.pacScript) return;
-    const fn = pacFnName(list);
-    pacParts.push(wrapRemotePac(list.pacScript, fn));
-    if (list.type === "block") {
-      pacCalls.push(`if (typeof ${fn} === "function") { var _r = ${fn}(url, host); if (!pacIsDirect(_r)) return "PROXY 0.0.0.0:0"; }`);
-    } else {
-      pacCalls.push(`if (typeof ${fn} === "function") { var _r = ${fn}(url, host); if (!pacIsDirect(_r)) return _r; }`);
-    }
-  });
-  return `
-    ${pacParts.join("\n")}
-    var pE = ${JSON.stringify(pE)};
-    var pS = ${JSON.stringify(pS)};
-    var bE = ${JSON.stringify(bE)};
-    var bS = ${JSON.stringify(bS)};
-    function pacIsDirect(s) {
-      var first = String(s == null ? "DIRECT" : s).split(";")[0].toUpperCase();
-      return /^\\s*DIRECT\\s*$/.test(first) || /^\\s*$/.test(first);
-    }
-    function FindProxyForURL(url, host) {
-      host = (host || "").toLowerCase();
-      if (bE[host]) return "PROXY 0.0.0.0:0";
-      var parts = host.split('.');
-      var current = "";
-      for (var i = parts.length - 1; i >= 0; i--) {
-        current = "." + parts[i] + current;
-        if (bS[current]) return "PROXY 0.0.0.0:0";
-      }
-      if (pE[host]) return "${proxyStr}; DIRECT";
-      current = "";
-      for (var i = parts.length - 1; i >= 0; i--) {
-        current = "." + parts[i] + current;
-        if (pS[current]) return "${proxyStr}; DIRECT";
-      }
-      ${pacCalls.join("\n      ")}
-      return "DIRECT";
-    }
-  `;
+  return browser.storage.local.set({ lastProxyError: "" });
 }
 
-async function setAutoConfigUrl(url) {
-  await browser.proxy.settings.set({
-    value: { proxyType: "autoConfig", autoConfigUrl: url }
-  });
-}
-
-async function applyProxy() {
-  try {
-    const directUrl = singleDirectPacUrl();
-    if (directUrl) {
-      await setAutoConfigUrl(directUrl);
-    } else {
-      const pac = buildPacScript();
-      try {
-        await setAutoConfigUrl(`data:application/x-ns-proxy-autoconfig;charset=utf-8,${encodeURIComponent(pac)}`);
-      } catch (e) {
-        const fallback = (proxyLists.filter(isPacList)[0] || {}).url;
-        if (fallback && !hasTxtRouting()) await setAutoConfigUrl(fallback);
-        else throw e;
-      }
-    }
-    await browser.storage.local.set({ lastProxyError: "" });
-  } catch (e) {
-    await browser.storage.local.set({ lastProxyError: String(e.message || e) });
+function rememberTabHost(tabId, host, proxied) {
+  if (tabId < 0 || !host) return;
+  if (!tabHosts[tabId]) tabHosts[tabId] = new Set();
+  tabHosts[tabId].add(host);
+  if (proxied) {
+    if (!tabProxied[tabId]) tabProxied[tabId] = new Set();
+    tabProxied[tabId].add(host);
   }
 }
+
+async function updateBadge(tabId) {
+  if (tabId == null || tabId < 0) return;
+  const n = tabProxied[tabId] ? tabProxied[tabId].size : 0;
+  try {
+    await browser.action.setBadgeBackgroundColor({ tabId, color: "#5865f2" });
+    if (browser.action.setBadgeTextColor) await browser.action.setBadgeTextColor({ tabId, color: "#ffffff" });
+    await browser.action.setBadgeText({ tabId, text: n ? String(n) : "" });
+  } catch (e) {}
+}
+
+async function refreshActiveBadge() {
+  try {
+    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+    if (tabs[0]) await updateBadge(tabs[0].id);
+  } catch (e) {}
+}
+
+browser.proxy.onRequest.addListener(onProxyRequest, { urls: ["<all_urls>"] });
 
 browser.webRequest.onAuthRequired.addListener(
-  function(details) {
+  function (details) {
     if (details.isProxy && proxyConfig.username && proxyConfig.password) {
       return { authCredentials: { username: proxyConfig.username, password: proxyConfig.password } };
     }
     return {};
   },
-  {urls: ["<all_urls>"]},
+  { urls: ["<all_urls>"] },
   ["blocking"]
 );
 
-const tabDomains = {};
 browser.webRequest.onBeforeRequest.addListener(
   (details) => {
-    if (details.tabId >= 0) {
-      try {
-        const host = new URL(details.url).hostname;
-        if (host) {
-          if (!tabDomains[details.tabId]) tabDomains[details.tabId] = new Set();
-          tabDomains[details.tabId].add(host);
-        }
-      } catch(e){}
-    }
+    if (details.tabId < 0) return;
+    try {
+      const host = new URL(details.url).hostname.toLowerCase();
+      if (!host) return;
+      rememberTabHost(details.tabId, host, isProxiedHost(host));
+      updateBadge(details.tabId);
+    } catch (e) {}
   },
-  {urls: ["<all_urls>"]}
+  { urls: ["<all_urls>"] }
 );
-browser.tabs.onRemoved.addListener((tabId) => { delete tabDomains[tabId]; });
 
-function isProxiedOrBlocked(host) {
-  host = (host || "").toLowerCase();
-  if (bE[host]) return true;
-  let parts = host.split('.');
-  let current = "";
-  for (let i = parts.length - 1; i >= 0; i--) {
-    current = "." + parts[i] + current;
-    if (bS[current]) return true;
+browser.tabs.onRemoved.addListener((tabId) => {
+  delete tabHosts[tabId];
+  delete tabProxied[tabId];
+});
+
+browser.tabs.onActivated.addListener((info) => updateBadge(info.tabId));
+browser.tabs.onUpdated.addListener((tabId, change) => {
+  if (change.status === "loading" && change.url) {
+    tabHosts[tabId] = new Set();
+    tabProxied[tabId] = new Set();
   }
-  if (pE[host]) return true;
-  current = "";
-  for (let i = parts.length - 1; i >= 0; i--) {
-    current = "." + parts[i] + current;
-    if (pS[current]) return true;
+  updateBadge(tabId);
+});
+
+async function fetchAndStoreList(url, type, existingId) {
+  const r = await fetch(url, { cache: "no-store" });
+  const text = await r.text();
+  if (!r.ok) throw new Error(`HTTP ${r.status}: ${text.replace(/\s+/g, " ").trim().slice(0, 160)}`);
+  const item = ingestRemote(url, type, text);
+  if (existingId != null) {
+    item.id = existingId;
+    const idx = proxyLists.findIndex(x => x.id === existingId);
+    if (idx >= 0) proxyLists[idx] = Object.assign({}, proxyLists[idx], item, { url, type: proxyLists[idx].type || type });
+    else proxyLists.push(item);
+  } else {
+    proxyLists.push(item);
   }
-  return false;
+  await browser.storage.local.set({ proxyLists, lastListUpdate: Date.now() });
+  return item;
+}
+
+async function updateAllLists() {
+  if (!proxyLists.length) return { updated: 0 };
+  let updated = 0;
+  for (const list of proxyLists) {
+    if (!list.url) continue;
+    try {
+      await fetchAndStoreList(list.url, list.type, list.id);
+      updated++;
+    } catch (e) {}
+  }
+  rebuildMaps();
+  await refreshActiveBadge();
+  return { updated };
 }
 
 browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === "fetchList") {
-    fetch(msg.url, { cache: "no-store" })
-      .then(async r => {
-        const text = await r.text();
-        if (!r.ok) throw new Error(`HTTP ${r.status}: ${text.replace(/\s+/g, " ").trim().slice(0, 160)}`);
-        return text;
-      })
-      .then(text => {
-        const parsed = parseRemoteList(msg.url, text);
-        proxyLists.push({ id: Date.now(), url: msg.url, type: msg.type, ...parsed });
-        return browser.storage.local.set({ proxyLists });
-      })
-      .then(applyProxy)
+    fetchAndStoreList(msg.url, msg.type)
+      .then(() => applyProxy())
       .then(() => sendResponse({ success: true }))
       .catch(e => sendResponse({ success: false, error: String(e.message || e) }));
     return true;
   }
+  if (msg.action === "refreshLists") {
+    updateAllLists()
+      .then(res => sendResponse({ success: true, updated: res.updated }))
+      .catch(e => sendResponse({ success: false, error: String(e.message || e) }));
+    return true;
+  }
   if (msg.action === "getUnproxiedDomains") {
-    const domains = tabDomains[msg.tabId] ? Array.from(tabDomains[msg.tabId]) : [];
-    const unproxied = domains.filter(d => !isProxiedOrBlocked(d));
-    sendResponse({ domains: unproxied });
+    const domains = tabHosts[msg.tabId] ? Array.from(tabHosts[msg.tabId]) : [];
+    sendResponse({ domains: domains.filter(d => !isProxiedHost(d) && !isBlockedHost(d)) });
+    return true;
+  }
+  if (msg.action === "getTabProxyCount") {
+    const n = tabProxied[msg.tabId] ? tabProxied[msg.tabId].size : 0;
+    sendResponse({ count: n });
     return true;
   }
 });
 
-browser.alarms.create("updateLists", { periodInMinutes: 10 });
+browser.alarms.create("updateLists", { periodInMinutes: 60 });
 browser.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === "updateLists") updateAllLists();
 });
 
-async function updateAllLists() {
-  if (proxyLists.length === 0) return;
-  let updated = false;
-  for (let list of proxyLists) {
-    try {
-      const r = await fetch(list.url, { cache: "no-store" });
-      if (!r.ok) continue;
-      const text = await r.text();
-      if (isPacText(text)) {
-        list.format = "pac";
-        list.pacScript = text.replace(/^\uFEFF/, "");
-        list.domains = [];
-        updated = true;
-        continue;
-      }
-      if (isPacList(list)) continue;
-      list.format = "txt";
-      list.domains = parseList(text);
-      list.pacScript = "";
-      updated = true;
-    } catch(e) {}
-  }
-  if (updated) await browser.storage.local.set({ proxyLists });
-}
-
 browser.storage.onChanged.addListener(async (changes) => {
-  if (changes.proxyConfig) proxyConfig = changes.proxyConfig.newValue || proxyConfig;
-  if (changes.proxyRules) proxyRules = changes.proxyRules.newValue || [];
-  if (changes.proxyLists) proxyLists = changes.proxyLists.newValue || [];
-  await applyProxy();
+  let need = false;
+  if (changes.proxyConfig) { proxyConfig = changes.proxyConfig.newValue || proxyConfig; need = true; }
+  if (changes.proxyRules) { proxyRules = changes.proxyRules.newValue || []; need = true; }
+  if (changes.proxyLists) { proxyLists = changes.proxyLists.newValue || []; need = true; }
+  if (need) {
+    rebuildMaps();
+    await refreshActiveBadge();
+  }
 });
 
-browser.storage.local.get(["proxyConfig", "proxyRules", "proxyLists"]).then(res => {
+function migrateStoredPac() {
+  let changed = false;
+  proxyLists.forEach(list => {
+    if ((list.format === "pac" || list.pacScript) && !list.pacIndex && list.pacScript) {
+      try {
+        list.pacIndex = PacParse.parsePacAssets(list.pacScript);
+        list.domainCount = list.pacIndex.domainCount;
+        list.ipCount = list.pacIndex.ipCount;
+        delete list.pacScript;
+        changed = true;
+      } catch (e) {}
+    }
+  });
+  return changed;
+}
+
+browser.storage.local.get(["proxyConfig", "proxyRules", "proxyLists"]).then(async (res) => {
   if (res.proxyConfig) proxyConfig = res.proxyConfig;
   if (res.proxyRules) proxyRules = res.proxyRules;
   if (res.proxyLists) proxyLists = res.proxyLists;
-  applyProxy();
+  if (migrateStoredPac()) await browser.storage.local.set({ proxyLists });
+  const stale = proxyLists.some(l => l.format === "pac" && !l.pacIndex && l.url);
+  try { await browser.proxy.settings.clear({}); } catch (e) {}
+  rebuildMaps();
+  await browser.storage.local.set({ lastProxyError: "" });
+  await refreshActiveBadge();
+  if (stale) updateAllLists();
 });
