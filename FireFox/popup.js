@@ -70,9 +70,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     currentLists.forEach(l => {
       const div = document.createElement("div"); div.className = "list-item";
       const infoDiv = document.createElement("div"); infoDiv.className = "info"; infoDiv.title = l.url;
-      const isPac = l.format === "pac" || !!l.pacIndex;
+      const isPac = l.format === "pac";
       const typ = l.type === "block" ? "🛑 Блок" : (isPac ? "📜 PAC" : "🚀 Прокси");
-      const count = isPac ? `${l.domainCount || 0} дом. / ${l.ipCount || 0} IP` : `${(l.domains || []).length} шт.`;
+      const count = `${(l.domains || []).length} дом. / ${(l.ips || []).length} IP`;
       infoDiv.textContent = `[${typ}] ${count}`;
       infoDiv.appendChild(document.createElement("br"));
       const span = document.createElement("span"); span.style.color = "#b5bac1"; span.style.fontSize = "10px"; span.textContent = l.url;

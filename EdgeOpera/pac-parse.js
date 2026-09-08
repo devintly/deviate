@@ -1,63 +1,19 @@
 (function (root) {
   "use strict";
 
-  var THREE_PART = /^(ru|co|cu|com|info|net|org|gov|edu|int|mil|biz|pp|ne|msk|spb|nnov|od|in|ho|cc|dn|i|tut|v|dp|sl|ddns|dyndns|livejournal|herokuapp|azurewebsites|cloudfront|ucoz|3dn|nov|linode|sl-reverse|kiev|beget|kirov|akadns|scaleway|fastly|hldns|appspot|my1|hwcdn|deviantart|wixmp|wix|netdna-ssl|brightcove|berlogovo|edgecastcdn|trafficmanager|pximg|github|hopto|u-stream|google|keenetic|eu|googleusercontent|3nx|itch|notion|maryno|vercel|pythonanywhere|force|tilda|ggpht|iboards|mybb2|h1n|bdsmlr|narod|sb-cd)\.[^.]+$/;
   var DOMAIN_RE = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
   var SKIP_WORDS = { function: 1, return: 1, direct: 1, proxy: 1, socks: 1, https: 1, http: 1, host: 1, url: 1 };
+  var IPV4_RE = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
 
-  function extractBalanced(text, start) {
-    var depth = 0, inStr = false, quote = "", esc = false;
-    for (var i = start; i < text.length; i++) {
-      var c = text[i];
-      if (inStr) {
-        if (esc) { esc = false; continue; }
-        if (c === "\\") { esc = true; continue; }
-        if (c === quote) inStr = false;
-        continue;
-      }
-      if (c === "\"" || c === "'") { inStr = true; quote = c; continue; }
-      if (c === "{") depth++;
-      else if (c === "}") {
-        depth--;
-        if (depth === 0) return text.slice(start, i + 1);
-      }
-    }
-    return "";
+  function isHtmlDocument(text) {
+    var t = String(text || "").replace(/^\uFEFF/, "").trim();
+    if (!t) return false;
+    if (/^<!DOCTYPE\s+html/i.test(t) || /^<html[\s>]/i.test(t)) return true;
+    return /IPFS Service Worker Gateway/i.test(t) && /<html[\s>]/i.test(t);
   }
 
-  function extractArray(text, start) {
-    var depth = 0, inStr = false, quote = "", esc = false;
-    for (var i = start; i < text.length; i++) {
-      var c = text[i];
-      if (inStr) {
-        if (esc) { esc = false; continue; }
-        if (c === "\\") { esc = true; continue; }
-        if (c === quote) inStr = false;
-        continue;
-      }
-      if (c === "\"" || c === "'") { inStr = true; quote = c; continue; }
-      if (c === "[") depth++;
-      else if (c === "]") {
-        depth--;
-        if (depth === 0) return text.slice(start, i + 1);
-      }
-    }
-    return "";
-  }
-
-  function safeEval(expr) {
-    try { return new Function("return (" + expr + ")")(); } catch (e) { return null; }
-  }
-
-  function findAssign(text, name) {
-    var re = new RegExp("(?:var\\s+)?" + name + "\\s*=\\s*", "m");
-    var m = re.exec(text);
-    if (!m) return "";
-    var i = m.index + m[0].length;
-    while (i < text.length && /\s/.test(text[i])) i++;
-    if (text[i] === "{") return extractBalanced(text, i);
-    if (text[i] === "[") return extractArray(text, i);
-    return "";
+  function isPacText(text) {
+    return /function\s+FindProxyForURL\s*\(/i.test(String(text || ""));
   }
 
   function addDomain(set, value) {
@@ -72,130 +28,9 @@
     while ((m = re.exec(text))) addDomain(out, m[1]);
   }
 
-  function extractCompressedDomains(text) {
-    var raw = findAssign(text, "domains");
-    if (!raw) return null;
-    return safeEval(raw);
-  }
-
-  function extractPatterns(text) {
-    var raw = findAssign(text, "patterns");
-    if (raw) {
-      var obj = safeEval(raw);
-      if (obj) return obj;
-    }
-    var fn = text.match(/function\s+patternreplace\s*\([\s\S]*?var\s+patterns\s*=\s*(\{[\s\S]*?\})\s*;/);
-    if (fn) return safeEval(fn[1]);
-    return null;
-  }
-
-  function decodeIpList(text) {
-    var raw = findAssign(text, "d_ipaddr");
-    if (!raw) return [];
-    var arr = safeEval(raw);
-    if (!Array.isArray(arr) || !arr.length) return [];
-    var out = [], prev = 0;
-    for (var i = 0; i < arr.length; i++) {
-      var n = parseInt(arr[i], 36);
-      if (!isFinite(n)) continue;
-      prev = n + prev;
-      out.push(prev >>> 0);
-    }
-    return out;
-  }
-
-  function extractSpecial(text) {
-    var raw = findAssign(text, "special");
-    if (!raw) return [];
-    var arr = safeEval(raw);
-    return Array.isArray(arr) ? arr : [];
-  }
-
-  function extractPacProxies(text) {
-    var found = [];
-    var seen = {};
-    var re = /return\s+["']([^"']+)["']/gi;
-    var m;
-    while ((m = re.exec(text))) {
-      var parts = m[1].split(";");
-      for (var i = 0; i < parts.length; i++) {
-        var mm = String(parts[i] || "").trim().match(/^(HTTPS|PROXY|SOCKS5|SOCKS4|SOCKS)\s+([^:\s]+):(\d+)/i);
-        if (!mm) continue;
-        var key = mm[1].toUpperCase() + " " + mm[2] + ":" + mm[3];
-        if (seen[key]) continue;
-        seen[key] = 1;
-        found.push({ type: mm[1].toUpperCase(), host: mm[2], port: Number(mm[3]) });
-      }
-    }
-    return found;
-  }
-
-  function expandCompressed(domainsObj, limit) {
-    var out = {};
-    if (!domainsObj || typeof domainsObj !== "object") return out;
-    var count = 0;
-    limit = limit || 250000;
-    var zones = Object.keys(domainsObj);
-    for (var z = 0; z < zones.length; z++) {
-      var zone = zones[z];
-      var byLen = domainsObj[zone];
-      if (!byLen || typeof byLen !== "object") continue;
-      var lens = Object.keys(byLen);
-      for (var l = 0; l < lens.length; l++) {
-        var len = parseInt(lens[l], 10);
-        var chunk = byLen[lens[l]];
-        if (typeof chunk !== "string" || !len) continue;
-        for (var i = 0; i + len <= chunk.length; i += len) {
-          if (count >= limit) return out;
-          addDomain(out, chunk.slice(i, i + len) + "." + zone);
-          count++;
-        }
-      }
-    }
-    return out;
-  }
-
-  function applyPatterns(s, patterns) {
-    if (!patterns || typeof patterns !== "object") return s;
-    var keys = Object.keys(patterns);
-    for (var i = 0; i < keys.length; i++) {
-      var token = keys[i];
-      var full = patterns[token];
-      if (!full) continue;
-      if (s.indexOf(full) !== -1) s = s.split(full).join(token);
-    }
-    return s;
-  }
-
-  function toPacShortHost(host, patterns) {
-    host = String(host || "").toLowerCase();
-    if (!host) return "";
-    if (THREE_PART.test(host)) host = host.replace(/(.+)\.([^.]+\.[^.]+\.[^.]+$)/, "$2");
-    else host = host.replace(/(.+)\.([^.]+\.[^.]+$)/, "$2");
-    host = host.replace(/^www\./, "");
-    return applyPatterns(host, patterns);
-  }
-
-  function matchCompressed(shortHost, domains) {
-    if (!domains || !shortHost) return false;
-    var i = shortHost.lastIndexOf(".");
-    if (i < 1) return false;
-    var curhost = shortHost.slice(0, i);
-    var curzone = shortHost.slice(i + 1);
-    var zone = domains[curzone];
-    if (!zone) return false;
-    var arr = zone[curhost.length];
-    if (arr == null) arr = zone[String(curhost.length)];
-    if (arr == null) return false;
-    if (typeof arr === "string") {
-      var len = curhost.length;
-      for (var p = 0; p + len <= arr.length; p += len) {
-        if (arr.substr(p, len) === curhost) return true;
-      }
-      return false;
-    }
-    if (Array.isArray(arr)) return arr.indexOf(curhost) !== -1;
-    return false;
+  function intToIp(n) {
+    n = n >>> 0;
+    return ((n >>> 24) & 255) + "." + ((n >>> 16) & 255) + "." + ((n >>> 8) & 255) + "." + (n & 255);
   }
 
   function ipToInt(ip) {
@@ -204,95 +39,198 @@
     return ((Number(p[0]) << 24) >>> 0) + (Number(p[1]) << 16) + (Number(p[2]) << 8) + Number(p[3]);
   }
 
-  function matchIpLiteral(host, ipSet, special) {
-    if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) return false;
-    var n = ipToInt(host);
-    if (ipSet && ipSet[n]) return true;
-    if (special && special.length) {
-      for (var i = 0; i < special.length; i++) {
-        var row = special[i];
-        if (!row) continue;
-        var net = typeof row[0] === "string" ? ipToInt(row[0]) : 0;
-        var bits = Number(row[1] || 0);
-        if (!bits) continue;
-        var mask = bits >= 32 ? 0xFFFFFFFF : ((0xFFFFFFFF << (32 - bits)) >>> 0);
-        if ((n & mask) === (net & mask)) return true;
-      }
+  function maskToBits(mask) {
+    if (typeof mask === "number" && mask >= 0 && mask <= 32) return mask;
+    if (!IPV4_RE.test(String(mask || ""))) return 0;
+    var n = ipToInt(mask), bits = 0;
+    for (var i = 0; i < 32; i++) {
+      if (n & (1 << (31 - i))) bits++;
+      else break;
     }
-    return false;
+    return bits;
   }
 
-  function parsePacAssets(text) {
-    text = String(text || "").replace(/^\uFEFF/, "");
+  function parseSpecialCidrs(text) {
+    var m = String(text || "").match(/var\s+special\s*=\s*(\[[\s\S]*?\]);/);
+    if (!m) return [];
+    try {
+      var arr = new Function("return (" + m[1] + ")")();
+      if (!Array.isArray(arr)) return [];
+      return arr.map(function (row) {
+        if (!row || !row[0]) return null;
+        return { net: String(row[0]), bits: maskToBits(row[1]) };
+      }).filter(function (x) { return x && x.net && x.bits; });
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function collectFromRuntime(source) {
+    var prelude =
+      "var domains, d_ipaddr, special, domains_lzp, mask_lzp, az_initialized, table, hash, c, fbtw;\n";
+    var tail = "\n;" +
+      "if (typeof FindProxyForURL === 'function') {\n" +
+      "  try { FindProxyForURL('https://init.invalid/', 'init.invalid'); } catch (e0) {}\n" +
+      "}\n" +
+      "var _patterns = (typeof patternreplace === 'function') ? " +
+      "(function(){ var s = Function.prototype.toString.call(patternreplace); " +
+      "var m = s.match(/var patterns = (\\{[\\s\\S]*?\\});/); " +
+      "return m ? (new Function('return (' + m[1] + ')'))() : null; })() : null;\n" +
+      "function _rev(s){\n" +
+      "  if (!_patterns) return s;\n" +
+      "  var keys = Object.keys(_patterns).sort(function(a,b){ return b.length - a.length || b.localeCompare(a); });\n" +
+      "  s = String(s || '');\n" +
+      "  for (var i = 0; i < keys.length; i++) s = s.split(keys[i]).join(_patterns[keys[i]]);\n" +
+      "  return s;\n" +
+      "}\n" +
+      "function _intToIp(n){ n = n >>> 0; return ((n>>>24)&255)+'.'+((n>>>16)&255)+'.'+((n>>>8)&255)+'.'+(n&255); }\n" +
+      "var _domains = [], _ips = [];\n" +
+      "if (typeof domains === 'object' && domains) {\n" +
+      "  var zones = Object.keys(domains);\n" +
+      "  for (var z = 0; z < zones.length; z++) {\n" +
+      "    var zone = zones[z], byLen = domains[zone];\n" +
+      "    if (!byLen || typeof byLen !== 'object') continue;\n" +
+      "    var lens = Object.keys(byLen);\n" +
+      "    for (var l = 0; l < lens.length; l++) {\n" +
+      "      var len = parseInt(lens[l], 10), val = byLen[lens[l]];\n" +
+      "      if (typeof val === 'string' && len) {\n" +
+      "        for (var i = 0; i + len <= val.length; i += len) _domains.push(_rev(val.slice(i, i + len)) + '.' + zone);\n" +
+      "      } else if (Array.isArray(val)) {\n" +
+      "        for (var j = 0; j < val.length; j++) _domains.push(_rev(val[j]) + '.' + zone);\n" +
+      "      }\n" +
+      "    }\n" +
+      "  }\n" +
+      "}\n" +
+      "if (Array.isArray(d_ipaddr)) {\n" +
+      "  for (var k = 0; k < d_ipaddr.length; k++) {\n" +
+      "    if (typeof d_ipaddr[k] === 'number') _ips.push(_intToIp(d_ipaddr[k]));\n" +
+      "  }\n" +
+      "}\n" +
+      "return { domains: _domains, ips: _ips };\n";
+
+    var factory = new Function(
+      "dnsDomainIs", "shExpMatch", "isPlainHostName", "dnsDomainLevels",
+      "myIpAddress", "dnsResolve", "isInNet", "convert_addr",
+      "localHostOrDomainIs", "isResolvable", "weekdayRange", "dateRange", "timeRange", "alert",
+      prelude + source + tail
+    );
+    return factory(
+      function () { return false; },
+      function () { return false; },
+      function (h) { return String(h || "").indexOf(".") === -1; },
+      function (h) { return Math.max(0, String(h || "").split(".").length - 1); },
+      function () { return "127.0.0.1"; },
+      function () { return null; },
+      function () { return false; },
+      function (ip) {
+        var b = String(ip || "").split(".");
+        return ((((Number(b[0]) || 0) * 256) + (Number(b[1]) || 0)) * 256 + (Number(b[2]) || 0)) * 256 + (Number(b[3]) || 0);
+      },
+      function () { return false; },
+      function () { return false; },
+      function () { return false; },
+      function () { return false; },
+      function () { return false; },
+      function () {}
+    );
+  }
+
+  function parsePacToLists(text) {
+    var source = String(text || "").replace(/^\uFEFF/, "");
+    if (isHtmlDocument(source)) {
+      throw new Error("Сервер отдал HTML-страницу (часто IPFS-шлюз), а не PAC. Не сохраняйте файл через «Сохранить как» — добавьте URL списка в расширение, оно скачает PAC само.");
+    }
+    if (!isPacText(source)) {
+      var preview = source.replace(/\s+/g, " ").trim().slice(0, 160);
+      throw new Error(preview ? "Ответ не похож на PAC-файл: " + preview : "В ответе нет FindProxyForURL — это не PAC-файл.");
+    }
+
     var exact = {};
-    extractQuotedDomains(text, exact);
-    var compressed = extractCompressedDomains(text);
-    if (compressed) {
-      var expanded = expandCompressed(compressed, 4000);
-      var keys = Object.keys(expanded);
-      for (var i = 0; i < keys.length; i++) exact[keys[i]] = 1;
+    var ips = {};
+    extractQuotedDomains(source, exact);
+
+    try {
+      var runtime = collectFromRuntime(source);
+      (runtime.domains || []).forEach(function (d) { addDomain(exact, d); });
+      (runtime.ips || []).forEach(function (ip) {
+        if (IPV4_RE.test(ip) && ip.indexOf("0.") !== 0 && ip.indexOf("127.") !== 0) ips[ip] = 1;
+      });
+    } catch (e) {}
+
+    var cidrs = parseSpecialCidrs(source);
+    var domainList = Object.keys(exact).sort();
+    var ipList = Object.keys(ips).sort(function (a, b) { return ipToInt(a) - ipToInt(b); });
+    if (!domainList.length && !ipList.length && !cidrs.length) {
+      throw new Error("Из PAC не удалось получить ни доменов, ни IP.");
     }
-    var ipNums = decodeIpList(text);
-    var ipSet = {};
-    for (var j = 0; j < ipNums.length; j++) ipSet[ipNums[j]] = 1;
-    var ipv4 = text.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g) || [];
-    for (var k = 0; k < ipv4.length; k++) {
-      var ip = ipv4[k];
-      var parts = ip.split(".");
-      if (parts.some(function (x) { return Number(x) > 255; })) continue;
-      if (ip.indexOf("0.") === 0 || ip.indexOf("127.") === 0) continue;
-      ipSet[ipToInt(ip)] = 1;
-    }
-    var proxies = extractPacProxies(text);
-    var exactList = Object.keys(exact);
     return {
-      exact: exact,
-      compressed: compressed || null,
-      patterns: extractPatterns(text),
-      ipSet: ipSet,
-      special: extractSpecial(text),
-      proxies: proxies,
-      domainCount: exactList.length,
-      ipCount: Object.keys(ipSet).length
+      domains: domainList,
+      ips: ipList,
+      cidrs: cidrs,
+      domainCount: domainList.length,
+      ipCount: ipList.length
     };
   }
 
-  function hostMatchesIndex(host, index) {
-    if (!index || !host) return false;
-    host = String(host || "").toLowerCase().replace(/\.$/, "");
-    if (!host) return false;
-    if (index.exact && (index.exact[host] || index.exact[host.replace(/^www\./, "")])) return true;
-    if (index.compressed && matchCompressed(toPacShortHost(host, index.patterns), index.compressed)) return true;
-    if (matchIpLiteral(host, index.ipSet, index.special)) return true;
-    if (index.exact) {
-      var parts = host.split(".");
-      var cur = "";
-      for (var i = parts.length - 1; i >= 0; i--) {
-        cur = parts[i] + (cur ? "." + cur : "");
-        if (index.exact[cur]) return true;
+  function packDomainList(domains) {
+    var packed = {};
+    (domains || []).forEach(function (d) {
+      d = String(d || "").toLowerCase().replace(/^www\./, "");
+      var i = d.lastIndexOf(".");
+      if (i < 1) return;
+      var name = d.slice(0, i), zone = d.slice(i + 1);
+      if (!packed[zone]) packed[zone] = {};
+      var k = String(name.length);
+      packed[zone][k] = (packed[zone][k] || "") + name;
+    });
+    return packed;
+  }
+
+  function matchPackedDomain(host, packed) {
+    if (!host || !packed) return false;
+    host = String(host || "").toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
+    var variants = [host];
+    var two = host.match(/([^.]+\.[^.]+)$/);
+    var three = host.match(/([^.]+\.[^.]+\.[^.]+)$/);
+    if (two) variants.push(two[1]);
+    if (three) variants.push(three[1]);
+    for (var v = 0; v < variants.length; v++) {
+      var s = variants[v];
+      var i = s.lastIndexOf(".");
+      if (i < 1) continue;
+      var name = s.slice(0, i), zone = s.slice(i + 1);
+      var byLen = packed[zone];
+      if (!byLen) continue;
+      var chunk = byLen[name.length];
+      if (chunk == null) chunk = byLen[String(name.length)];
+      if (typeof chunk !== "string") continue;
+      var n = name.length;
+      for (var p = 0; p + n <= chunk.length; p += n) {
+        if (chunk.substr(p, n) === name) return true;
       }
     }
     return false;
   }
 
-  function proxiesToPacString(proxies, fallback) {
-    var bits = [];
-    (proxies || []).forEach(function (p) {
-      bits.push(p.type + " " + p.host + ":" + p.port);
-    });
-    if (!bits.length && fallback) bits.push(fallback);
-    if (bits.length && bits[bits.length - 1].indexOf("DIRECT") === -1) bits.push("DIRECT");
-    return bits.join("; ") || "DIRECT";
+  function matchCidr(ip, cidrs) {
+    if (!IPV4_RE.test(ip) || !cidrs || !cidrs.length) return false;
+    var n = ipToInt(ip);
+    for (var i = 0; i < cidrs.length; i++) {
+      var row = cidrs[i];
+      if (!row) continue;
+      var bits = maskToBits(row.bits != null ? row.bits : row.mask);
+      if (!bits) continue;
+      var net = ipToInt(row.net);
+      var mask = bits >= 32 ? 0xFFFFFFFF : ((0xFFFFFFFF << (32 - bits)) >>> 0);
+      if ((n & mask) === (net & mask)) return true;
+    }
+    return false;
   }
 
-  function proxyToFirefox(p) {
-    if (!p) return { type: "direct" };
-    var t = String(p.type || "").toLowerCase();
-    if (t === "https") return { type: "https", host: p.host, port: p.port };
-    if (t === "proxy" || t === "http") return { type: "http", host: p.host, port: p.port };
-    if (t === "socks4") return { type: "socks4", host: p.host, port: p.port };
-    if (t === "socks" || t === "socks5") return { type: "socks", host: p.host, port: p.port, proxyDNS: true };
-    return { type: "direct" };
+  function matchIpLiteral(host, ipSet, cidrs) {
+    if (!IPV4_RE.test(host)) return false;
+    if (ipSet && (ipSet[host] || ipSet[ipToInt(host)])) return true;
+    return matchCidr(host, cidrs);
   }
 
   function userProxyToFirefox(cfg) {
@@ -310,14 +248,20 @@
   }
 
   var api = {
-    parsePacAssets: parsePacAssets,
-    hostMatchesIndex: hostMatchesIndex,
-    proxiesToPacString: proxiesToPacString,
-    proxyToFirefox: proxyToFirefox,
+    isHtmlDocument: isHtmlDocument,
+    isPacText: isPacText,
+    parsePacToLists: parsePacToLists,
+    packDomainList: packDomainList,
+    matchPackedDomain: matchPackedDomain,
+    matchIpLiteral: matchIpLiteral,
+    matchCidr: matchCidr,
+    ipToInt: ipToInt,
+    intToIp: intToIp,
     userProxyToFirefox: userProxyToFirefox,
     userProxyToPac: userProxyToPac,
     addDomain: addDomain,
-    DOMAIN_RE: DOMAIN_RE
+    DOMAIN_RE: DOMAIN_RE,
+    IPV4_RE: IPV4_RE
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = api;

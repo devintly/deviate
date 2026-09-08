@@ -4,6 +4,7 @@ let proxyConfig = { type: "socks", host: "127.0.0.1", port: 1080, username: "", 
 let proxyRules = [];
 let proxyLists = [];
 let pE = {}, pS = {}, bE = {}, bS = {};
+let pIp = {}, bIp = {}, pCidr = [], bCidr = [];
 const tabHosts = {};
 const tabProxied = {};
 
@@ -14,14 +15,6 @@ function normalizeRule(rule) {
 function isPacUrl(url) {
   try { return /\.(pac|dat)$/i.test(new URL(url).pathname); }
   catch (e) { return /\.pac(\?|#|$)/i.test(String(url || "")); }
-}
-
-function isPacText(text) {
-  return /function\s+FindProxyForURL\s*\(/i.test(String(text || ""));
-}
-
-function isPacList(list) {
-  return list && (list.format === "pac" || !!list.pacIndex);
 }
 
 function parseList(text) {
@@ -47,14 +40,15 @@ function parseList(text) {
 }
 
 function ingestRemote(url, type, text) {
-  if (isPacText(text)) {
-    const pacIndex = PacParse.parsePacAssets(text);
+  if (PacParse.isHtmlDocument(text)) {
+    throw new Error("Сервер отдал HTML-страницу (часто IPFS-шлюз), а не PAC. Не сохраняйте файл через «Сохранить как» — добавьте URL списка в расширение, оно скачает PAC само.");
+  }
+  if (PacParse.isPacText(text)) {
+    const lists = PacParse.parsePacToLists(text);
     return {
       id: Date.now(), url, type, format: "pac",
-      domains: Object.keys(pacIndex.exact || {}).slice(0, 50),
-      ips: Object.keys(pacIndex.ipSet || {}).slice(0, 20),
-      domainCount: pacIndex.domainCount, ipCount: pacIndex.ipCount,
-      pacIndex, updatedAt: Date.now()
+      domains: lists.domains, ips: lists.ips, cidrs: lists.cidrs,
+      domainCount: lists.domainCount, ipCount: lists.ipCount, updatedAt: Date.now()
     };
   }
   const domains = parseList(text);
@@ -62,11 +56,27 @@ function ingestRemote(url, type, text) {
     const preview = String(text || "").replace(/\s+/g, " ").trim().slice(0, 180);
     throw new Error(preview ? `Ответ не похож на PAC-файл: ${preview}` : "Пустой ответ вместо PAC-файла");
   }
-  return { id: Date.now(), url, type, format: "txt", domains, ips: [], domainCount: domains.length, ipCount: 0, updatedAt: Date.now() };
+  return { id: Date.now(), url, type, format: "txt", domains, ips: [], cidrs: [], domainCount: domains.length, ipCount: 0, updatedAt: Date.now() };
+}
+
+function addListTargets(list, exact, suffix, ipMap, cidrs) {
+  (list.domains || []).forEach(d => {
+    d = normalizeRule(d);
+    if (!d) return;
+    if (d.startsWith("*.")) suffix["." + d.slice(2)] = 1;
+    else { exact[d] = 1; suffix["." + d] = 1; }
+  });
+  (list.ips || []).forEach(ip => {
+    if (PacParse.IPV4_RE.test(ip)) ipMap[ip] = 1;
+  });
+  (list.cidrs || []).forEach(c => {
+    if (c && c.net) cidrs.push(c);
+  });
 }
 
 function rebuildMaps() {
   pE = {}; pS = {}; bE = {}; bS = {};
+  pIp = {}; bIp = {}; pCidr = []; bCidr = [];
   proxyRules.forEach(r => {
     r = normalizeRule(r);
     if (!r) return;
@@ -74,15 +84,8 @@ function rebuildMaps() {
     else { pE[r] = 1; pS["." + r] = 1; }
   });
   proxyLists.forEach(list => {
-    if (isPacList(list)) return;
-    const tExact = list.type === "block" ? bE : pE;
-    const tSuffix = list.type === "block" ? bS : pS;
-    (list.domains || []).forEach(d => {
-      d = normalizeRule(d);
-      if (!d) return;
-      if (d.startsWith("*.")) tSuffix["." + d.slice(2)] = 1;
-      else { tExact[d] = 1; tSuffix["." + d] = 1; }
-    });
+    if (list.type === "block") addListTargets(list, bE, bS, bIp, bCidr);
+    else addListTargets(list, pE, pS, pIp, pCidr);
   });
 }
 
@@ -100,69 +103,34 @@ function matchMaps(host, exact, suffix) {
 }
 
 function isProxiedHost(host) {
-  if (matchMaps(host, pE, pS)) return true;
-  for (const list of proxyLists) {
-    if (!isPacList(list) || !list.pacIndex || list.type === "block") continue;
-    if (PacParse.hostMatchesIndex(host, list.pacIndex)) return true;
-  }
-  return false;
+  return matchMaps(host, pE, pS) || PacParse.matchIpLiteral(host, pIp, pCidr);
+}
+
+function cidrsToPac(cidrs) {
+  return (cidrs || []).map(c => {
+    const bits = Number(c.bits || 0);
+    if (!c.net || !bits) return null;
+    const mask = bits >= 32 ? 0xFFFFFFFF : ((0xFFFFFFFF << (32 - bits)) >>> 0);
+    return [PacParse.ipToInt(c.net), mask];
+  }).filter(Boolean);
 }
 
 function buildCompactPac() {
   rebuildMaps();
   const userProxy = PacParse.userProxyToPac(proxyConfig);
-  const pacLists = proxyLists.filter(l => isPacList(l) && l.pacIndex).map(l => ({
-    type: l.type,
-    exact: l.pacIndex.exact || {},
-    compressed: l.pacIndex.compressed || null,
-    patterns: l.pacIndex.patterns || null,
-    ipSet: l.pacIndex.ipSet || {},
-    special: l.pacIndex.special || [],
-    proxy: PacParse.proxiesToPacString(l.pacIndex.proxies || [], userProxy)
-  }));
+  const pPacked = PacParse.packDomainList(Object.keys(pE));
+  const bPacked = PacParse.packDomainList(Object.keys(bE));
   return `
-    var pE = ${JSON.stringify(pE)};
+    var pPacked = ${JSON.stringify(pPacked)};
+    var bPacked = ${JSON.stringify(bPacked)};
     var pS = ${JSON.stringify(pS)};
-    var bE = ${JSON.stringify(bE)};
     var bS = ${JSON.stringify(bS)};
-    var pacLists = ${JSON.stringify(pacLists)};
+    var pIp = ${JSON.stringify(pIp)};
+    var bIp = ${JSON.stringify(bIp)};
+    var pCidr = ${JSON.stringify(cidrsToPac(pCidr))};
+    var bCidr = ${JSON.stringify(cidrsToPac(bCidr))};
     var userProxy = ${JSON.stringify(userProxy)};
-    var THREE_PART = /^(ru|co|cu|com|info|net|org|gov|edu|int|mil|biz|pp|ne|msk|spb|nnov|od|in|ho|cc|dn|i|tut|v|dp|sl|ddns|dyndns|livejournal|herokuapp|azurewebsites|cloudfront|ucoz|3dn|nov|linode|sl-reverse|kiev|beget|kirov|akadns|scaleway|fastly|hldns|appspot|my1|hwcdn|deviantart|wixmp|wix|netdna-ssl|brightcove|berlogovo|edgecastcdn|trafficmanager|pximg|github|hopto|u-stream|google|keenetic|eu|googleusercontent|3nx|itch|notion|maryno|vercel|pythonanywhere|force|tilda|ggpht|iboards|mybb2|h1n|bdsmlr|narod|sb-cd)\\.[^.]+$/;
-    function applyPatterns(s, patterns) {
-      if (!patterns) return s;
-      for (var k in patterns) {
-        if (patterns[k] && s.indexOf(patterns[k]) !== -1) s = s.split(patterns[k]).join(k);
-      }
-      return s;
-    }
-    function shortHost(host, patterns) {
-      host = (host || "").toLowerCase();
-      if (THREE_PART.test(host)) host = host.replace(/(.+)\\.([^\\.]+\\.[^\\.]+\\.[^.]+$)/, "$2");
-      else host = host.replace(/(.+)\\.([^\\.]+\\.[^.]+$)/, "$2");
-      return applyPatterns(host.replace(/^www\\./, ""), patterns);
-    }
-    function matchCompressed(sh, domains) {
-      if (!domains || !sh) return false;
-      var i = sh.lastIndexOf(".");
-      if (i < 1) return false;
-      var curhost = sh.slice(0, i), curzone = sh.slice(i + 1), zone = domains[curzone];
-      if (!zone) return false;
-      var arr = zone[curhost.length];
-      if (arr == null) return false;
-      if (typeof arr === "string") {
-        for (var p = 0; p + curhost.length <= arr.length; p += curhost.length) {
-          if (arr.substr(p, curhost.length) === curhost) return true;
-        }
-        return false;
-      }
-      return arr.indexOf && arr.indexOf(curhost) !== -1;
-    }
-    function ipToInt(ip) {
-      var p = ip.split(".");
-      return ((Number(p[0]) << 24) >>> 0) + (Number(p[1]) << 16) + (Number(p[2]) << 8) + Number(p[3]);
-    }
-    function matchMaps(host, exact, suffix) {
-      if (exact[host]) return true;
+    function matchSuffix(host, suffix) {
       var parts = host.split("."), current = "";
       for (var i = parts.length - 1; i >= 0; i--) {
         current = "." + parts[i] + current;
@@ -170,27 +138,62 @@ function buildCompactPac() {
       }
       return false;
     }
-    function matchIndex(host, idx) {
-      if (idx.exact && (idx.exact[host] || idx.exact[host.replace(/^www\\./, "")])) return true;
-      if (idx.compressed && matchCompressed(shortHost(host, idx.patterns), idx.compressed)) return true;
-      if (/^\\d{1,3}(?:\\.\\d{1,3}){3}$/.test(host) && idx.ipSet && idx.ipSet[ipToInt(host)]) return true;
-      if (idx.exact) {
-        var parts = host.split("."), cur = "";
-        for (var i = parts.length - 1; i >= 0; i--) {
-          cur = parts[i] + (cur ? "." + cur : "");
-          if (idx.exact[cur]) return true;
+    function matchPacked(host, packed) {
+      if (!host || !packed) return false;
+      host = String(host || "").toLowerCase().replace(/\\.$/, "").replace(/^www\\./, "");
+      var variants = [host];
+      var two = host.match(/([^.]+\\.[^.]+)$/);
+      var three = host.match(/([^.]+\\.[^.]+\\.[^.]+)$/);
+      if (two) variants.push(two[1]);
+      if (three) variants.push(three[1]);
+      for (var v = 0; v < variants.length; v++) {
+        var s = variants[v];
+        var dot = s.lastIndexOf(".");
+        if (dot < 1) continue;
+        var name = s.slice(0, dot), zone = s.slice(dot + 1);
+        var byLen = packed[zone];
+        if (!byLen) continue;
+        var chunk = byLen[name.length];
+        if (chunk == null) chunk = byLen[String(name.length)];
+        if (typeof chunk !== "string") continue;
+        var n = name.length;
+        for (var p = 0; p + n <= chunk.length; p += n) {
+          if (chunk.substr(p, n) === name) return true;
         }
       }
       return false;
     }
+    function ipToInt(ip) {
+      var p = String(ip || "").split(".");
+      if (p.length !== 4) return 0;
+      return ((Number(p[0]) << 24) >>> 0) + (Number(p[1]) << 16) + (Number(p[2]) << 8) + Number(p[3]);
+    }
+    function matchIp(host, ipMap, cidrs) {
+      if (!/^\\d{1,3}(?:\\.\\d{1,3}){3}$/.test(host)) return false;
+      if (ipMap && ipMap[host]) return true;
+      var n = ipToInt(host);
+      for (var i = 0; i < (cidrs || []).length; i++) {
+        var row = cidrs[i];
+        if (row && (n & row[1]) === (row[0] & row[1])) return true;
+      }
+      return false;
+    }
+    function isBlocked(host) {
+      return matchPacked(host, bPacked) || matchSuffix(host, bS) || matchIp(host, bIp, bCidr);
+    }
+    function isProxied(host) {
+      return matchPacked(host, pPacked) || matchSuffix(host, pS) || matchIp(host, pIp, pCidr);
+    }
     function FindProxyForURL(url, host) {
       host = (host || "").toLowerCase();
-      if (matchMaps(host, bE, bS)) return "PROXY 127.0.0.1:9";
-      if (matchMaps(host, pE, pS)) return userProxy;
-      for (var i = 0; i < pacLists.length; i++) {
-        if (matchIndex(host, pacLists[i])) {
-          if (pacLists[i].type === "block") return "PROXY 127.0.0.1:9";
-          return pacLists[i].proxy || userProxy;
+      if (!host) return "DIRECT";
+      if (isBlocked(host)) return "PROXY 127.0.0.1:9";
+      if (isProxied(host)) return userProxy;
+      if (!/^[0-9a-fA-F:.]*$/.test(host)) {
+        var oip = dnsResolve(host);
+        if (oip) {
+          if (isBlocked(oip)) return "PROXY 127.0.0.1:9";
+          if (isProxied(oip)) return userProxy;
         }
       }
       return "DIRECT";
@@ -208,22 +211,15 @@ function applyChromePac(value, done) {
 
 function applyProxy() {
   rebuildMaps();
-  const hasPac = proxyLists.some(l => isPacList(l) && l.pacIndex);
   const hasLocal = Object.keys(pE).length + Object.keys(pS).length + Object.keys(bE).length + Object.keys(bS).length > 0;
-  if (!hasPac && !hasLocal) {
+  const hasIp = Object.keys(pIp).length + Object.keys(bIp).length + pCidr.length + bCidr.length > 0;
+  if (!hasLocal && !hasIp) {
     applyChromePac({ mode: "direct" });
     return;
   }
-  const pacCode = buildCompactPac();
   applyChromePac({
     mode: "pac_script",
-    pacScript: { data: pacCode, mandatory: false }
-  }, (err) => {
-    if (!err) return;
-    const fallback = (proxyLists.find(l => isPacList(l) && l.url) || {}).url;
-    if (fallback && !hasLocal) {
-      applyChromePac({ mode: "pac_script", pacScript: { url: fallback, mandatory: false } });
-    }
+    pacScript: { data: buildCompactPac(), mandatory: false }
   });
 }
 
@@ -281,11 +277,16 @@ chrome.tabs.onUpdated.addListener((tabId, change) => {
 });
 
 function fetchAndStoreList(url, type, existingId) {
-  return fetch(url, { cache: "no-store" })
+  return fetch(url, {
+    cache: "no-store",
+    headers: { Accept: "application/x-ns-proxy-autoconfig, text/plain, application/javascript, */*" }
+  })
     .then(async r => {
       const text = await r.text();
       if (!r.ok) throw new Error(`HTTP ${r.status}: ${text.replace(/\s+/g, " ").trim().slice(0, 160)}`);
       const item = ingestRemote(url, type, text);
+      delete item.pacScript;
+      delete item.pacIndex;
       if (existingId != null) {
         item.id = existingId;
         const idx = proxyLists.findIndex(x => x.id === existingId);
@@ -346,28 +347,23 @@ chrome.storage.onChanged.addListener((changes) => {
   if (need) applyProxy();
 });
 
-function migrateStoredPac() {
-  let changed = false;
-  proxyLists.forEach(list => {
-    if ((list.format === "pac" || list.pacScript) && !list.pacIndex && list.pacScript) {
-      try {
-        list.pacIndex = PacParse.parsePacAssets(list.pacScript);
-        list.domainCount = list.pacIndex.domainCount;
-        list.ipCount = list.pacIndex.ipCount;
-        delete list.pacScript;
-        changed = true;
-      } catch (e) {}
-    }
-  });
-  return changed;
+function isStalePac(list) {
+  if (!list || list.format !== "pac" || !list.url) return false;
+  if (list.pacScript || list.pacIndex) return true;
+  return !((list.domains && list.domains.length) || (list.ips && list.ips.length));
+}
+
+function stripLegacyPac(list) {
+  if (!list) return list;
+  delete list.pacScript;
+  delete list.pacIndex;
+  return list;
 }
 
 chrome.storage.local.get(["proxyConfig", "proxyRules", "proxyLists"], (res) => {
   if (res.proxyConfig) proxyConfig = res.proxyConfig;
   if (res.proxyRules) proxyRules = res.proxyRules;
-  if (res.proxyLists) proxyLists = res.proxyLists;
-  if (migrateStoredPac()) chrome.storage.local.set({ proxyLists });
-  const stale = proxyLists.some(l => l.format === "pac" && !l.pacIndex && l.url);
+  if (res.proxyLists) proxyLists = (res.proxyLists || []).map(stripLegacyPac);
   applyProxy();
-  if (stale) updateAllLists();
+  if (proxyLists.some(isStalePac)) updateAllLists();
 });

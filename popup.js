@@ -77,9 +77,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       infoDiv.className = "info";
       infoDiv.title = l.url;
 
-      const isPac = l.format === "pac" || !!l.pacIndex;
+      const isPac = l.format === "pac";
       const typ = l.type === "block" ? "🛑 Блок" : (isPac ? "📜 PAC" : "🚀 Прокси");
-      const count = isPac ? `${l.domainCount || 0} дом. / ${l.ipCount || 0} IP` : `${(l.domains || []).length} шт.`;
+      const count = `${(l.domains || []).length} дом. / ${(l.ips || []).length} IP`;
       infoDiv.textContent = `[${typ}] ${count}`;
 
       const br = document.createElement("br");
