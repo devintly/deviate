@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Собрать zip/xpi-пакеты расширения meguproxy-fork."""
+"""Собрать zip/xpi-пакеты расширения Deviate."""
 from __future__ import annotations
 
 import json
@@ -12,9 +12,9 @@ DIST = ROOT / "dist"
 SKIP_NAMES = {".DS_Store", "Thumbs.db"}
 
 TARGETS = (
-    ("Chrome", "meguproxy-fork-chrome", False),
-    ("FireFox", "meguproxy-fork-firefox", True),
-    ("EdgeOpera", "meguproxy-fork-edge", False),
+    ("Chrome", "deviate-chrome", False),
+    ("FireFox", "deviate-firefox", True),
+    ("EdgeOpera", "deviate-edge", False),
 )
 
 
@@ -42,7 +42,7 @@ def main() -> None:
         shutil.rmtree(DIST)
     DIST.mkdir(parents=True)
 
-    print("Сборка пакетов meguproxy-fork:")
+    print("Сборка пакетов Deviate:")
     for folder, name, make_xpi in TARGETS:
         src = ROOT / folder
         if not src.is_dir():
