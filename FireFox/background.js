@@ -8,6 +8,60 @@ function normalizeRule(rule) {
   return String(rule || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^www\./, "");
 }
 
+function isPacUrl(url) {
+  try {
+    return /\.(pac|dat)$/i.test(new URL(url).pathname);
+  } catch (e) {
+    return /\.pac(\?|#|$)/i.test(String(url || ""));
+  }
+}
+
+function isPacText(text) {
+  return /function\s+FindProxyForURL\s*\(/i.test(String(text || ""));
+}
+
+function isPacList(list) {
+  return list && (list.format === "pac" || (!!list.pacScript && isPacText(list.pacScript)));
+}
+
+function parseRemoteList(url, text) {
+  if (isPacText(text)) {
+    return { format: "pac", domains: [], pacScript: String(text).replace(/^\uFEFF/, "") };
+  }
+  const domains = parseList(text);
+  if (isPacUrl(url) && domains.length === 0) {
+    const preview = String(text || "").replace(/\s+/g, " ").trim().slice(0, 180);
+    throw new Error(preview ? `Ответ не похож на PAC-файл: ${preview}` : "Пустой ответ вместо PAC-файла");
+  }
+  return { format: "txt", domains, pacScript: "" };
+}
+
+function wrapRemotePac(pacSource, fnName) {
+  return (
+    "var " + fnName + " = (function() {\n" +
+    String(pacSource || "") +
+    "\n  return (typeof FindProxyForURL === 'function') ? FindProxyForURL : function(u, h) { return 'DIRECT'; };\n" +
+    "})();\n"
+  );
+}
+
+function pacFnName(list) {
+  return "FindProxyForURL_pac" + String(list.id).replace(/\D/g, "");
+}
+
+function hasTxtRouting() {
+  if (proxyRules.length) return true;
+  return proxyLists.some(list => !isPacList(list) && Array.isArray(list.domains) && list.domains.length > 0);
+}
+
+function singleDirectPacUrl() {
+  const pacs = proxyLists.filter(isPacList);
+  if (pacs.length !== 1) return "";
+  if (pacs[0].type === "block") return "";
+  if (hasTxtRouting()) return "";
+  return pacs[0].url || "";
+}
+
 function rebuildMaps() {
   pE = {}; pS = {}; bE = {}; bS = {};
   proxyRules.forEach(r => {
@@ -16,9 +70,10 @@ function rebuildMaps() {
     else pE[r] = 1;
   });
   proxyLists.forEach(list => {
+    if (isPacList(list)) return;
     const tExact = list.type === "block" ? bE : pE;
     const tSuffix = list.type === "block" ? bS : pS;
-    list.domains.forEach(d => {
+    (list.domains || []).forEach(d => {
       if (d.startsWith("*.")) tSuffix["." + d.slice(2)] = 1;
       else { tExact[d] = 1; tSuffix["." + d] = 1; }
     });
@@ -52,11 +107,28 @@ function parseList(text) {
 function buildPacScript() {
   rebuildMaps();
   const proxyStr = `${proxyConfig.type === "socks" ? "SOCKS5" : "PROXY"} ${proxyConfig.host}:${proxyConfig.port}`;
+  const pacParts = [];
+  const pacCalls = [];
+  proxyLists.forEach(list => {
+    if (!isPacList(list) || !list.pacScript) return;
+    const fn = pacFnName(list);
+    pacParts.push(wrapRemotePac(list.pacScript, fn));
+    if (list.type === "block") {
+      pacCalls.push(`if (typeof ${fn} === "function") { var _r = ${fn}(url, host); if (!pacIsDirect(_r)) return "PROXY 0.0.0.0:0"; }`);
+    } else {
+      pacCalls.push(`if (typeof ${fn} === "function") { var _r = ${fn}(url, host); if (!pacIsDirect(_r)) return _r; }`);
+    }
+  });
   return `
+    ${pacParts.join("\n")}
     var pE = ${JSON.stringify(pE)};
     var pS = ${JSON.stringify(pS)};
     var bE = ${JSON.stringify(bE)};
     var bS = ${JSON.stringify(bS)};
+    function pacIsDirect(s) {
+      var first = String(s == null ? "DIRECT" : s).split(";")[0].toUpperCase();
+      return /^\\s*DIRECT\\s*$/.test(first) || /^\\s*$/.test(first);
+    }
     function FindProxyForURL(url, host) {
       host = (host || "").toLowerCase();
       if (bE[host]) return "PROXY 0.0.0.0:0";
@@ -72,17 +144,33 @@ function buildPacScript() {
         current = "." + parts[i] + current;
         if (pS[current]) return "${proxyStr}; DIRECT";
       }
+      ${pacCalls.join("\n      ")}
       return "DIRECT";
     }
   `;
 }
 
+async function setAutoConfigUrl(url) {
+  await browser.proxy.settings.set({
+    value: { proxyType: "autoConfig", autoConfigUrl: url }
+  });
+}
+
 async function applyProxy() {
   try {
-    const pac = buildPacScript();
-    await browser.proxy.settings.set({
-      value: { proxyType: "autoConfig", autoConfigUrl: `data:application/x-ns-proxy-autoconfig;charset=utf-8,${encodeURIComponent(pac)}` }
-    });
+    const directUrl = singleDirectPacUrl();
+    if (directUrl) {
+      await setAutoConfigUrl(directUrl);
+    } else {
+      const pac = buildPacScript();
+      try {
+        await setAutoConfigUrl(`data:application/x-ns-proxy-autoconfig;charset=utf-8,${encodeURIComponent(pac)}`);
+      } catch (e) {
+        const fallback = (proxyLists.filter(isPacList)[0] || {}).url;
+        if (fallback && !hasTxtRouting()) await setAutoConfigUrl(fallback);
+        else throw e;
+      }
+    }
     await browser.storage.local.set({ lastProxyError: "" });
   } catch (e) {
     await browser.storage.local.set({ lastProxyError: String(e.message || e) });
@@ -137,16 +225,20 @@ function isProxiedOrBlocked(host) {
 
 browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === "fetchList") {
-    fetch(msg.url)
-      .then(r => r.text())
+    fetch(msg.url, { cache: "no-store" })
+      .then(async r => {
+        const text = await r.text();
+        if (!r.ok) throw new Error(`HTTP ${r.status}: ${text.replace(/\s+/g, " ").trim().slice(0, 160)}`);
+        return text;
+      })
       .then(text => {
-        const domains = parseList(text);
-        proxyLists.push({ id: Date.now(), url: msg.url, type: msg.type, domains });
+        const parsed = parseRemoteList(msg.url, text);
+        proxyLists.push({ id: Date.now(), url: msg.url, type: msg.type, ...parsed });
         return browser.storage.local.set({ proxyLists });
       })
       .then(applyProxy)
       .then(() => sendResponse({ success: true }))
-      .catch(e => sendResponse({ success: false, error: String(e) }));
+      .catch(e => sendResponse({ success: false, error: String(e.message || e) }));
     return true;
   }
   if (msg.action === "getUnproxiedDomains") {
@@ -167,13 +259,21 @@ async function updateAllLists() {
   let updated = false;
   for (let list of proxyLists) {
     try {
-      const r = await fetch(list.url, { cache: 'no-store' });
-      if (r.ok) {
-        const text = await r.text();
-        const domains = parseList(text);
-        list.domains = domains;
+      const r = await fetch(list.url, { cache: "no-store" });
+      if (!r.ok) continue;
+      const text = await r.text();
+      if (isPacText(text)) {
+        list.format = "pac";
+        list.pacScript = text.replace(/^\uFEFF/, "");
+        list.domains = [];
         updated = true;
+        continue;
       }
+      if (isPacList(list)) continue;
+      list.format = "txt";
+      list.domains = parseList(text);
+      list.pacScript = "";
+      updated = true;
     } catch(e) {}
   }
   if (updated) await browser.storage.local.set({ proxyLists });

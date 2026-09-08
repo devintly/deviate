@@ -76,8 +76,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       infoDiv.className = "info";
       infoDiv.title = l.url;
 
-      const typ = l.type === "block" ? "🛑 Блок" : "🚀 Прокси";
-      infoDiv.textContent = `[${typ}] ${l.domains.length} шт.`;
+      const isPac = l.format === "pac" || !!l.pacScript;
+      const typ = l.type === "block" ? "🛑 Блок" : (isPac ? "📜 PAC" : "🚀 Прокси");
+      infoDiv.textContent = `[${typ}] ${isPac ? "скрипт" : `${(l.domains || []).length} шт.`}`;
 
       const br = document.createElement("br");
       infoDiv.appendChild(br);
@@ -169,7 +170,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       els.lUrl.value = "";
       flash(els.lStatus, "Список применен!");
     } else {
-      flash(els.lStatus, "Ошибка скачивания", "#ff6b6b");
+      flash(els.lStatus, (res && res.error) ? String(res.error).slice(0, 180) : "Ошибка скачивания", "#ff6b6b");
     }
   });
 

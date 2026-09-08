@@ -75,8 +75,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     currentLists.forEach(l => {
       const div = document.createElement("div"); div.className = "list-item";
       const infoDiv = document.createElement("div"); infoDiv.className = "info"; infoDiv.title = l.url;
-      const typ = l.type === "block" ? "🛑 Блок" : "🚀 Прокси";
-      infoDiv.textContent = `[${typ}] ${l.domains.length} шт.`;
+      const isPac = l.format === "pac" || !!l.pacScript;
+      const typ = l.type === "block" ? "🛑 Блок" : (isPac ? "📜 PAC" : "🚀 Прокси");
+      infoDiv.textContent = `[${typ}] ${isPac ? "скрипт" : `${(l.domains || []).length} шт.`}`;
       infoDiv.appendChild(document.createElement("br"));
       const span = document.createElement("span"); span.style.color = "#b5bac1"; span.style.fontSize = "10px"; span.textContent = l.url;
       infoDiv.appendChild(span);
@@ -196,8 +197,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     api.runtime.sendMessage({ action: "fetchList", url, type: els.lAct.value }, (res) => {
         if (api.runtime.lastError) {}
         els.addList.textContent = "Скачать и применить список";
-        if (res && res.success) { els.lUrl.value = ""; flash(els.lStatus, "Список применен!"); } 
-        else flash(els.lStatus, "Ошибка скачивания", "#ff6b6b");
+        if (res && res.success) { els.lUrl.value = ""; flash(els.lStatus, "Список применен!"); }
+        else flash(els.lStatus, (res && res.error) ? String(res.error).slice(0, 180) : "Ошибка скачивания", "#ff6b6b");
     });
   });
 
