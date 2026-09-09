@@ -135,9 +135,13 @@
     .domain-line .mini-status .mark-list { width: 13px; height: 13px; }
     .domain-line .domain-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; cursor: pointer; }
     .domain-line .domain-apex { font-weight: 400; color: #b5bac1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; cursor: pointer; }
-    .domain-line .mode-wrap { display: none; flex: none; align-items: center; margin-left: 2px; }
+    .domain-line .mode-wrap { display: none; flex: none; align-items: center; gap: 4px; margin-left: 2px; font-size: 9px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; color: #b5bac1; user-select: none; }
     .domain-line.picked .mode-wrap { display: flex; }
-    .domain-line .mode-wrap .switch { width: 32px; height: 18px; }
+    .domain-line .mode-wrap .mode-label-off { color: #57f287; }
+    .domain-line .mode-wrap .mode-label-on { color: #b5bac1; }
+    .domain-line .mode-wrap.on .mode-label-off { color: #b5bac1; }
+    .domain-line .mode-wrap.on .mode-label-on { color: #ffb020; }
+    .domain-line .mode-wrap .switch { width: 32px; height: 18px; flex: none; }
     .domain-line .mode-wrap .switch-ui::after { width: 12px; height: 12px; left: 3px; top: 3px; }
     .domain-line .mode-wrap .switch input:checked + .switch-ui::after { left: 17px; }
     .domains-actions { margin-top: 12px; flex: none; }
@@ -266,7 +270,7 @@
         <div id="listsForm" style="display:none;">
           <div class="label">Название (необязательно)</div>
           <input id="listName" type="text" placeholder="Если пусто — будет ссылка">
-          <div class="label">URL списка (.txt / AdGuard / PAC)</div>
+          <div class="label">URL списка (TXT / PAC)</div>
           <input id="listUrl" type="text" placeholder="https://.../filter.txt или https://.../proxy.pac">
           <div class="label">Обновление (часы)</div>
           <input id="listInterval" type="number" min="1" max="168" value="12" placeholder="12">

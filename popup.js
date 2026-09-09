@@ -305,6 +305,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     el.title = st.title;
     el.setAttribute("aria-label", st.title);
   }
+  function syncModeWrap(line) {
+    if (!line) return;
+    const wrap = line.querySelector(".mode-wrap");
+    const mode = line.querySelector("input.mode-direct");
+    if (wrap && mode) wrap.classList.toggle("on", !!mode.checked);
+  }
   function coverInfoOf(host, covers) {
     return coverOf(host, covers) || (lastCover.host === host ? lastCover : null);
   }
@@ -366,7 +372,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       const line = box.closest(".domain-line");
       const mode = line && line.querySelector("input.mode-direct");
       if (mode) mode.checked = !!(existing && isDirectRule(existing));
-      if (line) line.classList.toggle("picked", box.checked);
+      if (line) {
+        line.classList.toggle("picked", box.checked);
+        syncModeWrap(line);
+      }
     });
     const overlay = collectOverlayRules();
     els.domainsList.querySelectorAll(".domain-line").forEach(line => {
@@ -374,6 +383,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const mark = line.querySelector(".mini-status");
       if (!pick) return;
       line.classList.toggle("picked", !!pick.checked);
+      syncModeWrap(line);
       paintStatusEl(mark, statusForHost(hostOfRule(pick.dataset.rule), domainCovers, overlay));
     });
   }
@@ -486,6 +496,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!pick) return;
       const picked = !!pick.checked;
       line.classList.toggle("picked", picked);
+      syncModeWrap(line);
       const host = hostOfRule(pick.dataset.rule);
       paintStatusEl(mark, statusForHost(host, covers, overlay || collectOverlayRules()));
     }
@@ -524,17 +535,26 @@ document.addEventListener("DOMContentLoaded", async () => {
       wrap.className = "mode-wrap";
       wrap.title = "Проксировать / Напрямую";
       wrap.addEventListener("click", e => e.stopPropagation());
+      const off = document.createElement("span");
+      off.className = "mode-label-off";
+      off.textContent = "Проксировать";
       const sw = document.createElement("span");
       sw.className = "switch mode-switch";
       const mode = document.createElement("input");
       mode.type = "checkbox";
       mode.className = "mode-direct";
       mode.checked = !!(existing && isDirectRule(existing));
+      wrap.classList.toggle("on", mode.checked);
       const ui = document.createElement("span");
       ui.className = "switch-ui";
       sw.appendChild(mode);
       sw.appendChild(ui);
+      const on = document.createElement("span");
+      on.className = "mode-label-on";
+      on.textContent = "Напрямую";
+      wrap.appendChild(off);
       wrap.appendChild(sw);
+      wrap.appendChild(on);
       line.appendChild(cb);
       line.appendChild(mark);
       line.appendChild(text);
