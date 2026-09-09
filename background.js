@@ -387,6 +387,17 @@ function applyProxy() {
   rebuildMaps();
 }
 
+function toolbarIconOn() {
+  return !!(extensionEnabled && proxyConfig && proxyConfig.host);
+}
+
+async function syncToolbarIcon() {
+  const file = toolbarIconOn() ? "icon.png" : "icon-off.png";
+  try {
+    await browser.action.setIcon({ path: { 48: file, 96: file, 128: file } });
+  } catch (e) {}
+}
+
 function scheduleBadge(tabId) {
   if (tabId == null || tabId < 0 || badgeWait[tabId]) return;
   badgeWait[tabId] = setTimeout(() => {
@@ -640,6 +651,7 @@ browser.storage.onChanged.addListener(async (changes) => {
   }
   if (need) {
     rebuildMaps();
+    await syncToolbarIcon();
     await refreshActiveBadge();
   }
 });
@@ -684,6 +696,7 @@ browser.storage.local.get(["proxyConfig", "proxyServers", "proxyRules", "directR
   const stale = proxyLists.some(isStalePac);
   try { await browser.proxy.settings.clear({}); } catch (e) {}
   rebuildMaps();
+  await syncToolbarIcon();
   await refreshActiveBadge();
   if (stale) updateAllLists();
 });

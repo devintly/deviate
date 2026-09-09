@@ -19,6 +19,7 @@ FILES = (
     "list.js",
     "pac-parse.js",
     "icon.png",
+    "icon-off.png",
     "LICENSE",
 )
 
