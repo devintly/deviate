@@ -31,12 +31,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (!sites) msgs.push("Нет доступа к сайтам. Включите его в разрешениях расширения — без этого прокси по спискам не работает.");
       }
     } catch (e) {}
-    try {
-      if (browser.extension && browser.extension.isAllowedIncognitoAccess) {
-        const incognito = await browser.extension.isAllowedIncognitoAccess();
-        if (!incognito) msgs.push("Нет доступа к приватным окнам. Включите работу в приватных окнах в настройках расширения.");
-      }
-    } catch (e) {}
     if (accessError && accessErrorText) {
       accessErrorText.textContent = msgs.join("\n\n");
       accessError.style.display = msgs.length ? "block" : "none";

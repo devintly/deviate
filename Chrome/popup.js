@@ -32,25 +32,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  function incognitoAllowed() {
-    return new Promise((resolve) => {
-      if (!api.extension || !api.extension.isAllowedIncognitoAccess) return resolve(true);
-      let settled = false;
-      const done = (ok) => { if (!settled) { settled = true; resolve(!!ok); } };
-      try {
-        const ret = api.extension.isAllowedIncognitoAccess(done);
-        if (ret && typeof ret.then === "function") ret.then(done).catch(() => done(true));
-      } catch (e) { done(true); }
-    });
-  }
-
   async function refreshAccessErrors() {
     const msgs = [];
     try {
       if (!(await containsOrigins())) msgs.push("Нет доступа к сайтам. Включите его в разрешениях расширения — без этого прокси по спискам не работает.");
-    } catch (e) {}
-    try {
-      if (!(await incognitoAllowed())) msgs.push("Нет доступа к режиму инкогнито. Включите «Разрешить в режиме инкогнито» в настройках расширения.");
     } catch (e) {}
     if (accessError && accessErrorText) {
       accessErrorText.textContent = msgs.join("\n\n");
