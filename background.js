@@ -183,6 +183,7 @@ function rebuildMaps() {
     addListTargets(list, pE, pS, pIp, pCidr);
   });
   cacheProxy();
+  recountTabProxied();
 }
 
 function matchMaps(host, exact, suffix) {
@@ -198,11 +199,19 @@ function matchMaps(host, exact, suffix) {
   return false;
 }
 
+function canonHost(host) {
+  host = String(host || "").toLowerCase();
+  if (host.indexOf("www.") === 0) host = host.slice(4);
+  return host;
+}
+
 function isDirectHost(host) {
+  host = canonHost(host);
   return matchMaps(host, dE, dS) || PacParse.matchIpLiteral(host, dIp, []);
 }
 
 function isBlockedHost(host) {
+  host = canonHost(host);
   if (!hasBlock) return false;
   if (matchMaps(host, bE, bS) || PacParse.matchIpLiteral(host, bIp, bCidr)) return true;
   for (let i = 0; i < bPac.length; i++) {
@@ -212,11 +221,18 @@ function isBlockedHost(host) {
 }
 
 function isProxiedHost(host) {
+  host = canonHost(host);
   if (matchMaps(host, pE, pS) || PacParse.matchIpLiteral(host, pIp, pCidr)) return true;
   for (let i = 0; i < pPac.length; i++) {
     if (PacParse.matchPacHost(host, pPac[i])) return true;
   }
   return false;
+}
+
+function hostIsProxied(host) {
+  if (!extensionEnabled || !host) return false;
+  if (isDirectHost(host) || isBlockedHost(host)) return false;
+  return isProxiedHost(host);
 }
 
 function listLabel(list) {
@@ -247,12 +263,25 @@ function findCoveringList(host) {
   return null;
 }
 
-function listedViaParent(host) {
+function listedParentHost(host) {
+  host = canonHost(host);
   const parts = String(host || "").split(".").filter(Boolean);
   for (let i = 1; i <= parts.length - 2; i++) {
-    if (findCoveringList(parts.slice(i).join("."))) return true;
+    const parent = parts.slice(i).join(".");
+    if (findCoveringList(parent)) return parent;
   }
-  return false;
+  return "";
+}
+
+function listedViaParent(host) {
+  return !!listedParentHost(host);
+}
+
+function listedParentRule(host) {
+  const parent = listedParentHost(host);
+  if (!parent) return "";
+  if (PacParse.IPV4_RE.test(parent) || parent.indexOf(":") >= 0) return parent;
+  return "*." + parent;
 }
 
 const fetchProxyHosts = {};
@@ -330,18 +359,43 @@ function onProxyRequest(requestInfo) {
   });
 }
 
-function applyProxy() {
-  rebuildMaps();
-}
-
 function rememberTabHost(tabId, host, proxied) {
   if (tabId == null || tabId < 0 || !host) return;
   if (!tabHosts[tabId]) tabHosts[tabId] = new Set();
   tabHosts[tabId].add(host);
-  if (proxied) {
+  if (proxied || hostIsProxied(host)) {
     if (!tabProxied[tabId]) tabProxied[tabId] = new Set();
     tabProxied[tabId].add(host);
   }
+  scheduleBadge(tabId);
+}
+
+function recountTabProxied() {
+  Object.keys(tabHosts).forEach(id => {
+    const tabId = Number(id);
+    const next = new Set();
+    tabHosts[tabId].forEach(h => {
+      if (hostIsProxied(h)) next.add(h);
+    });
+    tabProxied[tabId] = next;
+    delete badgeText[tabId];
+    scheduleBadge(tabId);
+  });
+}
+
+function applyProxy() {
+  rebuildMaps();
+}
+
+function toolbarIconOn() {
+  return !!(extensionEnabled && proxyConfig && proxyConfig.host);
+}
+
+async function syncToolbarIcon() {
+  const file = toolbarIconOn() ? "icon.png" : "icon-off.png";
+  try {
+    await browser.action.setIcon({ path: { 48: file, 96: file, 128: file } });
+  } catch (e) {}
 }
 
 function scheduleBadge(tabId) {
@@ -360,7 +414,7 @@ async function updateBadge(tabId) {
   badgeText[tabId] = text;
   try {
     if (!badgeColorsReady) {
-      await browser.action.setBadgeBackgroundColor({ color: "#248046" });
+      await browser.action.setBadgeBackgroundColor({ color: "#6d6f78" });
       if (browser.action.setBadgeTextColor) await browser.action.setBadgeTextColor({ color: "#ffffff" });
       badgeColorsReady = true;
     }
@@ -542,7 +596,12 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const host = normalizeRule(h).replace(/^\*\./, "");
       if (!host || covers[host]) return;
       const list = findCoveringList(host);
-      covers[host] = { listed: !!list, listedParent: !!list && listedViaParent(host) };
+      covers[host] = {
+        listed: !!list,
+        listedParent: !!list && listedViaParent(host),
+        listedParentRule: list ? listedParentRule(host) : "",
+        listName: list ? listLabel(list) : ""
+      };
     });
     sendResponse({ covers });
     return true;
@@ -553,6 +612,7 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({
       listed: !!list,
       listedParent: !!list && listedViaParent(host),
+      listedParentRule: list ? listedParentRule(host) : "",
       listName: list ? listLabel(list) : ""
     });
     return true;
@@ -591,6 +651,7 @@ browser.storage.onChanged.addListener(async (changes) => {
   }
   if (need) {
     rebuildMaps();
+    await syncToolbarIcon();
     await refreshActiveBadge();
   }
 });
@@ -635,6 +696,7 @@ browser.storage.local.get(["proxyConfig", "proxyServers", "proxyRules", "directR
   const stale = proxyLists.some(isStalePac);
   try { await browser.proxy.settings.clear({}); } catch (e) {}
   rebuildMaps();
+  await syncToolbarIcon();
   await refreshActiveBadge();
   if (stale) updateAllLists();
 });

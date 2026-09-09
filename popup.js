@@ -3,12 +3,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   const panels = document.querySelectorAll(".panel");
   const els = {
     domainInput: document.getElementById("domainInput"), statusIcon: document.getElementById("statusIcon"),
+    statusCaption: document.getElementById("statusCaption"),
     toggleRule: document.getElementById("toggleRuleBtn"), viewDomains: document.getElementById("viewDomainsBtn"),
     domainActionRow: document.getElementById("domainActionRow"), domainMode: document.getElementById("domainModeSwitch"),
     domainDirect: document.getElementById("domainDirect"),
     scopeHost: document.getElementById("scopeHostBtn"), scopeApex: document.getElementById("scopeApexBtn"),
     domainScope: document.getElementById("domainScope"),
     domainsPanel: document.getElementById("domainsPanel"), domainsList: document.getElementById("domainsList"),
+    domainsSearch: document.getElementById("domainsSearch"),
     domainsEmpty: document.getElementById("domainsEmpty"), saveDomains: document.getElementById("saveDomainsBtn"),
     cancelDomains: document.getElementById("cancelDomainsBtn"),
     rulesStatus: document.getElementById("rulesStatus"), openList: document.getElementById("openListBtn"),
@@ -18,10 +20,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     pStatus: document.getElementById("proxyStatus"), pFormStatus: document.getElementById("proxyFormStatus"),
     proxyMain: document.getElementById("proxyMain"), proxyForm: document.getElementById("proxyForm"),
     proxyEmpty: document.getElementById("proxyEmpty"), pCont: document.getElementById("proxyContainer"),
+    proxySearch: document.getElementById("proxySearch"),
     showAddProxy: document.getElementById("showAddProxyBtn"), deleteProxy: document.getElementById("deleteProxyBtn"),
     cancelProxy: document.getElementById("cancelProxyBtn"),
     listsMain: document.getElementById("listsMain"), listsForm: document.getElementById("listsForm"),
-    listsEmpty: document.getElementById("listsEmpty"),
+    listsEmpty: document.getElementById("listsEmpty"), listsSearch: document.getElementById("listsSearch"),
     lName: document.getElementById("listName"), lUrl: document.getElementById("listUrl"),
     lInterval: document.getElementById("listInterval"),
     lViaProxy: document.getElementById("listViaProxy"),
@@ -98,6 +101,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     return isIpHost(h) ? h : "*." + h;
   }
   function toGuiRule(v) { return normalize(v); }
+  function displayRuleForHost(host) {
+    const h = hostOfRule(host);
+    if (!h) return "";
+    return isIpHost(h) ? h : wildcardRule(h);
+  }
   function matches(h, r) {
     const hh = hostOfRule(h), rr = normalize(r);
     if (!hh || !rr) return false;
@@ -119,15 +127,32 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   function hasUserRule(rule) { return hasIn(currentRules, rule) || hasIn(currentDirect, rule); }
   function isDirectRule(rule) { return hasIn(currentDirect, rule); }
+  function existingUserRule(host) {
+    const typed = normalize(host);
+    if (typed && hasUserRule(typed)) return typed;
+    const h = hostOfRule(host);
+    if (!h) return "";
+    if (!isIpHost(h) && hasUserRule("*." + h)) return "*." + h;
+    if (hasUserRule(h)) return h;
+    return "";
+  }
   function removeUserRule(rule) {
     const n = normalize(rule);
     currentRules = currentRules.filter(i => normalize(i) !== n);
     currentDirect = currentDirect.filter(i => normalize(i) !== n);
   }
+  function removeUserRulesForHost(host) {
+    const h = hostOfRule(host);
+    if (!h) return;
+    removeUserRule(h);
+    if (!isIpHost(h)) removeUserRule("*." + h);
+  }
   function setUserRule(rule, action) {
-    removeUserRule(rule);
-    if (action === "direct") currentDirect.push(rule);
-    else currentRules.push(rule);
+    const n = normalize(rule);
+    if (!n) return;
+    removeUserRulesForHost(n);
+    if (action === "direct") currentDirect.push(n);
+    else currentRules.push(n);
   }
   const MULTI_SUFFIX = {
     "ac.uk":1,"co.uk":1,"gov.uk":1,"ltd.uk":1,"me.uk":1,"net.uk":1,"org.uk":1,"plc.uk":1,"sch.uk":1,
@@ -146,9 +171,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (MULTI_SUFFIX[last2] && parts.length >= 3) return parts.slice(-3).join(".");
     return last2;
   }
-  function coveringParentAction(host, proxyList, directList) {
+  function coveringParent(host, proxyList, directList) {
     const hostN = hostOfRule(host);
-    let bestLen = -1, bestAct = "";
+    let bestLen = -1, bestAct = "", bestRule = "";
     function consider(list, act) {
       (list || []).forEach(r => {
         if (hostOfRule(r) === hostN || !matches(host, r)) return;
@@ -156,25 +181,29 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (len > bestLen || (len === bestLen && act === "direct")) {
           bestLen = len;
           bestAct = act;
+          bestRule = normalize(r);
         }
       });
     }
     consider(proxyList || currentRules, "proxy");
     consider(directList || currentDirect, "direct");
-    return bestAct;
+    return { act: bestAct, rule: bestRule };
+  }
+  function coveringParentAction(host, proxyList, directList) {
+    return coveringParent(host, proxyList, directList).act;
   }
   function currentTargetRule() {
     if (scopeMode === "apex" && pageApex) return wildcardRule(pageApex);
-    return toGuiRule(pageHost || els.domainInput.value);
+    return displayRuleForHost(pageHost || els.domainInput.value);
   }
   let coverSeq = 0;
-  let lastCover = { host: "", listed: false, listedParent: false };
+  let lastCover = { host: "", listed: false, listedParent: false, listedParentRule: "", listName: "" };
   let domainCovers = {};
   async function requestCoverInfo(host) {
     try {
-      return await browser.runtime.sendMessage({ action: "coverInfo", host }) || { listed: false, listedParent: false };
+      return await browser.runtime.sendMessage({ action: "coverInfo", host }) || { listed: false, listedParent: false, listedParentRule: "", listName: "" };
     } catch (e) {
-      return { listed: false, listedParent: false };
+      return { listed: false, listedParent: false, listedParentRule: "", listName: "" };
     }
   }
   async function requestCoverMany(hosts) {
@@ -188,7 +217,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function refreshListCover() {
     const host = hostOfRule(els.domainInput.value);
     if (!host) {
-      lastCover = { host: "", listed: false, listedParent: false };
+      lastCover = { host: "", listed: false, listedParent: false, listedParentRule: "", listName: "" };
       paintStatusIcon();
       return;
     }
@@ -198,22 +227,21 @@ document.addEventListener("DOMContentLoaded", async () => {
       lastCover = {
         host,
         listed: !!(info && info.listed),
-        listedParent: !!(info && info.listedParent)
+        listedParent: !!(info && info.listedParent),
+        listedParentRule: (info && info.listedParentRule) || "",
+        listName: (info && info.listName) || ""
       };
       paintStatusIcon();
     });
   }
   function refreshScopeUI() {
     const hasChoice = !!(pageHost && pageApex && pageHost !== pageApex && !isIpHost(pageHost));
-    els.domainScope.classList.toggle("show", hasChoice);
-    if (hasChoice) {
-      els.scopeHost.textContent = `Этот: ${toGuiRule(pageHost)}`;
-      els.scopeApex.textContent = `Основной: ${wildcardRule(pageApex)}`;
-      els.scopeHost.classList.toggle("active", scopeMode === "host");
-      els.scopeApex.classList.toggle("active", scopeMode === "apex");
-    } else {
-      scopeMode = "host";
-    }
+    if (!hasChoice) scopeMode = "host";
+    els.scopeApex.hidden = !hasChoice;
+    els.scopeApex.disabled = !hasChoice;
+    if (els.domainScope) els.domainScope.style.display = hasChoice ? "flex" : "none";
+    els.scopeHost.classList.toggle("active", scopeMode === "host");
+    els.scopeApex.classList.toggle("active", hasChoice && scopeMode === "apex");
   }
   function setScope(mode, writeInput) {
     scopeMode = mode === "apex" ? "apex" : "host";
@@ -277,21 +305,77 @@ document.addEventListener("DOMContentLoaded", async () => {
     el.title = st.title;
     el.setAttribute("aria-label", st.title);
   }
+  function syncModeWrap(line) {
+    if (!line) return;
+    const wrap = line.querySelector(".mode-wrap");
+    const mode = line.querySelector("input.mode-direct");
+    if (wrap && mode) wrap.classList.toggle("on", !!mode.checked);
+  }
+  function coverInfoOf(host, covers) {
+    return coverOf(host, covers) || (lastCover.host === host ? lastCover : null);
+  }
+  function statusCaptionFor(host, covers) {
+    if (!host) return { text: "", kind: "" };
+    const st = statusForHost(host, covers, null);
+    if (st === STATUS.proxyFull) return { text: "Проксируется", kind: "proxy" };
+    if (st === STATUS.directFull) return { text: "Напрямую", kind: "direct" };
+    if (st === STATUS.proxyApex) {
+      const p = coveringParent(host);
+      return { text: p.rule ? `Проксируется правилом ${p.rule}` : "Проксируется правилом родителя", kind: "proxy" };
+    }
+    if (st === STATUS.directApex) {
+      const p = coveringParent(host);
+      return { text: p.rule ? `Напрямую правилом ${p.rule}` : "Напрямую правилом родителя", kind: "direct" };
+    }
+    if (st === STATUS.listFull) {
+      const info = coverInfoOf(host, covers);
+      const name = info && info.listName;
+      return { text: name ? `Проксируется списком ${name}` : "Проксируется списком", kind: "proxy" };
+    }
+    if (st === STATUS.listApex) {
+      const info = coverInfoOf(host, covers);
+      const rule = info && info.listedParentRule;
+      const name = info && info.listName;
+      if (rule && name) return { text: `Проксируется правилом ${rule} из списка ${name}`, kind: "proxy" };
+      if (rule) return { text: `Проксируется правилом ${rule} из списка`, kind: "proxy" };
+      if (name) return { text: `Проксируется списком ${name}`, kind: "proxy" };
+      return { text: "Проксируется списком", kind: "proxy" };
+    }
+    if (st === STATUS.none) return { text: "Правило не применяется", kind: "none" };
+    return { text: "", kind: "" };
+  }
+  function paintStatusCaption() {
+    if (!els.statusCaption) return;
+    const host = hostOfRule(els.domainInput.value);
+    const cap = statusCaptionFor(host, null);
+    els.statusCaption.textContent = cap.text;
+    els.statusCaption.className = "status-caption" + (cap.kind ? " " + cap.kind : "");
+    if (els.statusIcon && cap.text) {
+      els.statusIcon.title = cap.text;
+      els.statusIcon.setAttribute("aria-label", cap.text);
+    }
+  }
   function statusForDomain() {
     return statusForHost(hostOfRule(els.domainInput.value), null, null);
   }
   function paintStatusIcon() {
     paintStatusEl(els.statusIcon, statusForDomain());
+    paintStatusCaption();
   }
   function syncOpenDomainLine(rule) {
     if (!domainsPanelOpen) return;
+    const host = hostOfRule(rule);
     els.domainsList.querySelectorAll("input.domain-pick").forEach(box => {
-      if (normalize(box.dataset.rule) !== normalize(rule)) return;
-      box.checked = hasUserRule(rule);
+      if (hostOfRule(box.dataset.rule) !== host) return;
+      const existing = existingUserRule(box.dataset.rule);
+      box.checked = !!existing;
       const line = box.closest(".domain-line");
       const mode = line && line.querySelector("input.mode-direct");
-      if (mode) mode.checked = isDirectRule(rule);
-      if (line) line.classList.toggle("picked", box.checked);
+      if (mode) mode.checked = !!(existing && isDirectRule(existing));
+      if (line) {
+        line.classList.toggle("picked", box.checked);
+        syncModeWrap(line);
+      }
     });
     const overlay = collectOverlayRules();
     els.domainsList.querySelectorAll(".domain-line").forEach(line => {
@@ -299,6 +383,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const mark = line.querySelector(".mini-status");
       if (!pick) return;
       line.classList.toggle("picked", !!pick.checked);
+      syncModeWrap(line);
       paintStatusEl(mark, statusForHost(hostOfRule(pick.dataset.rule), domainCovers, overlay));
     });
   }
@@ -309,10 +394,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   function refreshToggleBtn() {
     const rule = toGuiRule(els.domainInput.value);
-    const inList = hasUserRule(rule);
-    const direct = inList && isDirectRule(rule);
-    els.toggleRule.textContent = inList ? "Удалить" : "Добавить домен";
-    els.toggleRule.className = inList ? "danger" : "success";
+    const existing = existingUserRule(rule);
+    const inList = !!existing;
+    const direct = inList && isDirectRule(existing);
+    els.toggleRule.textContent = inList ? "Удалить" : "Создать правило";
+    els.toggleRule.className = inList ? "danger" : "primary";
     els.toggleRule.disabled = !rule;
     els.domainActionRow.classList.toggle("has-rule", inList);
     els.domainMode.classList.toggle("show", inList);
@@ -322,6 +408,42 @@ document.addEventListener("DOMContentLoaded", async () => {
   function flash(el, t, c = "#57f287") {
     el.style.color = c; el.textContent = t;
     setTimeout(() => { if (el.textContent === t) el.textContent = ""; }, 2000);
+  }
+  function foldSearch(s) {
+    return String(s || "").toLowerCase().replace(/\s+/g, "");
+  }
+  function applySearchFilter(container, itemsSel, query, emptyEl, emptyDefault) {
+    if (!container) return 0;
+    const q = foldSearch(query);
+    let total = 0, shown = 0;
+    container.querySelectorAll(itemsSel).forEach(el => {
+      total++;
+      const hay = el.getAttribute("data-search") || el.textContent || "";
+      const ok = !q || foldSearch(hay).indexOf(q) >= 0;
+      el.style.display = ok ? "" : "none";
+      if (ok) shown++;
+    });
+    if (emptyEl) {
+      if (!total) {
+        emptyEl.textContent = emptyDefault;
+        emptyEl.style.display = "block";
+      } else if (!shown) {
+        emptyEl.textContent = "Ничего не найдено";
+        emptyEl.style.display = "block";
+      } else {
+        emptyEl.style.display = "none";
+      }
+    }
+    return shown;
+  }
+  function filterDomainsList() {
+    applySearchFilter(els.domainsList, ".domain-item", els.domainsSearch && els.domainsSearch.value, els.domainsEmpty, "Нет доменов. Откройте сайт и обновите страницу.");
+  }
+  function filterProxies() {
+    applySearchFilter(els.pCont, ".list-card", els.proxySearch && els.proxySearch.value, els.proxyEmpty, "Прокси пока нет");
+  }
+  function filterLists() {
+    applySearchFilter(els.lCont, ".list-card", els.listsSearch && els.listsSearch.value, els.listsEmpty, "Списков пока нет");
   }
 
   async function checkAutoReload(rule) {
@@ -364,10 +486,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     uniq.sort();
     if (!uniq.length) {
-      els.domainsEmpty.style.display = "block";
+      filterDomainsList();
       return;
     }
-    els.domainsEmpty.style.display = "none";
     covers = covers || {};
     function refreshDomainLine(line, overlay) {
       const pick = line.querySelector("input.domain-pick");
@@ -375,6 +496,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!pick) return;
       const picked = !!pick.checked;
       line.classList.toggle("picked", picked);
+      syncModeWrap(line);
       const host = hostOfRule(pick.dataset.rule);
       paintStatusEl(mark, statusForHost(host, covers, overlay || collectOverlayRules()));
     }
@@ -401,7 +523,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       cb.dataset.rule = rule;
       cb.dataset.kind = kind;
       cb.dataset.apex = apex;
-      cb.checked = hasUserRule(rule);
+      const existing = existingUserRule(rule);
+      cb.checked = !!existing;
       const mark = document.createElement("span");
       mark.className = "mini-status";
       const text = document.createElement("span");
@@ -412,17 +535,26 @@ document.addEventListener("DOMContentLoaded", async () => {
       wrap.className = "mode-wrap";
       wrap.title = "Проксировать / Напрямую";
       wrap.addEventListener("click", e => e.stopPropagation());
+      const off = document.createElement("span");
+      off.className = "mode-label-off";
+      off.textContent = "Проксировать";
       const sw = document.createElement("span");
       sw.className = "switch mode-switch";
       const mode = document.createElement("input");
       mode.type = "checkbox";
       mode.className = "mode-direct";
-      mode.checked = isDirectRule(rule);
+      mode.checked = !!(existing && isDirectRule(existing));
+      wrap.classList.toggle("on", mode.checked);
       const ui = document.createElement("span");
       ui.className = "switch-ui";
       sw.appendChild(mode);
       sw.appendChild(ui);
+      const on = document.createElement("span");
+      on.className = "mode-label-on";
+      on.textContent = "Напрямую";
+      wrap.appendChild(off);
       wrap.appendChild(sw);
+      wrap.appendChild(on);
       line.appendChild(cb);
       line.appendChild(mark);
       line.appendChild(text);
@@ -439,6 +571,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       refreshDomainLine(line);
       parent.appendChild(line);
     }
+    const pageHostKey = (pageHost || "").toLowerCase();
+    const pageApexKey = (pageApex || (pageHostKey ? apexDomain(pageHostKey) || pageHostKey : "")).toLowerCase();
     const groups = new Map();
     uniq.forEach(host => {
       const apex = apexDomain(host) || host;
@@ -446,22 +580,36 @@ document.addEventListener("DOMContentLoaded", async () => {
       const list = groups.get(apex);
       if (list.indexOf(host) < 0) list.push(host);
     });
-    Array.from(groups.keys()).sort().forEach(apex => {
-      const hosts = groups.get(apex).slice().sort();
+    Array.from(groups.keys()).sort((a, b) => {
+      const aPage = pageApexKey && a === pageApexKey;
+      const bPage = pageApexKey && b === pageApexKey;
+      if (aPage !== bPage) return aPage ? -1 : 1;
+      return a.localeCompare(b);
+    }).forEach(apex => {
+      const hosts = groups.get(apex).slice().sort((a, b) => {
+        const aPage = pageHostKey && a === pageHostKey;
+        const bPage = pageHostKey && b === pageHostKey;
+        if (aPage !== bPage) return aPage ? -1 : 1;
+        return a.localeCompare(b);
+      });
       const item = document.createElement("div");
       item.className = "domain-item";
+      const searchBits = [apex];
       if (isIpHost(apex)) {
         appendLine(item, toGuiRule(apex), "apex", apex, true);
       } else {
         appendLine(item, wildcardRule(apex), "apex", apex, true);
         hosts.forEach(host => {
           if (host === apex) return;
-          appendLine(item, toGuiRule(host), "host", apex, false);
+          searchBits.push(host);
+          appendLine(item, wildcardRule(host), "host", apex, false);
         });
       }
+      item.dataset.search = searchBits.join(" ");
       els.domainsList.appendChild(item);
     });
     refreshAllDomainLines();
+    filterDomainsList();
   }
 
   function closeDomainsPanel() {
@@ -469,6 +617,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     els.domainsPanel.classList.remove("open");
     els.viewDomains.classList.remove("open");
     els.domainsList.textContent = "";
+    if (els.domainsSearch) els.domainsSearch.value = "";
   }
 
   function applyDomainDraft() {
@@ -477,7 +626,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     els.domainsList.querySelectorAll("input.domain-pick").forEach(cb => {
       const rule = cb.dataset.rule;
       if (!rule) return;
-      const n = normalize(rule);
+      const n = hostOfRule(rule) || normalize(rule);
       const line = cb.closest(".domain-line");
       const mode = line && line.querySelector("input.mode-direct");
       const direct = !!(mode && mode.checked);
@@ -485,13 +634,17 @@ document.addEventListener("DOMContentLoaded", async () => {
       listed.set(n, { rule, want: cb.checked || (prev && prev.want), direct: cb.checked ? direct : (prev && prev.direct) });
     });
     listed.forEach(({ rule, want, direct }) => {
+      const existing = existingUserRule(rule);
+      const act = direct ? "direct" : "proxy";
       if (want) {
-        const was = hasUserRule(rule);
-        const wasDirect = was && isDirectRule(rule);
-        if (!was) { setUserRule(rule, direct ? "direct" : "proxy"); added++; }
-        else if (wasDirect !== !!direct) { setUserRule(rule, direct ? "direct" : "proxy"); changed++; }
-      } else if (hasUserRule(rule)) {
-        removeUserRule(rule);
+        const wasDirect = existing && isDirectRule(existing);
+        if (!existing) { setUserRule(rule, act); added++; }
+        else if (wasDirect !== !!direct || normalize(existing) !== normalize(rule)) {
+          setUserRule(rule, act);
+          changed++;
+        }
+      } else if (existing) {
+        removeUserRulesForHost(rule);
         removed++;
       }
     });
@@ -522,6 +675,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   const ICON_REFRESH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><polyline points="21 3 21 9 15 9"/></svg>';
   const ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
 
+  function pluralRu(n, one, few, many) {
+    n = Math.abs(Number(n)) || 0;
+    const n10 = n % 10;
+    const n100 = n % 100;
+    if (n10 === 1 && n100 !== 11) return one;
+    if (n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14)) return few;
+    return many;
+  }
   function formatListUpdated(ts) {
     const n = Number(ts);
     if (!(n > 0)) return "ещё не обновлялся";
@@ -627,11 +788,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function renderProxies() {
     els.pCont.textContent = "";
-    const empty = !currentProxies.length;
-    els.proxyEmpty.style.display = empty ? "block" : "none";
     currentProxies.forEach(p => {
       const card = document.createElement("div");
       card.className = "list-card";
+      card.dataset.search = p.host || "";
       const body = document.createElement("div");
       body.className = "list-card-body";
       const title = document.createElement("div");
@@ -673,6 +833,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       card.appendChild(side);
       els.pCont.appendChild(card);
     });
+    filterProxies();
   }
 
   function showProxyMain() {
@@ -724,14 +885,13 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function renderLists() {
     els.lCont.textContent = "";
-    const empty = !currentLists.length;
-    els.listsEmpty.style.display = empty ? "block" : "none";
     currentLists.forEach(l => {
       const card = document.createElement("div");
       card.className = "list-card";
       const body = document.createElement("div");
       body.className = "list-card-body";
       const name = String(l.name || "").trim();
+      card.dataset.search = name || String(l.url || "");
       if (name) {
         const title = document.createElement("div");
         title.className = "list-card-title";
@@ -744,7 +904,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const fmt = l.format === "pac" ? "PAC" : "txt";
       const domains = l.domainCount || (l.domains || []).length || 0;
       const ips = l.ipCount || (l.ips || []).length || 0;
-      meta.textContent = `${fmt} · ${domains} дом. / ${ips} IP`;
+      meta.textContent = `${fmt} · ${domains} ${pluralRu(domains, "домен", "домена", "доменов")} / ${ips} IP`;
       const urlLine = document.createElement("div");
       urlLine.className = "list-card-url";
       urlLine.textContent = l.url || "";
@@ -768,6 +928,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       card.appendChild(actions);
       els.lCont.appendChild(card);
     });
+    filterLists();
   }
 
   function canonListUrl(url) {
@@ -871,7 +1032,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           pageHost = normalize(host).replace(/^\*\./, "");
           pageApex = apexDomain(pageHost);
           scopeMode = "host";
-          els.domainInput.value = toGuiRule(pageHost);
+          els.domainInput.value = displayRuleForHost(pageHost);
         }
       }
     } catch (_) {}
@@ -912,9 +1073,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   els.toggleRule.addEventListener("click", async () => {
     const rule = toGuiRule(els.domainInput.value);
     if (!rule) return flash(els.rulesStatus, "Пустое правило", "#ff6b6b");
-    els.domainInput.value = rule;
-    if (hasUserRule(rule)) {
-      removeUserRule(rule);
+    const existing = existingUserRule(rule);
+    els.domainInput.value = existing || rule;
+    if (existing) {
+      removeUserRulesForHost(existing);
       await saveRules();
       refreshIcon();
       flash(els.rulesStatus, "Удалено");
@@ -924,23 +1086,24 @@ document.addEventListener("DOMContentLoaded", async () => {
       refreshIcon();
       flash(els.rulesStatus, "Добавлено");
     }
-    syncOpenDomainLine(rule);
-    checkAutoReload(rule);
+    syncOpenDomainLine(existing || rule);
+    checkAutoReload(existing || rule);
   });
 
   els.domainDirect.addEventListener("change", async () => {
-    const rule = toGuiRule(els.domainInput.value);
-    if (!rule || !hasUserRule(rule)) {
+    const typed = toGuiRule(els.domainInput.value);
+    const existing = existingUserRule(typed);
+    if (!typed || !existing) {
       els.domainDirect.checked = false;
       return;
     }
-    els.domainInput.value = rule;
-    setUserRule(rule, els.domainDirect.checked ? "direct" : "proxy");
+    els.domainInput.value = existing;
+    setUserRule(existing, els.domainDirect.checked ? "direct" : "proxy");
     await saveRules();
     refreshIcon();
     flash(els.rulesStatus, els.domainDirect.checked ? "Напрямую" : "Проксировать");
-    syncOpenDomainLine(rule);
-    checkAutoReload(rule);
+    syncOpenDomainLine(existing);
+    checkAutoReload(existing);
   });
 
   els.scopeHost.addEventListener("click", () => setScope("host", true));
@@ -964,17 +1127,22 @@ document.addEventListener("DOMContentLoaded", async () => {
     const { added, removed, changed } = applyDomainDraft();
     if (added || removed || changed) {
       await saveRules();
-      refreshIcon();
       const parts = [];
       if (added) parts.push(`добавлено: ${added}`);
       if (removed) parts.push(`удалено: ${removed}`);
       if (changed && !added && !removed) parts.push("сохранено");
       flash(els.rulesStatus, parts.join(", ") || "Сохранено");
     }
+    const shown = existingUserRule(els.domainInput.value);
+    if (shown) els.domainInput.value = shown;
+    refreshIcon();
     closeDomainsPanel();
     if (added || removed || changed) await reloadActiveTab();
   });
   els.cancelDomains.addEventListener("click", () => closeDomainsPanel());
+  if (els.domainsSearch) els.domainsSearch.addEventListener("input", filterDomainsList);
+  if (els.proxySearch) els.proxySearch.addEventListener("input", filterProxies);
+  if (els.listsSearch) els.listsSearch.addEventListener("input", filterLists);
 
   els.showAddList.addEventListener("click", () => openListForm(null));
   els.cancelList.addEventListener("click", () => showListsMain());
@@ -1019,7 +1187,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   els.refreshLists.addEventListener("click", async () => {
     if (!currentLists.length) return flash(els.lStatus, "Списков нет", "#ff6b6b");
     els.refreshLists.disabled = true;
-    els.refreshLists.textContent = "Обновление...";
+    els.refreshLists.classList.add("busy");
     try {
       const res = await sendListMessage({ action: "refreshLists" });
       if (res && res.success) flash(els.lStatus, `Обновлено: ${res.updated || 0}`);
@@ -1028,7 +1196,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       flash(els.lStatus, String(e.message || e).slice(0, 180), "#ff6b6b");
     } finally {
       els.refreshLists.disabled = false;
-      els.refreshLists.textContent = "Обновить все";
+      els.refreshLists.classList.remove("busy");
     }
   });
 
@@ -1067,7 +1235,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       currentDirect = c.directRules.newValue || [];
       refreshIcon();
     }
-    if (c.proxyLists) { currentLists = c.proxyLists.newValue || []; renderLists(); lastCover = { host: "", listed: false, listedParent: false }; refreshIcon(); }
+    if (c.proxyLists) { currentLists = c.proxyLists.newValue || []; renderLists(); lastCover = { host: "", listed: false, listedParent: false, listedParentRule: "", listName: "" }; refreshIcon(); }
     if (c.proxyServers) {
       currentProxies = migrateProxies({ proxyServers: c.proxyServers.newValue || [] });
       renderProxies();
