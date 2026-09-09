@@ -48,6 +48,8 @@
     .icon-btn:hover { background: #4e5058; }
     .icon-btn.open { background: #5865f2; color: #fff; }
     .icon-btn svg { width: 16px; height: 16px; display: block; }
+    .icon-btn.busy svg { animation: list-spin 0.8s linear infinite; }
+    .icon-btn:disabled { opacity: 0.6; cursor: default; }
     .secondary { width: 100%; background: #404249; color: #fff; margin: 0; flex: none; padding: 6px 10px; }
     .secondary:hover { background: #4e5058; }
     .secondary + .secondary { margin-top: 8px; }
@@ -192,7 +194,7 @@
         </div>
         <p class="status-caption" id="statusCaption" aria-live="polite"></p>
         <div class="row" id="domainActionRow">
-          <button id="toggleRuleBtn" class="primary" type="button">Добавить домен</button>
+          <button id="toggleRuleBtn" class="primary" type="button">Создать правило</button>
           <label id="domainModeSwitch" class="domain-mode">
             <span class="domain-mode-off">Проксировать</span>
             <span class="switch mode-switch"><input id="domainDirect" type="checkbox"><span class="switch-ui"></span></span>
@@ -250,11 +252,15 @@
     <div id="panelLists" class="panel">
       <div class="card">
         <div id="listsMain">
-          <button id="refreshListsBtn" class="secondary">Обновить все</button>
           <input id="listsSearch" class="search-box" type="text" placeholder="Поиск по названию или ссылке" autocomplete="off" spellcheck="false">
           <div id="listsEmpty" class="lists-empty">Списков пока нет</div>
           <div id="listsContainer" class="lists-wrap"></div>
-          <button id="showAddListBtn" class="primary lists-add" type="button">Добавить список</button>
+          <div class="row lists-add">
+            <button id="showAddListBtn" class="primary" type="button">Добавить список</button>
+            <button id="refreshListsBtn" class="icon-btn" type="button" title="Обновить все" aria-label="Обновить все">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><polyline points="21 3 21 9 15 9"/></svg>
+            </button>
+          </div>
           <div id="listStatus" class="hint"></div>
         </div>
         <div id="listsForm" style="display:none;">

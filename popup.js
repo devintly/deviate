@@ -387,7 +387,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const existing = existingUserRule(rule);
     const inList = !!existing;
     const direct = inList && isDirectRule(existing);
-    els.toggleRule.textContent = inList ? "Удалить" : "Добавить домен";
+    els.toggleRule.textContent = inList ? "Удалить" : "Создать правило";
     els.toggleRule.className = inList ? "danger" : "primary";
     els.toggleRule.disabled = !rule;
     els.domainActionRow.classList.toggle("has-rule", inList);
@@ -1159,7 +1159,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   els.refreshLists.addEventListener("click", async () => {
     if (!currentLists.length) return flash(els.lStatus, "Списков нет", "#ff6b6b");
     els.refreshLists.disabled = true;
-    els.refreshLists.textContent = "Обновление...";
+    els.refreshLists.classList.add("busy");
     try {
       const res = await sendListMessage({ action: "refreshLists" });
       if (res && res.success) flash(els.lStatus, `Обновлено: ${res.updated || 0}`);
@@ -1168,7 +1168,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       flash(els.lStatus, String(e.message || e).slice(0, 180), "#ff6b6b");
     } finally {
       els.refreshLists.disabled = false;
-      els.refreshLists.textContent = "Обновить все";
+      els.refreshLists.classList.remove("busy");
     }
   });
 
