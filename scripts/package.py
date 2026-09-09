@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Собрать zip/xpi-пакеты расширения Deviate."""
+"""Собрать zip/xpi-пакет Firefox-расширения DeviateProxy."""
 from __future__ import annotations
 
 import json
@@ -10,31 +10,35 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / "dist"
 SKIP_NAMES = {".DS_Store", "Thumbs.db"}
-
-TARGETS = (
-    ("Chrome", "deviate-chrome", False),
-    ("FireFox", "deviate-firefox", True),
-    ("EdgeOpera", "deviate-edge", False),
+FILES = (
+    "manifest.json",
+    "background.js",
+    "popup.html",
+    "popup.js",
+    "list.html",
+    "list.js",
+    "pac-parse.js",
+    "icon.png",
+    "icon-off.png",
+    "LICENSE",
 )
 
 
-def pack_dir(src: Path, dest: Path) -> int:
-    files = [
-        path
-        for path in sorted(src.rglob("*"))
-        if path.is_file() and path.name not in SKIP_NAMES
-    ]
-    if not any(path.name == "manifest.json" for path in files):
-        raise SystemExit(f"В {src} нет manifest.json")
+def pack_firefox(dest: Path) -> int:
+    missing = [name for name in FILES if not (ROOT / name).is_file()]
+    if missing:
+        raise SystemExit("Нет файлов: " + ", ".join(missing))
     dest.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(dest, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for path in files:
-            zf.write(path, path.relative_to(src).as_posix())
+        for name in FILES:
+            path = ROOT / name
+            if path.name in SKIP_NAMES:
+                continue
+            zf.write(path, name)
     with zipfile.ZipFile(dest) as zf:
-        names = zf.namelist()
-        if "manifest.json" not in names:
+        if "manifest.json" not in zf.namelist():
             raise SystemExit(f"{dest.name}: manifest.json должен быть в корне архива")
-    return len(files)
+    return len(FILES)
 
 
 def main() -> None:
@@ -42,21 +46,14 @@ def main() -> None:
         shutil.rmtree(DIST)
     DIST.mkdir(parents=True)
 
-    print("Сборка пакетов Deviate:")
-    for folder, name, make_xpi in TARGETS:
-        src = ROOT / folder
-        if not src.is_dir():
-            raise SystemExit(f"Нет каталога {src}")
-        version = json.loads((src / "manifest.json").read_text(encoding="utf-8"))["version"]
-        zip_path = DIST / f"{name}-{version}.zip"
-        count = pack_dir(src, zip_path)
-        size = zip_path.stat().st_size
-        print(f"  {zip_path.name}: {count} файлов, {size} байт")
-        if make_xpi:
-            xpi_path = DIST / f"{name}-{version}.xpi"
-            shutil.copyfile(zip_path, xpi_path)
-            print(f"  {xpi_path.name}: копия zip для Firefox")
-
+    version = json.loads((ROOT / "manifest.json").read_text(encoding="utf-8"))["version"]
+    zip_path = DIST / f"deviateproxy-firefox-{version}.zip"
+    count = pack_firefox(zip_path)
+    print("Сборка пакета DeviateProxy (Firefox):")
+    print(f"  {zip_path.name}: {count} файлов, {zip_path.stat().st_size} байт")
+    xpi_path = DIST / f"deviateproxy-firefox-{version}.xpi"
+    shutil.copyfile(zip_path, xpi_path)
+    print(f"  {xpi_path.name}: копия zip для Firefox")
     print(f"Готово: {DIST}")
 
 

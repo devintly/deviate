@@ -1,6 +1,8 @@
-# Deviate
-Обход блокировок: проксирование сайтов по правилам средствами SOCKS/HTTP, а также фильтрация трекеров списками.
+# DeviateProxy
+Обход блокировок: проксирование сайтов по правилам средствами SOCKS/HTTP.
 
-Репозиторий: [github.com/devintly/deviate](https://github.com/devintly/deviate)
+Только Firefox.
 
-Автор meguproxy: [t.me/shlyapniktgk](https://t.me/shlyapniktgk)
+Репозиторий: [github.com/devintly/deviateproxy](https://github.com/devintly/deviateproxy)
+
+На основе MeguProxy: [github.com/ventordimi/meguproxy](https://github.com/ventordimi/meguproxy)

@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
-  "name": "Deviate",
-  "version": "1.4.9",
-  "description": "Deviate — обход блокировок: проксирование сайтов по правилам средствами SOCKS/HTTP.",
+  "name": "DeviateProxy",
+  "version": "1.11.0",
+  "description": "DeviateProxy — обход блокировок: проксирование сайтов по правилам средствами SOCKS/HTTP.",
   "browser_specific_settings": {
     "gecko": {
-      "id": "deviate@devintly",
+      "id": "deviateproxy@devintly",
       "strict_min_version": "109.0",
       "data_collection_permissions": {
         "required": ["none"]
@@ -30,16 +30,20 @@
     "wss://*/*"
   ],
   "icons": {
-    "64": "icon.png"
+    "48": "icon.png",
+    "96": "icon.png",
+    "128": "icon.png"
   },
   "background": {
     "scripts": ["pac-parse.js", "background.js"]
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Deviate",
+    "default_title": "DeviateProxy",
     "default_icon": {
-      "48": "icon.png"
+      "48": "icon.png",
+      "96": "icon.png",
+      "128": "icon.png"
     }
   }
 }
