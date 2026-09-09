@@ -14,7 +14,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     pType: document.getElementById("proxyType"), pHost: document.getElementById("proxyHost"),
     pPort: document.getElementById("proxyPort"), pUser: document.getElementById("proxyUser"),
     pPass: document.getElementById("proxyPass"), saveProxy: document.getElementById("saveProxyBtn"),
-    pStatus: document.getElementById("proxyStatus"),
+    pStatus: document.getElementById("proxyStatus"), pFormStatus: document.getElementById("proxyFormStatus"),
+    proxyMain: document.getElementById("proxyMain"), proxyForm: document.getElementById("proxyForm"),
+    proxyEmpty: document.getElementById("proxyEmpty"), pCont: document.getElementById("proxyContainer"),
+    showAddProxy: document.getElementById("showAddProxyBtn"), deleteProxy: document.getElementById("deleteProxyBtn"),
+    cancelProxy: document.getElementById("cancelProxyBtn"),
     listsMain: document.getElementById("listsMain"), listsForm: document.getElementById("listsForm"),
     listsEmpty: document.getElementById("listsEmpty"),
     lName: document.getElementById("listName"), lUrl: document.getElementById("listUrl"),
@@ -28,12 +32,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   let currentRules = [];
   let currentLists = [];
+  let currentProxies = [];
   let activeTab = null;
   let domainsPanelOpen = false;
   let pageHost = "";
   let pageApex = "";
   let scopeMode = "host";
   let editingListId = null;
+  let editingProxyId = null;
   const HOST_ORIGINS = ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"];
   const accessError = document.getElementById("accessError");
   const accessErrorText = document.getElementById("accessErrorText");
@@ -301,6 +307,165 @@ document.addEventListener("DOMContentLoaded", async () => {
     return btn;
   }
 
+  function proxyTypeLabel(t) {
+    if (t === "http") return "HTTP";
+    if (t === "https") return "HTTPS";
+    return "SOCKS5";
+  }
+
+  function proxyKey(p) {
+    return `${(p.type || "socks").toLowerCase()}|${String(p.host || "").trim().toLowerCase()}|${Number(p.port)}`;
+  }
+
+  function configFromServers(list) {
+    const on = (list || []).find(p => p.enabled && p.host && Number(p.port) > 0);
+    if (!on) return { type: "socks", host: "", port: 0, username: "", password: "" };
+    return {
+      type: on.type || "socks",
+      host: String(on.host).trim(),
+      port: Number(on.port),
+      username: on.username || "",
+      password: on.password || ""
+    };
+  }
+
+  function withActiveProxy(list, activeId) {
+    const out = (list || []).map(p => Object.assign({}, p, { enabled: false }));
+    if (!out.length) return out;
+    const has = activeId != null && out.some(p => p.id === activeId);
+    const id = has ? activeId : (out[0].id);
+    out.forEach(p => { p.enabled = p.id === id; });
+    return out;
+  }
+
+  function migrateProxies(res) {
+    let list = Array.isArray(res.proxyServers) ? res.proxyServers.map(p => Object.assign({}, p)) : [];
+    if (!list.length && res.proxyConfig && res.proxyConfig.host) {
+      const c = res.proxyConfig;
+      list = [{
+        id: Date.now(),
+        type: c.type || "socks",
+        host: c.host,
+        port: Number(c.port) || 1080,
+        username: c.username || "",
+        password: c.password || "",
+        enabled: true
+      }];
+    }
+    const keep = (list.find(p => p.enabled) || list[0] || {}).id;
+    return withActiveProxy(list, keep);
+  }
+
+  function persistProxies(list, done) {
+    const keep = (list.find(p => p.enabled) || list[0] || {}).id;
+    currentProxies = withActiveProxy(list, keep);
+    api.storage.local.set({
+      proxyServers: currentProxies,
+      proxyConfig: configFromServers(currentProxies)
+    }, () => {
+      renderProxies();
+      if (done) done();
+    });
+  }
+
+  function renderProxies() {
+    els.pCont.textContent = "";
+    const empty = !currentProxies.length;
+    els.proxyEmpty.style.display = empty ? "block" : "none";
+    currentProxies.forEach(p => {
+      const card = document.createElement("div");
+      card.className = "list-card";
+      const body = document.createElement("div");
+      body.className = "list-card-body";
+      const title = document.createElement("div");
+      title.className = "list-card-title";
+      title.textContent = `${p.host || ""}:${p.port || ""}`;
+      title.title = title.textContent;
+      const meta = document.createElement("div");
+      meta.className = "list-card-meta";
+      const bits = [proxyTypeLabel(p.type)];
+      if (p.username) bits.push(p.username);
+      meta.textContent = bits.join(" · ");
+      body.appendChild(title);
+      body.appendChild(meta);
+      const side = document.createElement("div");
+      side.className = "list-card-side";
+      const tog = document.createElement("label");
+      tog.className = "switch";
+      tog.title = p.enabled ? "Активный прокси" : "Сделать активным";
+      const inp = document.createElement("input");
+      inp.type = "checkbox";
+      inp.checked = !!p.enabled;
+      const ui = document.createElement("span");
+      ui.className = "switch-ui";
+      tog.appendChild(inp);
+      tog.appendChild(ui);
+      inp.addEventListener("change", () => {
+        if (!inp.checked) {
+          inp.checked = true;
+          return;
+        }
+        persistProxies(currentProxies.map(item => Object.assign({}, item, { enabled: item.id === p.id })), () => {
+          flash(els.pStatus, "Активный прокси выбран");
+        });
+      });
+      const editBtn = listIconButton("Редактировать", ICON_EDIT);
+      editBtn.addEventListener("click", () => openProxyForm(p));
+      side.appendChild(tog);
+      side.appendChild(editBtn);
+      card.appendChild(body);
+      card.appendChild(side);
+      els.pCont.appendChild(card);
+    });
+  }
+
+  function showProxyMain() {
+    editingProxyId = null;
+    els.proxyForm.style.display = "none";
+    els.proxyMain.style.display = "block";
+    renderProxies();
+  }
+
+  function resetProxyForm() {
+    els.pType.value = "socks";
+    els.pHost.value = "";
+    els.pPort.value = "";
+    els.pUser.value = "";
+    els.pPass.value = "";
+    els.pFormStatus.textContent = "";
+  }
+
+  function openProxyForm(item) {
+    els.proxyMain.style.display = "none";
+    els.proxyForm.style.display = "block";
+    els.pFormStatus.textContent = "";
+    if (item) {
+      editingProxyId = item.id;
+      els.pType.value = item.type === "http" || item.type === "https" ? item.type : "socks";
+      els.pHost.value = item.host || "";
+      els.pPort.value = item.port || "";
+      els.pUser.value = item.username || "";
+      els.pPass.value = item.password || "";
+      els.saveProxy.textContent = "Сохранить";
+      els.deleteProxy.style.display = "flex";
+    } else {
+      editingProxyId = null;
+      resetProxyForm();
+      els.saveProxy.textContent = "Добавить прокси";
+      els.deleteProxy.style.display = "none";
+    }
+  }
+
+  function collectProxyForm() {
+    return {
+      type: els.pType.value,
+      host: els.pHost.value.trim(),
+      port: Number(els.pPort.value),
+      username: els.pUser.value.trim(),
+      password: els.pPass.value.trim()
+    };
+  }
+
   function renderLists() {
     els.lCont.textContent = "";
     const empty = !currentLists.length;
@@ -428,45 +593,70 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function loadState() {
-    api.storage.local.get(["proxyConfig", "proxyRules", "proxyLists", "lastProxyError"], (res) => {
+    api.storage.local.get(["proxyConfig", "proxyServers", "proxyRules", "proxyLists", "lastProxyError"], (res) => {
       currentRules = Array.isArray(res.proxyRules) ? res.proxyRules : [];
       currentLists = Array.isArray(res.proxyLists) ? res.proxyLists : [];
-      if (res.proxyConfig) {
-        els.pType.value = res.proxyConfig.type || "socks";
-        els.pHost.value = res.proxyConfig.host || "127.0.0.1";
-        els.pPort.value = res.proxyConfig.port || 1080;
-        els.pUser.value = res.proxyConfig.username || "";
-        els.pPass.value = res.proxyConfig.password || "";
+      const migrated = migrateProxies(res);
+      const prev = Array.isArray(res.proxyServers) ? res.proxyServers : [];
+      const afterMigrate = () => {
+        renderLists();
+        api.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          if (tabs[0] && tabs[0].url) {
+            activeTab = tabs[0];
+            try {
+              const host = new URL(activeTab.url).hostname;
+              if (host) {
+                pageHost = normalize(host).replace(/^\*\./, "");
+                pageApex = apexDomain(pageHost);
+                scopeMode = "host";
+                els.domainInput.value = toGuiRule(pageHost);
+              }
+            } catch (e) {}
+          }
+          refreshScopeUI();
+          refreshIcon();
+          if (res.lastProxyError) flash(els.pStatus, res.lastProxyError, "#ff6b6b");
+        });
+      };
+      if (JSON.stringify(migrated) !== JSON.stringify(prev)) persistProxies(migrated, afterMigrate);
+      else {
+        currentProxies = migrated;
+        renderProxies();
+        afterMigrate();
       }
-      renderLists();
-      api.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (tabs[0] && tabs[0].url) {
-          activeTab = tabs[0];
-          try {
-             const host = new URL(activeTab.url).hostname;
-             if (host) {
-               pageHost = normalize(host).replace(/^\*\./, "");
-               pageApex = apexDomain(pageHost);
-               scopeMode = "host";
-               els.domainInput.value = toGuiRule(pageHost);
-             }
-          } catch(e){}
-        }
-        refreshScopeUI();
-        refreshIcon();
-        if (res.lastProxyError) flash(els.pStatus, res.lastProxyError, "#ff6b6b");
-      });
     });
   }
 
+  els.showAddProxy.addEventListener("click", () => openProxyForm(null));
+  els.cancelProxy.addEventListener("click", () => showProxyMain());
+
   els.saveProxy.addEventListener("click", () => {
-    const c = { 
-      type: els.pType.value, host: els.pHost.value.trim(), port: Number(els.pPort.value),
-      username: els.pUser.value.trim(), password: els.pPass.value.trim()
-    };
-    if (!c.host || !c.port) return flash(els.pStatus, "Заполните хост и порт", "#ff6b6b");
-    api.storage.local.set({ proxyConfig: c }, () => {
-       flash(els.pStatus, "Сохранено");
+    const form = collectProxyForm();
+    if (!form.host || !(form.port > 0 && form.port < 65536)) {
+      return flash(els.pFormStatus, "Заполните хост и порт", "#ff6b6b");
+    }
+    const dup = currentProxies.find(p => proxyKey(p) === proxyKey(form) && p.id !== editingProxyId);
+    if (dup) return flash(els.pFormStatus, "Прокси добавить нельзя, он уже существует", "#ff6b6b");
+    if (editingProxyId != null) {
+      const next = currentProxies.map(p => p.id === editingProxyId ? Object.assign({}, p, form) : p);
+      persistProxies(next, () => {
+        flash(els.pStatus, "Сохранено");
+        showProxyMain();
+      });
+    } else {
+      const item = Object.assign({ id: Date.now(), enabled: !currentProxies.length }, form);
+      persistProxies(currentProxies.concat(item), () => {
+        flash(els.pStatus, "Прокси добавлен");
+        showProxyMain();
+      });
+    }
+  });
+
+  els.deleteProxy.addEventListener("click", () => {
+    if (editingProxyId == null) return;
+    persistProxies(currentProxies.filter(p => p.id !== editingProxyId), () => {
+      flash(els.pStatus, "Удалено");
+      showProxyMain();
     });
   });
 
@@ -611,6 +801,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       refreshIcon();
     }
     if (c.proxyLists) { currentLists = c.proxyLists.newValue || []; renderLists(); }
+    if (c.proxyServers) { currentProxies = migrateProxies({ proxyServers: c.proxyServers.newValue || [] }); renderProxies(); }
     if (c.lastProxyError && c.lastProxyError.newValue) flash(els.pStatus, c.lastProxyError.newValue, "#ff6b6b");
   });
 

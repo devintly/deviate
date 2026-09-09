@@ -1,6 +1,44 @@
-let proxyConfig = { type: "socks", host: "127.0.0.1", port: 1080, username: "", password: "" };
+let proxyConfig = { type: "socks", host: "", port: 0, username: "", password: "" };
 let proxyRules = [];
 let proxyLists = [];
+
+function configFromServers(list) {
+  const on = (list || []).find(p => p.enabled && p.host && Number(p.port) > 0);
+  if (!on) return { type: "socks", host: "", port: 0, username: "", password: "" };
+  return {
+    type: on.type || "socks",
+    host: String(on.host).trim(),
+    port: Number(on.port),
+    username: on.username || "",
+    password: on.password || ""
+  };
+}
+
+function withActiveProxy(list, activeId) {
+  const out = (list || []).map(p => Object.assign({}, p, { enabled: false }));
+  if (!out.length) return out;
+  const has = activeId != null && out.some(p => p.id === activeId);
+  const id = has ? activeId : out[0].id;
+  out.forEach(p => { p.enabled = p.id === id; });
+  return out;
+}
+
+function migrateProxyServers(servers, fallback) {
+  let list = Array.isArray(servers) ? servers.map(p => Object.assign({}, p)) : [];
+  if (!list.length && fallback && fallback.host) {
+    list = [{
+      id: Date.now(),
+      type: fallback.type || "socks",
+      host: fallback.host,
+      port: Number(fallback.port) || 1080,
+      username: fallback.username || "",
+      password: fallback.password || "",
+      enabled: true
+    }];
+  }
+  const keep = (list.find(p => p.enabled) || list[0] || {}).id;
+  return withActiveProxy(list, keep);
+}
 
 let pE = {}, pS = {}, bE = {}, bS = {};
 let pIp = {}, bIp = {}, pCidr = [], bCidr = [];
@@ -443,7 +481,13 @@ browser.alarms.onAlarm.addListener((alarm) => {
 
 browser.storage.onChanged.addListener(async (changes) => {
   let need = false;
-  if (changes.proxyConfig) { proxyConfig = changes.proxyConfig.newValue || proxyConfig; need = true; }
+  if (changes.proxyServers) {
+    proxyConfig = configFromServers(migrateProxyServers(changes.proxyServers.newValue || [], null));
+    need = true;
+  } else if (changes.proxyConfig) {
+    proxyConfig = changes.proxyConfig.newValue || proxyConfig;
+    need = true;
+  }
   if (changes.proxyRules) { proxyRules = changes.proxyRules.newValue || []; need = true; }
   if (changes.proxyLists) { proxyLists = changes.proxyLists.newValue || []; need = true; }
   if (need) {
@@ -470,8 +514,12 @@ function stripLegacyPac(list) {
   return list;
 }
 
-browser.storage.local.get(["proxyConfig", "proxyRules", "proxyLists"]).then(async (res) => {
-  if (res.proxyConfig) proxyConfig = res.proxyConfig;
+browser.storage.local.get(["proxyConfig", "proxyServers", "proxyRules", "proxyLists"]).then(async (res) => {
+  const servers = migrateProxyServers(res.proxyServers, res.proxyConfig);
+  proxyConfig = configFromServers(servers);
+  if (JSON.stringify(servers) !== JSON.stringify(res.proxyServers || [])) {
+    await browser.storage.local.set({ proxyServers: servers, proxyConfig });
+  }
   if (res.proxyRules) proxyRules = res.proxyRules;
   if (res.proxyLists) proxyLists = res.proxyLists.map(stripLegacyPac);
   const stale = proxyLists.some(isStalePac);
