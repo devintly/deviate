@@ -409,7 +409,7 @@ function scheduleBadge(tabId) {
 async function updateBadge(tabId) {
   if (tabId == null || tabId < 0) return;
   const n = extensionEnabled && tabProxied[tabId] ? tabProxied[tabId].size : 0;
-  const text = n ? (n > 99 ? "99+" : String(n)) : "";
+  const text = n ? (n > 10 ? "10+" : String(n)) : "";
   if (badgeText[tabId] === text) return;
   badgeText[tabId] = text;
   try {
