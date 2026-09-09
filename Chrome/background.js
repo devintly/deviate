@@ -432,9 +432,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .catch(e => sendResponse({ success: false, error: String(e.message || e) }));
     return true;
   }
-  if (msg.action === "getUnproxiedDomains") {
+  if (msg.action === "getTabDomains" || msg.action === "getUnproxiedDomains") {
     const domains = tabHosts[msg.tabId] ? Array.from(tabHosts[msg.tabId]) : [];
-    sendResponse({ domains: domains.filter(d => !isProxiedHost(d) && !isBlockedHost(d)) });
+    sendResponse({
+      domains: msg.action === "getTabDomains"
+        ? domains.sort()
+        : domains.filter(d => !isProxiedHost(d) && !isBlockedHost(d))
+    });
     return true;
   }
 });

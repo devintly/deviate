@@ -3,8 +3,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   const panels = document.querySelectorAll(".panel");
   const els = {
     domainInput: document.getElementById("domainInput"), statusIcon: document.getElementById("statusIcon"),
-    addRule: document.getElementById("addRuleBtn"), removeRule: document.getElementById("removeRuleBtn"),
-    addAll: document.getElementById("addAllBtn"),
+    toggleRule: document.getElementById("toggleRuleBtn"), viewDomains: document.getElementById("viewDomainsBtn"),
+    domainsPanel: document.getElementById("domainsPanel"), domainsList: document.getElementById("domainsList"),
+    domainsEmpty: document.getElementById("domainsEmpty"),
     rulesStatus: document.getElementById("rulesStatus"), openList: document.getElementById("openListBtn"),
     pType: document.getElementById("proxyType"), pHost: document.getElementById("proxyHost"),
     pPort: document.getElementById("proxyPort"), pUser: document.getElementById("proxyUser"),
@@ -19,6 +20,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   let currentRules = [];
   let currentLists = [];
   let activeTab = null;
+  let domainsPanelOpen = false;
   const HOST_ORIGINS = ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"];
   const accessError = document.getElementById("accessError");
   const accessErrorText = document.getElementById("accessErrorText");
@@ -65,9 +67,22 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (rr.startsWith("*.")) { const b = rr.slice(2); return hh === b || hh.endsWith(`.${b}`); }
     return hh === rr;
   }
+  function hasUserRule(rule) {
+    const n = normalize(rule);
+    return !!n && currentRules.some(r => normalize(r) === n);
+  }
   function refreshIcon() {
     const v = els.domainInput.value.trim();
     els.statusIcon.textContent = currentRules.some(r => matches(v, r)) ? "✅" : "❌";
+    refreshToggleBtn();
+  }
+  function refreshToggleBtn() {
+    const rule = toGuiRule(els.domainInput.value);
+    const inList = hasUserRule(rule);
+    els.toggleRule.textContent = inList ? "Удалить домен" : "Добавить домен";
+    els.toggleRule.classList.toggle("danger", inList);
+    els.toggleRule.classList.toggle("primary", !inList);
+    els.toggleRule.disabled = !rule;
   }
   function flash(el, t, c = "#57f287") {
     el.style.color = c; el.textContent = t;
@@ -79,6 +94,68 @@ document.addEventListener("DOMContentLoaded", async () => {
       const url = new URL(activeTab.url);
       if (matches(url.hostname, rule)) await browser.tabs.reload(activeTab.id);
     }
+  }
+
+  async function saveRules() {
+    await browser.storage.local.set({ proxyRules: currentRules });
+  }
+
+  async function fetchTabDomains() {
+    const set = new Set();
+    if (activeTab && activeTab.url) {
+      try {
+        const host = new URL(activeTab.url).hostname;
+        if (host) set.add(host.toLowerCase());
+      } catch (_) {}
+    }
+    if (activeTab) {
+      try {
+        const res = await browser.runtime.sendMessage({ action: "getTabDomains", tabId: activeTab.id });
+        (res && res.domains ? res.domains : []).forEach(d => {
+          const h = String(d || "").trim().toLowerCase();
+          if (h) set.add(h);
+        });
+      } catch (_) {}
+    }
+    return Array.from(set).sort();
+  }
+
+  function renderDomainsList(domains) {
+    els.domainsList.textContent = "";
+    if (!domains.length) {
+      els.domainsEmpty.style.display = "block";
+      return;
+    }
+    els.domainsEmpty.style.display = "none";
+    domains.forEach(host => {
+      const rule = toGuiRule(host);
+      const row = document.createElement("label");
+      row.className = "domain-check";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = hasUserRule(rule);
+      const span = document.createElement("span");
+      span.textContent = rule;
+      span.title = host;
+      row.appendChild(cb);
+      row.appendChild(span);
+      cb.addEventListener("change", async () => {
+        if (cb.checked) {
+          if (!hasUserRule(rule)) currentRules.push(rule);
+        } else {
+          currentRules = currentRules.filter(i => normalize(i) !== normalize(rule));
+        }
+        await saveRules();
+        refreshIcon();
+        checkAutoReload(rule);
+      });
+      els.domainsList.appendChild(row);
+    });
+  }
+
+  async function refreshDomainsPanel() {
+    if (!domainsPanelOpen) return;
+    renderDomainsList(await fetchTabDomains());
   }
 
   function renderLists() {
@@ -149,42 +226,29 @@ document.addEventListener("DOMContentLoaded", async () => {
     flash(els.pStatus, "Сохранено");
   });
 
-  els.addRule.addEventListener("click", async () => {
+  els.toggleRule.addEventListener("click", async () => {
     const rule = toGuiRule(els.domainInput.value);
     if (!rule) return flash(els.rulesStatus, "Пустое правило", "#ff6b6b");
     els.domainInput.value = rule;
-    if (!currentRules.includes(rule)) { currentRules.push(rule); await browser.storage.local.set({ proxyRules: currentRules }); }
-    refreshIcon(); flash(els.rulesStatus, "Добавлено");
-    checkAutoReload(rule);
-  });
-
-  els.addAll.addEventListener("click", async () => {
-    if (!activeTab) return;
-    els.addAll.textContent = "...";
-    const res = await browser.runtime.sendMessage({action: "getUnproxiedDomains", tabId: activeTab.id});
-    if (res && res.domains && res.domains.length > 0) {
-      let added = 0;
-      res.domains.forEach(d => {
-        const rule = `*.${normalize(d).replace(/^\*\./, "")}`;
-        if (!currentRules.includes(rule)) { currentRules.push(rule); added++; }
-      });
-      if (added > 0) await browser.storage.local.set({ proxyRules: currentRules });
-      refreshIcon(); flash(els.rulesStatus, `Добавлено: ${added}`);
+    if (hasUserRule(rule)) {
+      currentRules = currentRules.filter(i => normalize(i) !== normalize(rule));
+      await saveRules();
+      refreshIcon();
+      flash(els.rulesStatus, "Удалено");
     } else {
-      flash(els.rulesStatus, "Новых нет");
+      currentRules.push(rule);
+      await saveRules();
+      refreshIcon();
+      flash(els.rulesStatus, "Добавлено");
     }
-    els.addAll.textContent = "Все домены";
-    await browser.tabs.reload(activeTab.id);
+    await refreshDomainsPanel();
+    checkAutoReload(rule);
   });
 
-  els.removeRule.addEventListener("click", async () => {
-    const rule = toGuiRule(els.domainInput.value);
-    if (!rule) return flash(els.rulesStatus, "Пустое правило", "#ff6b6b");
-    els.domainInput.value = rule;
-    currentRules = currentRules.filter(i => normalize(i) !== normalize(rule));
-    await browser.storage.local.set({ proxyRules: currentRules });
-    refreshIcon(); flash(els.rulesStatus, "Удалено");
-    checkAutoReload(rule);
+  els.viewDomains.addEventListener("click", async () => {
+    domainsPanelOpen = !domainsPanelOpen;
+    els.domainsPanel.classList.toggle("open", domainsPanelOpen);
+    if (domainsPanelOpen) await refreshDomainsPanel();
   });
 
   els.addList.addEventListener("click", async () => {
@@ -231,7 +295,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   browser.storage.onChanged.addListener((c, a) => {
     if (a !== "local") return;
-    if (c.proxyRules) { currentRules = c.proxyRules.newValue || []; refreshIcon(); }
+    if (c.proxyRules) {
+      currentRules = c.proxyRules.newValue || [];
+      refreshIcon();
+      refreshDomainsPanel();
+    }
     if (c.proxyLists) { currentLists = c.proxyLists.newValue || []; renderLists(); }
     if (c.lastProxyError && c.lastProxyError.newValue) flash(els.pStatus, c.lastProxyError.newValue, "#ff6b6b");
   });
