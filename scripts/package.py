@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Собрать zip/xpi-пакет Firefox-расширения Deviate."""
+"""Собрать zip/xpi-пакет Firefox-расширения DeviateProxy."""
 from __future__ import annotations
 
 import json
@@ -47,11 +47,11 @@ def main() -> None:
     DIST.mkdir(parents=True)
 
     version = json.loads((ROOT / "manifest.json").read_text(encoding="utf-8"))["version"]
-    zip_path = DIST / f"deviate-firefox-{version}.zip"
+    zip_path = DIST / f"deviateproxy-firefox-{version}.zip"
     count = pack_firefox(zip_path)
-    print("Сборка пакета Deviate (Firefox):")
+    print("Сборка пакета DeviateProxy (Firefox):")
     print(f"  {zip_path.name}: {count} файлов, {zip_path.stat().st_size} байт")
-    xpi_path = DIST / f"deviate-firefox-{version}.xpi"
+    xpi_path = DIST / f"deviateproxy-firefox-{version}.xpi"
     shutil.copyfile(zip_path, xpi_path)
     print(f"  {xpi_path.name}: копия zip для Firefox")
     print(f"Готово: {DIST}")
