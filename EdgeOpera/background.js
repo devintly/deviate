@@ -9,6 +9,7 @@ let pPac = [], bPac = [];
 const ALL_WEB_URLS = ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"];
 const tabHosts = {};
 const tabProxied = {};
+const badgeWait = {};
 
 function normalizeRule(rule) {
   return String(rule || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^www\./, "");
@@ -55,7 +56,7 @@ function ingestRemote(url, type, text) {
       extra: lists.extra,
       domains: lists.extra,
       ips: lists.ips, cidrs: lists.cidrs,
-      domainCount: lists.domainCount, ipCount: lists.ipCount, updatedAt: Date.now()
+      domainCount: lists.domainCount, ipCount: lists.ipCount
     };
   }
   const domains = parseList(text);
@@ -63,7 +64,7 @@ function ingestRemote(url, type, text) {
     const preview = String(text || "").replace(/\s+/g, " ").trim().slice(0, 180);
     throw new Error(preview ? `Ответ не похож на PAC-файл: ${preview}` : "Пустой ответ вместо PAC-файла");
   }
-  return { id: Date.now(), url, type, format: "txt", domains, ips: [], cidrs: [], domainCount: domains.length, ipCount: 0, updatedAt: Date.now() };
+  return { id: Date.now(), url, type, format: "txt", domains, ips: [], cidrs: [], domainCount: domains.length, ipCount: 0 };
 }
 
 function addListTargets(list, exact, suffix, ipMap, cidrs) {
@@ -76,9 +77,8 @@ function addListTargets(list, exact, suffix, ipMap, cidrs) {
   (list.ips || []).forEach(ip => {
     if (PacParse.IPV4_RE.test(ip)) ipMap[ip] = 1;
   });
-  (list.cidrs || []).forEach(c => {
-    if (c && c.net) cidrs.push(c);
-  });
+  const compiled = PacParse.compileCidrs(list.cidrs);
+  for (let i = 0; i < compiled.length; i++) cidrs.push(compiled[i]);
 }
 
 function rebuildMaps() {
@@ -94,7 +94,7 @@ function rebuildMaps() {
   proxyLists.forEach(list => {
     const block = list.type === "block";
     if (list.format === "pac" && list.packed) {
-      (block ? bPac : pPac).push(list);
+      (block ? bPac : pPac).push(PacParse.compilePacList(list));
       addListTargets({ ips: list.ips, cidrs: list.cidrs, domains: list.extra || [] },
         block ? bE : pE, block ? bS : pS, block ? bIp : pIp, block ? bCidr : pCidr);
       return;
@@ -142,12 +142,9 @@ function collectPacMeta(block) {
 }
 
 function cidrsToPac(cidrs) {
-  return (cidrs || []).map(c => {
-    const bits = Number(c.bits || 0);
-    if (!c.net || !bits) return null;
-    const mask = bits >= 32 ? 0xFFFFFFFF : ((0xFFFFFFFF << (32 - bits)) >>> 0);
-    return [PacParse.ipToInt(c.net), mask];
-  }).filter(Boolean);
+  const out = [];
+  for (let i = 0; i < (cidrs || []).length; i += 2) out.push([cidrs[i], cidrs[i + 1]]);
+  return out;
 }
 
 function buildCompactPac() {
@@ -169,6 +166,34 @@ function buildCompactPac() {
     var pPacLists = ${JSON.stringify(pPacLists)};
     var bPacLists = ${JSON.stringify(bPacLists)};
     var userProxy = ${JSON.stringify(userProxy)};
+    var hasIpLists = ${JSON.stringify(!!(Object.keys(pIp).length || Object.keys(bIp).length || pCidr.length || bCidr.length))};
+    function indexPacked(packed) {
+      var idx = {}, zones = Object.keys(packed || {});
+      for (var z = 0; z < zones.length; z++) {
+        var zone = zones[z], byLen = packed[zone], names = idx[zone] = {};
+        var lens = Object.keys(byLen || {});
+        for (var l = 0; l < lens.length; l++) {
+          var n = +lens[l], chunk = byLen[lens[l]];
+          if (!n || typeof chunk !== "string") continue;
+          for (var p = 0; p + n <= chunk.length; p += n) names[chunk.substr(p, n)] = 1;
+        }
+      }
+      return idx;
+    }
+    function prepareLists(arr) {
+      for (var i = 0; i < (arr || []).length; i++) {
+        var list = arr[i];
+        list.idx = indexPacked(list.packed);
+        list.packed = null;
+        list.threeRe = list.threePart ? new RegExp("\\\\.(" + list.threePart + ")\\\\.[^.]+$") : null;
+        list.patKeys = list.patterns ? Object.keys(list.patterns) : null;
+      }
+      return arr;
+    }
+    pPacLists = prepareLists(pPacLists);
+    bPacLists = prepareLists(bPacLists);
+    pPacked = indexPacked(pPacked);
+    bPacked = indexPacked(bPacked);
     function matchSuffix(host, suffix) {
       var parts = host.split("."), current = "";
       for (var i = parts.length - 1; i >= 0; i--) {
@@ -177,9 +202,11 @@ function buildCompactPac() {
       }
       return false;
     }
-    function matchPacked(host, packed) {
-      if (!host || !packed) return false;
-      host = String(host || "").toLowerCase().replace(/\\.$/, "").replace(/^www\\./, "");
+    function matchPacked(host, idx) {
+      if (!host || !idx) return false;
+      host = String(host).toLowerCase();
+      if (host.charAt(host.length - 1) === ".") host = host.slice(0, -1);
+      if (host.indexOf("www.") === 0) host = host.slice(4);
       var variants = [host];
       var two = host.match(/([^.]+\\.[^.]+)$/);
       var three = host.match(/([^.]+\\.[^.]+\\.[^.]+)$/);
@@ -189,58 +216,41 @@ function buildCompactPac() {
         var s = variants[v];
         var dot = s.lastIndexOf(".");
         if (dot < 1) continue;
-        var name = s.slice(0, dot), zone = s.slice(dot + 1);
-        var byLen = packed[zone];
-        if (!byLen) continue;
-        var chunk = byLen[name.length];
-        if (chunk == null) chunk = byLen[String(name.length)];
-        if (typeof chunk !== "string") continue;
-        var n = name.length;
-        for (var p = 0; p + n <= chunk.length; p += n) {
-          if (chunk.substr(p, n) === name) return true;
-        }
+        var names = idx[s.slice(dot + 1)];
+        if (names && names[s.slice(0, dot)]) return true;
       }
       return false;
     }
-    function applyPatterns(s, patterns) {
+    function applyPatterns(s, patterns, keys) {
       if (!patterns) return s;
-      var keys = Object.keys(patterns);
+      keys = keys || Object.keys(patterns);
       for (var i = 0; i < keys.length; i++) {
         var token = keys[i];
         s = String(s).split(patterns[token]).join(token);
       }
       return s;
     }
-    function toShortHost(host, threePart) {
-      host = String(host || "").toLowerCase().replace(/\\.$/, "");
-      var re = threePart ? new RegExp("\\\\.(" + threePart + ")\\\\.[^.]+$") : null;
-      if (re && re.test(host)) host = host.replace(/(.+)\\.([^\\.]+\\.[^\\.]+\\.[^.]+$)/, "$2");
+    function toShortHost(host, threeRe) {
+      if (host.charAt(host.length - 1) === ".") host = host.slice(0, -1);
+      if (threeRe && threeRe.test(host)) host = host.replace(/(.+)\\.([^\\.]+\\.[^\\.]+\\.[^.]+$)/, "$2");
       else host = host.replace(/(.+)\\.([^\\.]+\\.[^.]+$)/, "$2");
-      return host.replace(/^www\\./, "");
+      if (host.indexOf("www.") === 0) host = host.slice(4);
+      return host;
     }
     function matchPacList(host, list) {
       if (!list || !host) return false;
-      host = String(host || "").toLowerCase();
+      host = String(host).toLowerCase();
       var extra = list.extra || [];
       for (var i = 0; i < extra.length; i++) {
         var d = extra[i];
         if (host === d || host.length > d.length && host.slice(-(d.length + 1)) === "." + d) return true;
       }
-      if (!list.packed) return false;
-      var shost = toShortHost(host, list.threePart);
+      var shost = toShortHost(host, list.threeRe);
       var dot = shost.lastIndexOf(".");
       if (dot < 1) return false;
-      var name = list.patterns ? applyPatterns(shost.slice(0, dot), list.patterns) : shost.slice(0, dot);
-      var byLen = list.packed[shost.slice(dot + 1)];
-      if (!byLen) return false;
-      var chunk = byLen[name.length];
-      if (chunk == null) chunk = byLen[String(name.length)];
-      if (typeof chunk !== "string") return false;
-      var n = name.length;
-      for (var p = 0; p + n <= chunk.length; p += n) {
-        if (chunk.substr(p, n) === name) return true;
-      }
-      return false;
+      var name = list.patterns ? applyPatterns(shost.slice(0, dot), list.patterns, list.patKeys) : shost.slice(0, dot);
+      var names = list.idx && list.idx[shost.slice(dot + 1)];
+      return !!(names && names[name]);
     }
     function matchPacArr(host, arr) {
       for (var i = 0; i < (arr || []).length; i++) {
@@ -259,7 +269,7 @@ function buildCompactPac() {
       var n = ipToInt(host);
       for (var i = 0; i < (cidrs || []).length; i++) {
         var row = cidrs[i];
-        if (row && (n & row[1]) === (row[0] & row[1])) return true;
+        if (row && (n & row[1]) === row[0]) return true;
       }
       return false;
     }
@@ -274,7 +284,7 @@ function buildCompactPac() {
       if (!host) return "DIRECT";
       if (isBlocked(host)) return "PROXY 127.0.0.1:9";
       if (isProxied(host)) return userProxy;
-      if (!/^[0-9a-fA-F:.]*$/.test(host)) {
+      if (hasIpLists && !/^[0-9a-fA-F:.]*$/.test(host)) {
         var oip = dnsResolve(host);
         if (oip) {
           if (isBlocked(oip)) return "PROXY 127.0.0.1:9";
@@ -319,6 +329,14 @@ function rememberTabHost(tabId, host, proxied) {
   }
 }
 
+function scheduleBadge(tabId) {
+  if (tabId == null || tabId < 0 || badgeWait[tabId]) return;
+  badgeWait[tabId] = setTimeout(() => {
+    delete badgeWait[tabId];
+    updateBadge(tabId);
+  }, 80);
+}
+
 function updateBadge(tabId) {
   if (tabId == null || tabId < 0) return;
   const n = tabProxied[tabId] ? tabProxied[tabId].size : 0;
@@ -343,7 +361,7 @@ chrome.webRequest.onBeforeRequest.addListener(
       const host = new URL(details.url).hostname.toLowerCase();
       if (!host) return;
       rememberTabHost(details.tabId, host, isProxiedHost(host) && !isBlockedHost(host));
-      updateBadge(details.tabId);
+      scheduleBadge(details.tabId);
     } catch (e) {}
   },
   { urls: ALL_WEB_URLS }
@@ -381,7 +399,7 @@ function fetchAndStoreList(url, type, existingId) {
         else proxyLists.push(item);
       } else proxyLists.push(item);
       return new Promise((resolve, reject) => {
-        chrome.storage.local.set({ proxyLists, lastListUpdate: Date.now() }, () => {
+        chrome.storage.local.set({ proxyLists }, () => {
           if (chrome.runtime.lastError) reject(chrome.runtime.lastError);
           else resolve(item);
         });

@@ -39,6 +39,15 @@ function run() {
   assert(lists.ipCount > 5000, "too few ips: " + lists.ipCount);
   assert(lists.extra.includes("instagram.com"), "fbtw extra missing instagram.com");
   assert(lists.domains.length < 100, "domains must stay compact extra list, got " + lists.domains.length);
+  const t1 = Date.now();
+  const compiled = api.compilePacList(lists);
+  for (let i = 0; i < 4000; i++) {
+    if (!api.matchPacHost("rutor.info", compiled)) throw new Error("compiled miss");
+    if (api.matchPacHost("example.com", compiled)) throw new Error("compiled false positive");
+  }
+  const matchMs = Date.now() - t1;
+  console.log("4000 match pairs:", matchMs, "ms");
+  assert(matchMs < 800, "PAC match too slow: " + matchMs + "ms");
   assert(api.matchPacHost("rutor.info", lists), "rutor.info not packed");
   assert(api.matchPacHost("www.rutor.info", lists), "www.rutor.info not packed");
   assert(api.matchPacHost("rutracker.org", lists), "rutracker.org not packed");

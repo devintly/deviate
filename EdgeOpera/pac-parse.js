@@ -205,23 +205,13 @@
     return h;
   }
 
-  function applyPatterns(s, patterns) {
+  function applyPatterns(s, patterns, keys) {
     if (!patterns) return s;
-    var keys = Object.keys(patterns);
+    keys = keys || Object.keys(patterns);
     for (var i = 0; i < keys.length; i++) {
       var token = keys[i];
       s = String(s).split(patterns[token]).join(token);
     }
-    return s;
-  }
-
-  function reversePatterns(s, patterns) {
-    if (!patterns) return s;
-    var keys = Object.keys(patterns).sort(function (a, b) {
-      return b.length - a.length || b.localeCompare(a);
-    });
-    s = String(s || "");
-    for (var i = 0; i < keys.length; i++) s = s.split(keys[i]).join(patterns[keys[i]]);
     return s;
   }
 
@@ -301,42 +291,90 @@
     return m ? m[1] : "ru|co|cu|com|info|net|org|gov|edu|int|mil|biz|pp|ne|msk|spb|nnov|od|in|ho|cc|dn|i|tut|v|dp|sl|ddns|dyndns|livejournal|herokuapp|azurewebsites|cloudfront|ucoz|3dn|nov|linode|sl-reverse|kiev|beget|kirov|akadns|scaleway|fastly|hldns|appspot|my1|hwcdn|deviantart|wixmp|wix|netdna-ssl|brightcove|berlogovo|edgecastcdn|trafficmanager|pximg|github|hopto|u-stream|google|keenetic|eu|googleusercontent|3nx|itch|notion|maryno|vercel|pythonanywhere|force|tilda|ggpht|iboards|mybb2|h1n|bdsmlr|narod|sb-cd|4chan|nichost|cv";
   }
 
-  function toShortHost(host, threePart) {
-    host = String(host || "").toLowerCase().replace(/\.$/, "");
-    var re = threePart ? new RegExp("\\.(" + threePart + ")\\.[^.]+$") : null;
-    if (re && re.test(host)) host = host.replace(/(.+)\.([^.]+\.[^.]+\.[^.]+$)/, "$2");
+  function toShortHost(host, threeRe) {
+    host = String(host || "").toLowerCase();
+    if (host.charAt(host.length - 1) === ".") host = host.slice(0, -1);
+    if (threeRe && threeRe.test(host)) host = host.replace(/(.+)\.([^.]+\.[^.]+\.[^.]+$)/, "$2");
     else host = host.replace(/(.+)\.([^.]+\.[^.]+$)/, "$2");
-    return host.replace(/^www\./, "");
+    if (host.indexOf("www.") === 0) host = host.slice(4);
+    return host;
   }
 
-  function chunkHasName(chunk, name) {
-    var n = name.length;
-    if (!chunk || !n) return false;
-    for (var p = 0; p + n <= chunk.length; p += n) {
-      if (chunk.substr(p, n) === name) return true;
+  function indexPacked(packed) {
+    var idx = Object.create(null);
+    if (!packed) return idx;
+    var zones = Object.keys(packed);
+    for (var z = 0; z < zones.length; z++) {
+      var zone = zones[z];
+      var byLen = packed[zone];
+      if (!byLen) continue;
+      var names = idx[zone] = Object.create(null);
+      var lens = Object.keys(byLen);
+      for (var l = 0; l < lens.length; l++) {
+        var len = +lens[l];
+        var chunk = byLen[lens[l]];
+        if (!len || typeof chunk !== "string") continue;
+        for (var p = 0; p + len <= chunk.length; p += len) names[chunk.substr(p, len)] = 1;
+      }
     }
-    return false;
+    return idx;
+  }
+
+  function compilePacList(list) {
+    if (!list) return null;
+    var extra = list.extra || list.domains || [];
+    var extraMap = Object.create(null);
+    for (var i = 0; i < extra.length; i++) {
+      if (extra[i]) extraMap[extra[i]] = 1;
+    }
+    var threeRe = null;
+    if (list.threePart) {
+      try { threeRe = new RegExp("\\.(" + list.threePart + ")\\.[^.]+$"); } catch (e) {}
+    }
+    return {
+      packed: list.packed || null,
+      patterns: list.patterns || null,
+      patKeys: list.patterns ? Object.keys(list.patterns) : null,
+      threePart: list.threePart || "",
+      threeRe: threeRe,
+      extra: extra,
+      extraMap: extraMap,
+      idx: list.idx || indexPacked(list.packed)
+    };
+  }
+
+  var compiledCache = typeof WeakMap !== "undefined" ? new WeakMap() : null;
+
+  function getCompiled(list) {
+    if (!list) return null;
+    if (list.idx && list.extraMap) return list;
+    if (compiledCache) {
+      var cached = compiledCache.get(list);
+      if (cached) return cached;
+      cached = compilePacList(list);
+      compiledCache.set(list, cached);
+      return cached;
+    }
+    return compilePacList(list);
   }
 
   function matchPacHost(host, list) {
     if (!list || !host) return false;
-    host = String(host || "").toLowerCase();
-    if (list.extra) {
-      for (var i = 0; i < list.extra.length; i++) {
-        var d = list.extra[i];
-        if (host === d || host.endsWith("." + d)) return true;
-      }
+    var c = getCompiled(list);
+    if (!c) return false;
+    host = String(host).toLowerCase();
+    if (c.extraMap[host]) return true;
+    var extra = c.extra;
+    for (var i = 0; i < extra.length; i++) {
+      var d = extra[i];
+      if (d && host.length > d.length && host.charCodeAt(host.length - d.length - 1) === 46 && host.indexOf(d, host.length - d.length) === host.length - d.length) return true;
     }
-    if (!list.packed) return matchPackedDomain(host, packDomainList(list.domains));
-    var shost = toShortHost(host, list.threePart);
-    var cur = shost.match(/^(.*)\.([^.]+)$/);
-    if (!cur) return false;
-    var name = list.patterns ? applyPatterns(cur[1], list.patterns) : cur[1];
-    var byLen = list.packed[cur[2]];
-    if (!byLen) return false;
-    var chunk = byLen[name.length];
-    if (chunk == null) chunk = byLen[String(name.length)];
-    return chunkHasName(chunk, name);
+    var shost = toShortHost(host, c.threeRe);
+    var dot = shost.lastIndexOf(".");
+    if (dot < 1) return false;
+    var name = c.patterns ? applyPatterns(shost.slice(0, dot), c.patterns, c.patKeys) : shost.slice(0, dot);
+    var names = c.idx[shost.slice(dot + 1)];
+    return !!(names && names[name]);
   }
 
   function parsePacToLists(text) {
@@ -401,37 +439,31 @@
     return packed;
   }
 
-  function matchPackedDomain(host, packed) {
-    if (!host || !packed) return false;
-    host = String(host || "").toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
-    var variants = [host];
-    var two = host.match(/([^.]+\.[^.]+)$/);
-    var three = host.match(/([^.]+\.[^.]+\.[^.]+)$/);
-    if (two) variants.push(two[1]);
-    if (three) variants.push(three[1]);
-    for (var v = 0; v < variants.length; v++) {
-      var s = variants[v];
-      var i = s.lastIndexOf(".");
-      if (i < 1) continue;
-      var name = s.slice(0, i), zone = s.slice(i + 1);
-      var byLen = packed[zone];
-      if (!byLen) continue;
-      var chunk = byLen[name.length];
-      if (chunk == null) chunk = byLen[String(name.length)];
-      if (typeof chunk !== "string") continue;
-      var n = name.length;
-      for (var p = 0; p + n <= chunk.length; p += n) {
-        if (chunk.substr(p, n) === name) return true;
-      }
+  function compileCidrs(cidrs) {
+    var out = [];
+    for (var i = 0; i < (cidrs || []).length; i++) {
+      var row = cidrs[i];
+      if (!row || !row.net) continue;
+      var bits = maskToBits(row.bits != null ? row.bits : row.mask);
+      if (!bits) continue;
+      var net = ipToInt(row.net);
+      var mask = bits >= 32 ? 0xFFFFFFFF : ((0xFFFFFFFF << (32 - bits)) >>> 0);
+      out.push(net & mask, mask);
     }
-    return false;
+    return out;
   }
 
   function matchCidr(ip, cidrs) {
     if (!IPV4_RE.test(ip) || !cidrs || !cidrs.length) return false;
     var n = ipToInt(ip);
-    for (var i = 0; i < cidrs.length; i++) {
-      var row = cidrs[i];
+    if (typeof cidrs[0] === "number") {
+      for (var i = 0; i < cidrs.length; i += 2) {
+        if ((n & cidrs[i + 1]) === cidrs[i]) return true;
+      }
+      return false;
+    }
+    for (var j = 0; j < cidrs.length; j++) {
+      var row = cidrs[j];
       if (!row) continue;
       var bits = maskToBits(row.bits != null ? row.bits : row.mask);
       if (!bits) continue;
@@ -467,16 +499,13 @@
     isPacText: isPacText,
     parsePacToLists: parsePacToLists,
     packDomainList: packDomainList,
-    matchPackedDomain: matchPackedDomain,
+    compilePacList: compilePacList,
+    compileCidrs: compileCidrs,
     matchPacHost: matchPacHost,
     matchIpLiteral: matchIpLiteral,
-    matchCidr: matchCidr,
     ipToInt: ipToInt,
-    intToIp: intToIp,
     userProxyToFirefox: userProxyToFirefox,
     userProxyToPac: userProxyToPac,
-    addDomain: addDomain,
-    DOMAIN_RE: DOMAIN_RE,
     IPV4_RE: IPV4_RE
   };
 
