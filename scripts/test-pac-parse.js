@@ -6,7 +6,7 @@ const path = require("path");
 const vm = require("vm");
 
 const ROOT = path.resolve(__dirname, "..");
-const PAC_PARSE = path.join(ROOT, "FireFox", "pac-parse.js");
+const PAC_PARSE = path.join(ROOT, "pac-parse.js");
 const SAMPLES = path.join("/tmp", "pac-samples");
 
 function loadPacParse() {
@@ -70,9 +70,6 @@ function run() {
   const code = fs.readFileSync(PAC_PARSE, "utf8");
   assert(!/\bnew Function\b/.test(code), "pac-parse must not use new Function");
   assert(!/\beval\s*\(/.test(code), "pac-parse must not use eval");
-  ["pac-parse.js", "Chrome/pac-parse.js", "EdgeOpera/pac-parse.js"].forEach(function (rel) {
-    assert(fs.readFileSync(path.join(ROOT, rel), "utf8") === code, rel + " drifted from FireFox/pac-parse.js");
-  });
 
   console.log("ok");
 }

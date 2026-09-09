@@ -78,17 +78,44 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   });
 
-  function normalize(v) { return String(v||"").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^www\./, ""); }
-  function toGuiRule(v) { const h = normalize(v).replace(/^\*\./, ""); return h ? `*.${h}` : ""; }
+  function isIpHost(h) {
+    h = String(h || "").replace(/^\*\./, "");
+    return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(h) || h.indexOf(":") >= 0;
+  }
+  function normalize(v) {
+    let s = String(v || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+    const wild = s.startsWith("*.");
+    if (wild) s = s.slice(2);
+    s = s.replace(/^\.+|\.+$/g, "");
+    if (!s) return "";
+    if (isIpHost(s)) return s;
+    return wild ? "*." + s : s;
+  }
+  function hostOfRule(rule) { return normalize(rule).replace(/^\*\./, ""); }
+  function wildcardRule(host) {
+    const h = hostOfRule(host);
+    if (!h) return "";
+    return isIpHost(h) ? h : "*." + h;
+  }
+  function toGuiRule(v) { return normalize(v); }
   function matches(h, r) {
-    const hh = normalize(h), rr = normalize(r);
+    const hh = hostOfRule(h), rr = normalize(r);
     if (!hh || !rr) return false;
-    if (rr.startsWith("*.")) { const b = rr.slice(2); return hh === b || hh.endsWith(`.${b}`); }
+    if (rr.startsWith("*.")) {
+      const b = rr.slice(2);
+      return hh === b || hh.endsWith("." + b);
+    }
     return hh === rr;
   }
   function hasIn(list, rule) {
     const n = normalize(rule);
     return !!n && list.some(r => normalize(r) === n);
+  }
+  function hasFullIn(list, host) {
+    const h = hostOfRule(host);
+    if (!h) return false;
+    if (hasIn(list, h)) return true;
+    return !isIpHost(h) && hasIn(list, "*." + h);
   }
   function hasUserRule(rule) { return hasIn(currentRules, rule) || hasIn(currentDirect, rule); }
   function isDirectRule(rule) { return hasIn(currentDirect, rule); }
@@ -101,9 +128,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     removeUserRule(rule);
     if (action === "direct") currentDirect.push(rule);
     else currentRules.push(rule);
-  }
-  function isIpHost(h) {
-    return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(h) || (h || "").indexOf(":") >= 0;
   }
   const MULTI_SUFFIX = {
     "ac.uk":1,"co.uk":1,"gov.uk":1,"ltd.uk":1,"me.uk":1,"net.uk":1,"org.uk":1,"plc.uk":1,"sch.uk":1,
@@ -122,13 +146,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (MULTI_SUFFIX[last2] && parts.length >= 3) return parts.slice(-3).join(".");
     return last2;
   }
-  function hostOfRule(rule) { return normalize(rule).replace(/^\*\./, ""); }
   function coveringParentAction(host) {
-    const exactN = normalize(toGuiRule(host));
+    const hostN = hostOfRule(host);
     let bestLen = -1, bestAct = "";
     function consider(list, act) {
       (list || []).forEach(r => {
-        if (normalize(r) === exactN || !matches(host, r)) return;
+        if (hostOfRule(r) === hostN || !matches(host, r)) return;
         const len = hostOfRule(r).length;
         if (len > bestLen || (len === bestLen && act === "direct")) {
           bestLen = len;
@@ -141,7 +164,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     return bestAct;
   }
   function currentTargetRule() {
-    if (scopeMode === "apex" && pageApex) return toGuiRule(pageApex);
+    if (scopeMode === "apex" && pageApex) return wildcardRule(pageApex);
     return toGuiRule(pageHost || els.domainInput.value);
   }
   let coverSeq = 0;
@@ -185,7 +208,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     els.domainScope.classList.toggle("show", hasChoice);
     if (hasChoice) {
       els.scopeHost.textContent = `Этот: ${toGuiRule(pageHost)}`;
-      els.scopeApex.textContent = `Основной: ${toGuiRule(pageApex)}`;
+      els.scopeApex.textContent = `Основной: ${wildcardRule(pageApex)}`;
       els.scopeHost.classList.toggle("active", scopeMode === "host");
       els.scopeApex.classList.toggle("active", scopeMode === "apex");
     } else {
@@ -219,11 +242,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     return covers[host] || covers[normalize(host)] || null;
   }
   function statusForHost(host, covers, draft) {
-    const rule = toGuiRule(host);
     if (!host) return STATUS.none;
     if (draft && draft.picked) return draft.direct ? STATUS.directFull : STATUS.proxyFull;
-    if (hasIn(currentRules, rule)) return STATUS.proxyFull;
-    if (hasIn(currentDirect, rule)) return STATUS.directFull;
+    if (hasFullIn(currentRules, host)) return STATUS.proxyFull;
+    if (hasFullIn(currentDirect, host)) return STATUS.directFull;
     const parentAct = coveringParentAction(host);
     if (parentAct === "direct") return STATUS.directApex;
     if (parentAct === "proxy") return STATUS.proxyApex;
@@ -399,10 +421,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     uniq.forEach(host => {
       const apex = apexDomain(host) || host;
       const hostRule = toGuiRule(host);
-      const apexRule = toGuiRule(apex);
+      const apexRule = wildcardRule(apex);
       const item = document.createElement("div");
       item.className = "domain-item";
-      const same = hostOfRule(hostRule) === apex;
+      const same = hostOfRule(hostRule) === hostOfRule(apexRule);
       appendLine(item, hostRule, same ? "apex" : "host", apex, true);
       if (!same) appendLine(item, apexRule, "apex", apex, false);
       els.domainsList.appendChild(item);

@@ -43,14 +43,20 @@ function migrateProxyServers(servers, fallback) {
 }
 
 let pE = {}, pS = {}, bE = {}, bS = {}, dE = {}, dS = {};
-let pIp = {}, bIp = {}, pCidr = [], bCidr = [];
+let pIp = {}, bIp = {}, dIp = {}, pCidr = [], bCidr = [];
 let pPac = [], bPac = [];
 const ALL_WEB_URLS = ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"];
 const tabHosts = {};
 const tabProxied = {};
 
 function normalizeRule(rule) {
-  return String(rule || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^www\./, "");
+  let s = String(rule || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  const wild = s.startsWith("*.");
+  if (wild) s = s.slice(2);
+  s = s.replace(/^\.+|\.+$/g, "");
+  if (!s) return "";
+  if (PacParse.IPV4_RE.test(s) || s.indexOf(":") >= 0) return s;
+  return wild ? "*." + s : s;
 }
 
 function isPacUrl(url) {
@@ -129,12 +135,15 @@ let hasBlock = false;
 let ffProxy = { type: "direct" };
 const dnsCache = new Map();
 const badgeWait = {};
+const badgeText = {};
+let badgeColorsReady = false;
 
 function cacheProxy() {
   ffProxy = PacParse.userProxyToFirefox(proxyConfig);
   hasIps = false;
   for (const _ in pIp) { hasIps = true; break; }
   if (!hasIps) for (const _ in bIp) { hasIps = true; break; }
+  if (!hasIps) for (const _ in dIp) { hasIps = true; break; }
   if (!hasIps) hasIps = pCidr.length + bCidr.length > 0;
   hasBlock = bPac.length > 0 || bCidr.length > 0;
   if (!hasBlock) for (const _ in bE) { hasBlock = true; break; }
@@ -142,21 +151,29 @@ function cacheProxy() {
   if (!hasBlock) for (const _ in bIp) { hasBlock = true; break; }
 }
 
-function addHostRules(rules, exact, suffix) {
+function addHostRules(rules, exact, suffix, ipMap) {
   (rules || []).forEach(r => {
     r = normalizeRule(r);
     if (!r) return;
-    if (r.startsWith("*.")) suffix["." + r.slice(2)] = 1;
-    else { exact[r] = 1; suffix["." + r] = 1; }
+    const wild = r.startsWith("*.");
+    const host = wild ? r.slice(2) : r;
+    if (!host) return;
+    if (PacParse.IPV4_RE.test(host) || host.indexOf(":") >= 0) {
+      exact[host] = 1;
+      if (ipMap && PacParse.IPV4_RE.test(host)) ipMap[host] = 1;
+      return;
+    }
+    if (wild) suffix["." + host] = 1;
+    else exact[host] = 1;
   });
 }
 
 function rebuildMaps() {
   pE = {}; pS = {}; bE = {}; bS = {}; dE = {}; dS = {};
-  pIp = {}; bIp = {}; pCidr = []; bCidr = [];
+  pIp = {}; bIp = {}; dIp = {}; pCidr = []; bCidr = [];
   pPac = []; bPac = [];
-  addHostRules(proxyRules, pE, pS);
-  addHostRules(directRules, dE, dS);
+  addHostRules(proxyRules, pE, pS, pIp);
+  addHostRules(directRules, dE, dS, dIp);
   proxyLists.forEach(list => {
     if (list.format === "pac" && list.packed) {
       pPac.push(PacParse.compilePacList(list));
@@ -182,7 +199,7 @@ function matchMaps(host, exact, suffix) {
 }
 
 function isDirectHost(host) {
-  return matchMaps(host, dE, dS);
+  return matchMaps(host, dE, dS) || PacParse.matchIpLiteral(host, dIp, []);
 }
 
 function isBlockedHost(host) {
@@ -338,10 +355,16 @@ function scheduleBadge(tabId) {
 async function updateBadge(tabId) {
   if (tabId == null || tabId < 0) return;
   const n = extensionEnabled && tabProxied[tabId] ? tabProxied[tabId].size : 0;
+  const text = n ? String(n) : "";
+  if (badgeText[tabId] === text) return;
+  badgeText[tabId] = text;
   try {
-    await browser.action.setBadgeBackgroundColor({ tabId, color: "#5865f2" });
-    if (browser.action.setBadgeTextColor) await browser.action.setBadgeTextColor({ tabId, color: "#ffffff" });
-    await browser.action.setBadgeText({ tabId, text: n ? String(n) : "" });
+    if (!badgeColorsReady) {
+      await browser.action.setBadgeBackgroundColor({ color: "#5865f2" });
+      if (browser.action.setBadgeTextColor) await browser.action.setBadgeTextColor({ color: "#ffffff" });
+      badgeColorsReady = true;
+    }
+    await browser.action.setBadgeText({ tabId, text });
   } catch (e) {}
 }
 
@@ -368,6 +391,7 @@ browser.webRequest.onAuthRequired.addListener(
 browser.tabs.onRemoved.addListener((tabId) => {
   delete tabHosts[tabId];
   delete tabProxied[tabId];
+  delete badgeText[tabId];
 });
 
 browser.tabs.onActivated.addListener((info) => updateBadge(info.tabId));
@@ -375,6 +399,7 @@ browser.tabs.onUpdated.addListener((tabId, change) => {
   if (change.status === "loading" && change.url) {
     tabHosts[tabId] = new Set();
     tabProxied[tabId] = new Set();
+    delete badgeText[tabId];
   }
   updateBadge(tabId);
 });

@@ -4,7 +4,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   const saveBtn = document.getElementById("saveBtn");
   const status = document.getElementById("status");
 
-  function normalizeRule(rule) { return String(rule || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^www\./, ""); }
+  function isIpHost(h) {
+    return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(h) || String(h || "").indexOf(":") >= 0;
+  }
+  function normalizeRule(rule) {
+    let s = String(rule || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+    const wild = s.startsWith("*.");
+    if (wild) s = s.slice(2);
+    s = s.replace(/^\.+|\.+$/g, "");
+    if (!s) return "";
+    if (isIpHost(s)) return s;
+    return wild ? "*." + s : s;
+  }
   function parseRules(text) { return [...new Set(String(text || "").split("\n").map(normalizeRule).filter(Boolean))]; }
   function dropOverlap(proxy, direct) {
     const d = new Set(direct.map(normalizeRule));
