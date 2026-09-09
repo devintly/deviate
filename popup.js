@@ -258,8 +258,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   function statusForHost(host, covers, overlay) {
     if (!host) return STATUS.none;
-    const proxy = overlay && overlay.proxy || currentRules;
-    const direct = overlay && overlay.direct || currentDirect;
+    const proxy = overlay && Array.isArray(overlay.proxy) ? overlay.proxy : currentRules;
+    const direct = overlay && Array.isArray(overlay.direct) ? overlay.direct : currentDirect;
     if (hasFullIn(proxy, host)) return STATUS.proxyFull;
     if (hasFullIn(direct, host)) return STATUS.directFull;
     const parentAct = coveringParentAction(host, proxy, direct);
