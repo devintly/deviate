@@ -3,6 +3,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const panels = document.querySelectorAll(".panel");
   const els = {
     domainInput: document.getElementById("domainInput"), statusIcon: document.getElementById("statusIcon"),
+    statusCaption: document.getElementById("statusCaption"),
     toggleRule: document.getElementById("toggleRuleBtn"), viewDomains: document.getElementById("viewDomainsBtn"),
     domainActionRow: document.getElementById("domainActionRow"), domainMode: document.getElementById("domainModeSwitch"),
     domainDirect: document.getElementById("domainDirect"),
@@ -98,6 +99,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     return isIpHost(h) ? h : "*." + h;
   }
   function toGuiRule(v) { return normalize(v); }
+  function displayRuleForHost(host) {
+    const h = hostOfRule(host);
+    if (!h) return "";
+    if (isIpHost(h)) return h;
+    const apex = apexDomain(h);
+    if (apex && h !== apex) return wildcardRule(h);
+    return toGuiRule(h);
+  }
   function matches(h, r) {
     const hh = hostOfRule(h), rr = normalize(r);
     if (!hh || !rr) return false;
@@ -146,9 +155,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (MULTI_SUFFIX[last2] && parts.length >= 3) return parts.slice(-3).join(".");
     return last2;
   }
-  function coveringParentAction(host, proxyList, directList) {
+  function coveringParent(host, proxyList, directList) {
     const hostN = hostOfRule(host);
-    let bestLen = -1, bestAct = "";
+    let bestLen = -1, bestAct = "", bestRule = "";
     function consider(list, act) {
       (list || []).forEach(r => {
         if (hostOfRule(r) === hostN || !matches(host, r)) return;
@@ -156,25 +165,29 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (len > bestLen || (len === bestLen && act === "direct")) {
           bestLen = len;
           bestAct = act;
+          bestRule = normalize(r);
         }
       });
     }
     consider(proxyList || currentRules, "proxy");
     consider(directList || currentDirect, "direct");
-    return bestAct;
+    return { act: bestAct, rule: bestRule };
+  }
+  function coveringParentAction(host, proxyList, directList) {
+    return coveringParent(host, proxyList, directList).act;
   }
   function currentTargetRule() {
     if (scopeMode === "apex" && pageApex) return wildcardRule(pageApex);
-    return toGuiRule(pageHost || els.domainInput.value);
+    return displayRuleForHost(pageHost || els.domainInput.value);
   }
   let coverSeq = 0;
-  let lastCover = { host: "", listed: false, listedParent: false };
+  let lastCover = { host: "", listed: false, listedParent: false, listedParentRule: "" };
   let domainCovers = {};
   async function requestCoverInfo(host) {
     try {
-      return await browser.runtime.sendMessage({ action: "coverInfo", host }) || { listed: false, listedParent: false };
+      return await browser.runtime.sendMessage({ action: "coverInfo", host }) || { listed: false, listedParent: false, listedParentRule: "" };
     } catch (e) {
-      return { listed: false, listedParent: false };
+      return { listed: false, listedParent: false, listedParentRule: "" };
     }
   }
   async function requestCoverMany(hosts) {
@@ -188,7 +201,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function refreshListCover() {
     const host = hostOfRule(els.domainInput.value);
     if (!host) {
-      lastCover = { host: "", listed: false, listedParent: false };
+      lastCover = { host: "", listed: false, listedParent: false, listedParentRule: "" };
       paintStatusIcon();
       return;
     }
@@ -198,7 +211,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       lastCover = {
         host,
         listed: !!(info && info.listed),
-        listedParent: !!(info && info.listedParent)
+        listedParent: !!(info && info.listedParent),
+        listedParentRule: (info && info.listedParentRule) || ""
       };
       paintStatusIcon();
     });
@@ -232,24 +246,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     listFull: { title: "Проксируется из списка полностью", tone: "proxy", html: SVG_CHECK + SVG_LIST },
     listApex: { title: "Проксируется из списка из основного домена", tone: "proxy", html: SVG_DOT + SVG_LIST }
   };
-  (function paintStatusLegend() {
-    const box = document.getElementById("statusLegend");
-    if (!box) return;
-    [
-      { st: STATUS.proxyFull, label: "Проксируется" },
-      { st: STATUS.directFull, label: "Напрямую" },
-      { st: STATUS.proxyApex, label: "Проксируется правилом *." },
-      { st: STATUS.directApex, label: "Напрямую правилом *." },
-      { st: STATUS.listFull, label: "Проксируется списком" },
-      { st: STATUS.listApex, label: "Проксируется списком из *." }
-    ].forEach(({ st, label }) => {
-      const item = document.createElement("span");
-      item.className = "status-legend-item";
-      item.title = st.title;
-      item.innerHTML = `<span class="status-mark ${st.tone}">${st.html}</span><span>${label}</span>`;
-      box.appendChild(item);
-    });
-  })();
   function coverOf(host, covers) {
     if (!host || !covers) return null;
     return covers[host] || covers[normalize(host)] || null;
@@ -290,11 +286,47 @@ document.addEventListener("DOMContentLoaded", async () => {
     el.title = st.title;
     el.setAttribute("aria-label", st.title);
   }
+  function coverInfoOf(host, covers) {
+    return coverOf(host, covers) || (lastCover.host === host ? lastCover : null);
+  }
+  function statusCaptionFor(host, covers) {
+    if (!host) return { text: "", kind: "" };
+    const st = statusForHost(host, covers, null);
+    if (st === STATUS.proxyFull) return { text: "Проксируется", kind: "proxy" };
+    if (st === STATUS.directFull) return { text: "Напрямую", kind: "direct" };
+    if (st === STATUS.proxyApex) {
+      const p = coveringParent(host);
+      return { text: p.rule ? `Проксируется правилом ${p.rule}` : "Проксируется правилом родителя", kind: "proxy" };
+    }
+    if (st === STATUS.directApex) {
+      const p = coveringParent(host);
+      return { text: p.rule ? `Напрямую правилом ${p.rule}` : "Напрямую правилом родителя", kind: "direct" };
+    }
+    if (st === STATUS.listFull) return { text: "Проксируется списком", kind: "proxy" };
+    if (st === STATUS.listApex) {
+      const info = coverInfoOf(host, covers);
+      const rule = info && info.listedParentRule;
+      return { text: rule ? `Проксируется списком из ${rule}` : "Проксируется списком", kind: "proxy" };
+    }
+    return { text: "", kind: "" };
+  }
+  function paintStatusCaption() {
+    if (!els.statusCaption) return;
+    const host = hostOfRule(els.domainInput.value);
+    const cap = statusCaptionFor(host, null);
+    els.statusCaption.textContent = cap.text;
+    els.statusCaption.className = "status-caption" + (cap.kind ? " " + cap.kind : "");
+    if (els.statusIcon && cap.text) {
+      els.statusIcon.title = cap.text;
+      els.statusIcon.setAttribute("aria-label", cap.text);
+    }
+  }
   function statusForDomain() {
     return statusForHost(hostOfRule(els.domainInput.value), null, null);
   }
   function paintStatusIcon() {
     paintStatusEl(els.statusIcon, statusForDomain());
+    paintStatusCaption();
   }
   function syncOpenDomainLine(rule) {
     if (!domainsPanelOpen) return;
@@ -481,7 +513,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         appendLine(item, wildcardRule(apex), "apex", apex, true);
         hosts.forEach(host => {
           if (host === apex) return;
-          appendLine(item, toGuiRule(host), "host", apex, false);
+          appendLine(item, wildcardRule(host), "host", apex, false);
         });
       }
       els.domainsList.appendChild(item);
@@ -896,7 +928,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           pageHost = normalize(host).replace(/^\*\./, "");
           pageApex = apexDomain(pageHost);
           scopeMode = "host";
-          els.domainInput.value = toGuiRule(pageHost);
+          els.domainInput.value = displayRuleForHost(pageHost);
         }
       }
     } catch (_) {}
@@ -1092,7 +1124,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       currentDirect = c.directRules.newValue || [];
       refreshIcon();
     }
-    if (c.proxyLists) { currentLists = c.proxyLists.newValue || []; renderLists(); lastCover = { host: "", listed: false, listedParent: false }; refreshIcon(); }
+    if (c.proxyLists) { currentLists = c.proxyLists.newValue || []; renderLists(); lastCover = { host: "", listed: false, listedParent: false, listedParentRule: "" }; refreshIcon(); }
     if (c.proxyServers) {
       currentProxies = migrateProxies({ proxyServers: c.proxyServers.newValue || [] });
       renderProxies();

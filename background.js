@@ -247,12 +247,24 @@ function findCoveringList(host) {
   return null;
 }
 
-function listedViaParent(host) {
+function listedParentHost(host) {
   const parts = String(host || "").split(".").filter(Boolean);
   for (let i = 1; i <= parts.length - 2; i++) {
-    if (findCoveringList(parts.slice(i).join("."))) return true;
+    const parent = parts.slice(i).join(".");
+    if (findCoveringList(parent)) return parent;
   }
-  return false;
+  return "";
+}
+
+function listedViaParent(host) {
+  return !!listedParentHost(host);
+}
+
+function listedParentRule(host) {
+  const parent = listedParentHost(host);
+  if (!parent) return "";
+  if (PacParse.IPV4_RE.test(parent) || parent.indexOf(":") >= 0) return parent;
+  return "*." + parent;
 }
 
 const fetchProxyHosts = {};
@@ -360,7 +372,7 @@ async function updateBadge(tabId) {
   badgeText[tabId] = text;
   try {
     if (!badgeColorsReady) {
-      await browser.action.setBadgeBackgroundColor({ color: "#248046" });
+      await browser.action.setBadgeBackgroundColor({ color: "#6d6f78" });
       if (browser.action.setBadgeTextColor) await browser.action.setBadgeTextColor({ color: "#ffffff" });
       badgeColorsReady = true;
     }
@@ -542,7 +554,11 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const host = normalizeRule(h).replace(/^\*\./, "");
       if (!host || covers[host]) return;
       const list = findCoveringList(host);
-      covers[host] = { listed: !!list, listedParent: !!list && listedViaParent(host) };
+      covers[host] = {
+        listed: !!list,
+        listedParent: !!list && listedViaParent(host),
+        listedParentRule: list ? listedParentRule(host) : ""
+      };
     });
     sendResponse({ covers });
     return true;
@@ -553,6 +569,7 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({
       listed: !!list,
       listedParent: !!list && listedViaParent(host),
+      listedParentRule: list ? listedParentRule(host) : "",
       listName: list ? listLabel(list) : ""
     });
     return true;

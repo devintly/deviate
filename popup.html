@@ -129,12 +129,10 @@
     .scope-btn.active { background: #5865f2; color: #fff; }
     .scope-btn:disabled { opacity: 0.4; cursor: default; }
     .scope-btn:disabled:hover { background: #1e1f22; }
-    .status-legend { display: flex; flex-wrap: wrap; gap: 5px 12px; margin: 0 0 12px; padding: 6px 8px; background: #1e1f22; border-radius: 8px; flex-shrink: 0; }
-    .status-legend-item { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 600; color: #b5bac1; line-height: 1.2; }
-    .status-legend-item .status-mark .mark-main { width: 12px; height: 12px; }
-    .status-legend-item .status-mark .mark-list { width: 11px; height: 11px; }
-    .status-legend-item .status-mark.proxy { color: #57f287; }
-    .status-legend-item .status-mark.direct { color: #00a8fc; }
+    .status-caption { min-height: 16px; margin: 0 0 12px; font-size: 11px; font-weight: 600; line-height: 1.35; color: #b5bac1; }
+    .status-caption.proxy { color: #57f287; }
+    .status-caption.direct { color: #00a8fc; }
+    .status-caption:empty { visibility: hidden; }
     #panelRules .card #openListBtn { margin-top: auto; }
     .domain-mode { display: none; align-items: center; justify-content: space-between; gap: 6px; flex: 1; min-width: 0; min-height: 32px; margin: 0; padding: 0 8px; background: #1e1f22; border-radius: 8px; font-size: 10px; font-weight: 700; color: #b5bac1; cursor: pointer; }
     .domain-mode.show { display: flex; }
@@ -177,7 +175,7 @@
           <input id="domainInput" type="text" placeholder="example.com или *.example.com">
           <div id="statusIcon" class="statusIcon" title="Не добавлен"></div>
         </div>
-        <div id="statusLegend" class="status-legend"></div>
+        <p class="status-caption" id="statusCaption" aria-live="polite"></p>
         <div class="row" id="domainActionRow">
           <button id="toggleRuleBtn" class="primary" type="button">Добавить домен</button>
           <label id="domainModeSwitch" class="domain-mode">
