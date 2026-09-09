@@ -46,16 +46,20 @@
     .lists-empty { font-size: 12px; color: #b5bac1; text-align: center; padding: 12px 4px; }
     .lists-wrap { max-height: 280px; overflow-y: auto; margin: 8px 0; }
     .lists-add { width: 100%; flex: none; margin-top: 8px; }
-    .list-card { background: #1e1f22; border-radius: 10px; padding: 10px; margin-bottom: 8px; }
+    .list-card { display: flex; align-items: stretch; gap: 8px; background: #1e1f22; border-radius: 10px; padding: 8px 8px 8px 10px; margin-bottom: 8px; }
     .list-card:last-child { margin-bottom: 0; }
+    .list-card-body { flex: 1; min-width: 0; }
     .list-card-title { font-weight: 700; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .list-card-meta { font-size: 11px; color: #b5bac1; margin-top: 4px; }
-    .list-card-url { font-size: 10px; color: #949ba4; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .list-card-actions { display: flex; gap: 6px; margin-top: 8px; }
-    .list-card-actions button { flex: 1; min-height: 32px; font-size: 11px; padding: 6px 8px; background: #404249; color: #fff; }
-    .list-card-actions button:hover { background: #4e5058; }
-    .list-card-actions .mini-primary { background: #5865f2; }
-    .list-card-actions .mini-primary:hover { background: #4752c4; }
+    .list-card-meta { font-size: 11px; color: #b5bac1; margin-top: 3px; }
+    .list-card-url { font-size: 10px; color: #949ba4; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .list-card-updated { font-size: 10px; color: #949ba4; margin-top: 3px; }
+    .list-card-actions { display: flex; flex-direction: column; justify-content: center; gap: 4px; margin: 0; flex-shrink: 0; }
+    .list-card-actions button { width: 28px; height: 28px; min-width: 28px; min-height: 28px; padding: 0; flex: none; background: #35373c; color: #f2f3f5; border-radius: 8px; }
+    .list-card-actions button:hover { background: #4752c4; color: #fff; }
+    .list-card-actions button:disabled { opacity: 0.6; cursor: default; }
+    .list-card-actions button svg { width: 14px; height: 14px; display: block; }
+    .list-card-actions button.busy svg { animation: list-spin 0.8s linear infinite; }
+    @keyframes list-spin { to { transform: rotate(360deg); } }
     .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 12px; font-size: 12px; font-weight: 700; color: #b5bac1; cursor: pointer; }
     .switch-hint { display: block; font-size: 10px; font-weight: 400; color: #949ba4; margin-top: 2px; }
     .switch { position: relative; width: 40px; height: 22px; flex-shrink: 0; }

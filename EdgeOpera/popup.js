@@ -281,6 +281,26 @@ document.addEventListener("DOMContentLoaded", async () => {
     fetchTabDomains().then(renderDomainsList);
   }
 
+  const ICON_REFRESH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><polyline points="21 3 21 9 15 9"/></svg>';
+  const ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
+
+  function formatListUpdated(ts) {
+    const n = Number(ts);
+    if (!(n > 0)) return "ещё не обновлялся";
+    const d = new Date(n);
+    const pad = v => String(v).padStart(2, "0");
+    return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function listIconButton(label, svg) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.title = label;
+    btn.setAttribute("aria-label", label);
+    btn.innerHTML = svg;
+    return btn;
+  }
+
   function renderLists() {
     els.lCont.textContent = "";
     const empty = !currentLists.length;
@@ -288,13 +308,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     currentLists.forEach(l => {
       const card = document.createElement("div");
       card.className = "list-card";
+      const body = document.createElement("div");
+      body.className = "list-card-body";
       const name = String(l.name || "").trim();
       if (name) {
         const title = document.createElement("div");
         title.className = "list-card-title";
         title.textContent = name;
         title.title = name;
-        card.appendChild(title);
+        body.appendChild(title);
       }
       const meta = document.createElement("div");
       meta.className = "list-card-meta";
@@ -307,21 +329,21 @@ document.addEventListener("DOMContentLoaded", async () => {
       urlLine.className = "list-card-url";
       urlLine.textContent = l.url || "";
       urlLine.title = l.url || "";
+      const updated = document.createElement("div");
+      updated.className = "list-card-updated";
+      updated.textContent = `Обновлён: ${formatListUpdated(l.updatedAt)}`;
+      body.appendChild(meta);
+      body.appendChild(urlLine);
+      body.appendChild(updated);
       const actions = document.createElement("div");
       actions.className = "list-card-actions";
-      const refreshBtn = document.createElement("button");
-      refreshBtn.type = "button";
-      refreshBtn.className = "mini-primary";
-      refreshBtn.textContent = "Обновить";
+      const refreshBtn = listIconButton("Обновить", ICON_REFRESH);
       refreshBtn.addEventListener("click", () => refreshOneList(l.id, refreshBtn));
-      const editBtn = document.createElement("button");
-      editBtn.type = "button";
-      editBtn.textContent = "Редактировать";
+      const editBtn = listIconButton("Редактировать", ICON_EDIT);
       editBtn.addEventListener("click", () => openListForm(l));
       actions.appendChild(refreshBtn);
       actions.appendChild(editBtn);
-      card.appendChild(meta);
-      card.appendChild(urlLine);
+      card.appendChild(body);
       card.appendChild(actions);
       els.lCont.appendChild(card);
     });
@@ -394,14 +416,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function refreshOneList(id, btn) {
-    if (btn) { btn.disabled = true; btn.textContent = "..."; }
+    if (btn) { btn.disabled = true; btn.classList.add("busy"); }
     sendListMessage({ action: "refreshList", id }).then(res => {
       if (res && res.success) flash(els.lStatus, "Обновлено");
       else flash(els.lStatus, (res && res.error) ? String(res.error).slice(0, 180) : "Ошибка обновления", "#ff6b6b");
     }).catch(e => {
       flash(els.lStatus, String(e.message || e).slice(0, 180), "#ff6b6b");
     }).finally(() => {
-      if (btn) { btn.disabled = false; btn.textContent = "Обновить"; }
+      if (btn) { btn.disabled = false; btn.classList.remove("busy"); }
     });
   }
 
