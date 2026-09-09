@@ -452,6 +452,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       refreshDomainLine(line);
       parent.appendChild(line);
     }
+    const pageHostKey = (pageHost || "").toLowerCase();
+    const pageApexKey = (pageApex || (pageHostKey ? apexDomain(pageHostKey) || pageHostKey : "")).toLowerCase();
     const groups = new Map();
     uniq.forEach(host => {
       const apex = apexDomain(host) || host;
@@ -459,8 +461,18 @@ document.addEventListener("DOMContentLoaded", async () => {
       const list = groups.get(apex);
       if (list.indexOf(host) < 0) list.push(host);
     });
-    Array.from(groups.keys()).sort().forEach(apex => {
-      const hosts = groups.get(apex).slice().sort();
+    Array.from(groups.keys()).sort((a, b) => {
+      const aPage = pageApexKey && a === pageApexKey;
+      const bPage = pageApexKey && b === pageApexKey;
+      if (aPage !== bPage) return aPage ? -1 : 1;
+      return a.localeCompare(b);
+    }).forEach(apex => {
+      const hosts = groups.get(apex).slice().sort((a, b) => {
+        const aPage = pageHostKey && a === pageHostKey;
+        const bPage = pageHostKey && b === pageHostKey;
+        if (aPage !== bPage) return aPage ? -1 : 1;
+        return a.localeCompare(b);
+      });
       const item = document.createElement("div");
       item.className = "domain-item";
       if (isIpHost(apex)) {
