@@ -97,10 +97,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     return last2;
   }
   function hostOfRule(rule) { return normalize(rule).replace(/^\*\./, ""); }
-  function isUnderApex(rule, apex) {
-    const h = hostOfRule(rule);
-    return !!apex && (h === apex || h.endsWith("." + apex));
-  }
   function coveringParentRule(host) {
     const exact = toGuiRule(host);
     return currentRules.find(r => normalize(r) !== normalize(exact) && matches(host, r)) || "";
@@ -108,22 +104,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   function currentTargetRule() {
     if (scopeMode === "apex" && pageApex) return toGuiRule(pageApex);
     return toGuiRule(pageHost || els.domainInput.value);
-  }
-  function formatHostList(arr, max) {
-    if (!arr.length) return "";
-    if (arr.length <= max) return arr.join(", ");
-    return arr.slice(0, max).join(", ") + " и ещё " + (arr.length - max);
-  }
-  function groupHostsByApex(hosts) {
-    const map = new Map();
-    hosts.forEach(host => {
-      const h = String(host || "").trim().toLowerCase();
-      if (!h) return;
-      const apex = apexDomain(h) || h;
-      if (!map.has(apex)) map.set(apex, []);
-      if (map.get(apex).indexOf(h) < 0) map.get(apex).push(h);
-    });
-    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   }
   function refreshCoveredNote() {
     const host = pageHost || hostOfRule(els.domainInput.value);
@@ -156,7 +136,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   function refreshIcon() {
     const v = els.domainInput.value.trim();
-    els.statusIcon.textContent = currentRules.some(r => matches(v, r)) ? "✅" : "❌";
+    const exact = hasUserRule(toGuiRule(v));
+    const covered = !exact && currentRules.some(r => matches(v, r));
+    els.statusIcon.className = "statusIcon" + (exact ? " in-list" : covered ? " covered" : "");
+    els.statusIcon.textContent = exact ? "✓" : (covered ? "" : "❌");
     refreshToggleBtn();
     refreshCoveredNote();
   }
@@ -205,47 +188,51 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function renderDomainsList(domains) {
     els.domainsList.textContent = "";
-    const groups = groupHostsByApex(domains);
-    if (!groups.length) {
+    const uniq = [];
+    (domains || []).forEach(d => {
+      const h = String(d || "").trim().toLowerCase();
+      if (h && uniq.indexOf(h) < 0) uniq.push(h);
+    });
+    uniq.sort();
+    if (!uniq.length) {
       els.domainsEmpty.style.display = "block";
       return;
     }
     els.domainsEmpty.style.display = "none";
-    groups.forEach(([apex, hosts]) => {
-      const rule = toGuiRule(apex);
-      const inList = hasUserRule(rule);
-      const extras = hosts.filter(h => h !== apex && h !== "www." + apex);
-      const specific = currentRules.filter(r => {
-        const hr = hostOfRule(r);
-        return hr && hr !== apex && isUnderApex(r, apex);
-      });
-      const row = document.createElement("label");
-      row.className = "domain-check";
+    function appendLine(parent, rule, kind, apex, bold) {
+      const line = document.createElement("label");
+      line.className = "domain-line";
       const cb = document.createElement("input");
       cb.type = "checkbox";
       cb.dataset.rule = rule;
+      cb.dataset.kind = kind;
       cb.dataset.apex = apex;
-      cb.checked = inList;
-      const meta = document.createElement("div");
-      meta.className = "domain-meta";
-      const name = document.createElement("span");
-      name.className = "domain-name";
-      name.textContent = rule;
-      name.title = hosts.join(", ");
-      meta.appendChild(name);
-      const notes = [];
-      if (extras.length) notes.push("на вкладке: " + formatHostList(extras, 3));
-      if (inList) notes.push("покрывает все поддомены");
-      else if (specific.length) notes.push("уже в правилах: " + formatHostList(specific, 3));
-      if (notes.length) {
-        const note = document.createElement("span");
-        note.className = "domain-note" + (inList || specific.length ? " covered" : "");
-        note.textContent = notes.join(" · ");
-        meta.appendChild(note);
+      cb.checked = hasUserRule(rule);
+      const text = document.createElement("span");
+      text.className = bold ? "domain-name" : "domain-apex";
+      text.textContent = rule;
+      text.title = rule;
+      line.appendChild(cb);
+      line.appendChild(text);
+      if (kind === "apex") {
+        cb.addEventListener("change", () => {
+          els.domainsList.querySelectorAll('input[data-kind="apex"]').forEach(box => {
+            if (box.dataset.apex === apex) box.checked = cb.checked;
+          });
+        });
       }
-      row.appendChild(cb);
-      row.appendChild(meta);
-      els.domainsList.appendChild(row);
+      parent.appendChild(line);
+    }
+    uniq.forEach(host => {
+      const apex = apexDomain(host) || host;
+      const hostRule = toGuiRule(host);
+      const apexRule = toGuiRule(apex);
+      const item = document.createElement("div");
+      item.className = "domain-item";
+      const same = hostOfRule(hostRule) === apex;
+      appendLine(item, hostRule, same ? "apex" : "host", apex, true);
+      if (!same) appendLine(item, apexRule, "apex", apex, false);
+      els.domainsList.appendChild(item);
     });
   }
 
@@ -257,19 +244,20 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function applyDomainDraft() {
     let added = 0, removed = 0;
+    const listed = new Map();
     els.domainsList.querySelectorAll("input[type='checkbox']").forEach(cb => {
       const rule = cb.dataset.rule;
-      const apex = cb.dataset.apex || hostOfRule(rule);
       if (!rule) return;
-      if (cb.checked) {
+      const n = normalize(rule);
+      const prev = listed.get(n);
+      listed.set(n, { rule, want: cb.checked || (prev && prev.want) });
+    });
+    listed.forEach(({ rule, want }) => {
+      if (want) {
         if (!hasUserRule(rule)) { currentRules.push(rule); added++; }
-        const before = currentRules.length;
-        currentRules = currentRules.filter(r => normalize(r) === normalize(rule) || !isUnderApex(r, apex));
-        if (currentRules.length < before) removed += before - currentRules.length;
-      } else if (currentRules.some(r => isUnderApex(r, apex))) {
-        const before = currentRules.length;
-        currentRules = currentRules.filter(r => !isUnderApex(r, apex));
-        removed += before - currentRules.length;
+      } else if (hasUserRule(rule)) {
+        currentRules = currentRules.filter(i => normalize(i) !== normalize(rule));
+        removed++;
       }
     });
     return { added, removed };
@@ -449,7 +437,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  els.openList.addEventListener("click", () => browser.tabs.create({ url: "list.html" }));
+  els.openList.addEventListener("click", () => {
+    browser.tabs.create({ url: "list.html" }).finally(() => window.close());
+  });
   els.domainInput.addEventListener("input", () => {
     const h = hostOfRule(els.domainInput.value);
     if (h) {
