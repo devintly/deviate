@@ -72,7 +72,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const infoDiv = document.createElement("div"); infoDiv.className = "info"; infoDiv.title = l.url;
       const isPac = l.format === "pac";
       const typ = l.type === "block" ? "🛑 Блок" : (isPac ? "📜 PAC" : "🚀 Прокси");
-      const count = `${(l.domains || []).length} дом. / ${(l.ips || []).length} IP`;
+      const count = `${l.domainCount || (l.domains || []).length} дом. / ${l.ipCount || (l.ips || []).length} IP`;
       infoDiv.textContent = `[${typ}] ${count}`;
       infoDiv.appendChild(document.createElement("br"));
       const span = document.createElement("span"); span.style.color = "#b5bac1"; span.style.fontSize = "10px"; span.textContent = l.url;
@@ -166,20 +166,40 @@ document.addEventListener("DOMContentLoaded", async () => {
   els.addList.addEventListener("click", async () => {
     const url = els.lUrl.value.trim();
     if (!url.startsWith("http")) return flash(els.lStatus, "Введите корректный URL", "#ff6b6b");
+    els.addList.disabled = true;
     els.addList.textContent = "Загрузка...";
-    const res = await browser.runtime.sendMessage({ action: "fetchList", url, type: els.lAct.value });
-    els.addList.textContent = "Скачать и применить список";
-    if (res && res.success) { els.lUrl.value = ""; flash(els.lStatus, "Список применен!"); }
-    else flash(els.lStatus, (res && res.error) ? String(res.error).slice(0, 180) : "Ошибка скачивания", "#ff6b6b");
+    try {
+      const res = await Promise.race([
+        browser.runtime.sendMessage({ action: "fetchList", url, type: els.lAct.value }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Таймаут загрузки списка")), 60000))
+      ]);
+      if (res && res.success) { els.lUrl.value = ""; flash(els.lStatus, "Список применен!"); }
+      else flash(els.lStatus, (res && res.error) ? String(res.error).slice(0, 180) : "Ошибка скачивания", "#ff6b6b");
+    } catch (e) {
+      flash(els.lStatus, String(e.message || e).slice(0, 180), "#ff6b6b");
+    } finally {
+      els.addList.disabled = false;
+      els.addList.textContent = "Скачать и применить список";
+    }
   });
 
   els.refreshLists.addEventListener("click", async () => {
     if (!currentLists.length) return flash(els.lStatus, "Списков нет", "#ff6b6b");
+    els.refreshLists.disabled = true;
     els.refreshLists.textContent = "Обновление...";
-    const res = await browser.runtime.sendMessage({ action: "refreshLists" });
-    els.refreshLists.textContent = "Обновить списки";
-    if (res && res.success) flash(els.lStatus, `Обновлено: ${res.updated || 0}`);
-    else flash(els.lStatus, (res && res.error) ? String(res.error).slice(0, 180) : "Ошибка обновления", "#ff6b6b");
+    try {
+      const res = await Promise.race([
+        browser.runtime.sendMessage({ action: "refreshLists" }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Таймаут обновления")), 60000))
+      ]);
+      if (res && res.success) flash(els.lStatus, `Обновлено: ${res.updated || 0}`);
+      else flash(els.lStatus, (res && res.error) ? String(res.error).slice(0, 180) : "Ошибка обновления", "#ff6b6b");
+    } catch (e) {
+      flash(els.lStatus, String(e.message || e).slice(0, 180), "#ff6b6b");
+    } finally {
+      els.refreshLists.disabled = false;
+      els.refreshLists.textContent = "Обновить списки";
+    }
   });
 
   els.openList.addEventListener("click", () => browser.tabs.create({ url: "list.html" }));

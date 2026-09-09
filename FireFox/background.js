@@ -4,6 +4,7 @@ let proxyLists = [];
 
 let pE = {}, pS = {}, bE = {}, bS = {};
 let pIp = {}, bIp = {}, pCidr = [], bCidr = [];
+let pPac = [], bPac = [];
 const tabHosts = {};
 const tabProxied = {};
 
@@ -49,7 +50,11 @@ function ingestRemote(url, type, text) {
       url,
       type,
       format: "pac",
-      domains: lists.domains,
+      packed: lists.packed,
+      patterns: lists.patterns,
+      threePart: lists.threePart,
+      extra: lists.extra,
+      domains: lists.extra,
       ips: lists.ips,
       cidrs: lists.cidrs,
       domainCount: lists.domainCount,
@@ -83,6 +88,7 @@ function addListTargets(list, exact, suffix, ipMap, cidrs) {
 function rebuildMaps() {
   pE = {}; pS = {}; bE = {}; bS = {};
   pIp = {}; bIp = {}; pCidr = []; bCidr = [];
+  pPac = []; bPac = [];
   proxyRules.forEach(r => {
     r = normalizeRule(r);
     if (!r) return;
@@ -90,8 +96,14 @@ function rebuildMaps() {
     else { pE[r] = 1; pS["." + r] = 1; }
   });
   proxyLists.forEach(list => {
-    if (list.type === "block") addListTargets(list, bE, bS, bIp, bCidr);
-    else addListTargets(list, pE, pS, pIp, pCidr);
+    const block = list.type === "block";
+    if (list.format === "pac" && list.packed) {
+      (block ? bPac : pPac).push(list);
+      addListTargets({ ips: list.ips, cidrs: list.cidrs, domains: list.extra || [] },
+        block ? bE : pE, block ? bS : pS, block ? bIp : pIp, block ? bCidr : pCidr);
+      return;
+    }
+    addListTargets(list, block ? bE : pE, block ? bS : pS, block ? bIp : pIp, block ? bCidr : pCidr);
   });
 }
 
@@ -109,11 +121,19 @@ function matchMaps(host, exact, suffix) {
 }
 
 function isBlockedHost(host) {
-  return matchMaps(host, bE, bS) || PacParse.matchIpLiteral(host, bIp, bCidr);
+  if (matchMaps(host, bE, bS) || PacParse.matchIpLiteral(host, bIp, bCidr)) return true;
+  for (let i = 0; i < bPac.length; i++) {
+    if (PacParse.matchPacHost(host, bPac[i])) return true;
+  }
+  return false;
 }
 
 function isProxiedHost(host) {
-  return matchMaps(host, pE, pS) || PacParse.matchIpLiteral(host, pIp, pCidr);
+  if (matchMaps(host, pE, pS) || PacParse.matchIpLiteral(host, pIp, pCidr)) return true;
+  for (let i = 0; i < pPac.length; i++) {
+    if (PacParse.matchPacHost(host, pPac[i])) return true;
+  }
+  return false;
 }
 
 function hasIpLists() {
@@ -219,7 +239,8 @@ browser.tabs.onUpdated.addListener((tabId, change) => {
 async function fetchAndStoreList(url, type, existingId) {
   const r = await fetch(url, {
     cache: "no-store",
-    headers: { Accept: "application/x-ns-proxy-autoconfig, text/plain, application/javascript, */*" }
+    headers: { Accept: "application/x-ns-proxy-autoconfig, text/plain, application/javascript, */*" },
+    signal: AbortSignal.timeout ? AbortSignal.timeout(45000) : undefined
   });
   const text = await r.text();
   if (!r.ok) throw new Error(`HTTP ${r.status}: ${text.replace(/\s+/g, " ").trim().slice(0, 160)}`);
@@ -298,15 +319,12 @@ browser.storage.onChanged.addListener(async (changes) => {
 function isStalePac(list) {
   if (!list || list.format !== "pac" || !list.url) return false;
   if (list.pacScript || list.pacIndex) return true;
+  if (list.packed && (list.domainCount || 0) >= 100) return false;
   const n = (list.domains && list.domains.length) || 0;
   const ips = (list.ips && list.ips.length) || 0;
   if (!n && !ips) return true;
   if (n > 0 && n < 100 && !ips) return true;
   return false;
-}
-  if (!list || list.format !== "pac" || !list.url) return false;
-  if (list.pacScript || list.pacIndex) return true;
-  return !((list.domains && list.domains.length) || (list.ips && list.ips.length));
 }
 
 function stripLegacyPac(list) {

@@ -73,27 +73,24 @@
   }
 
   function parseJsString(text, i) {
-    var quote = text[i++];
+    var quote = text[i];
     if (quote !== "\"" && quote !== "'") return null;
-    var out = "";
-    while (i < text.length) {
-      var c = text[i++];
-      if (c === "\\" && (text[i] === "\n" || text[i] === "\r")) {
-        if (text[i] === "\r" && text[i + 1] === "\n") i++;
-        i++;
+    var start = i + 1, j = start, hasEsc = false;
+    while (j < text.length) {
+      var c = text[j];
+      if (c === "\\" && (text[j + 1] === "\n" || text[j + 1] === "\r")) {
+        hasEsc = true;
+        if (text[j + 1] === "\r" && text[j + 2] === "\n") j += 3;
+        else j += 2;
         continue;
       }
-      if (c === "\\") {
-        if (i >= text.length) break;
-        var n = text[i++];
-        if (n === "n") out += "\n";
-        else if (n === "r") out += "\r";
-        else if (n === "t") out += "\t";
-        else out += n;
-        continue;
+      if (c === "\\") { hasEsc = true; j += 2; continue; }
+      if (c === quote) {
+        var raw = text.slice(start, j);
+        var value = hasEsc ? raw.replace(/\\(?:\r\n|\n|\r)/g, "").replace(/\\(.)/g, "$1") : raw;
+        return { value: value, next: j + 1 };
       }
-      if (c === quote) return { value: out, next: i };
-      out += c;
+      j++;
     }
     return null;
   }
@@ -259,49 +256,87 @@
     return [outfinal, dpos, maskpos];
   }
 
-  function expandLzDomains(domains, domainsLzp, maskLzp, domainPatterns, maskPatterns) {
-    var packed = [];
-    if (!domains || !domainsLzp) return packed;
-    if (maskLzp) maskLzp = a2b(applyPatterns(maskLzp, maskPatterns));
+  function expandLzPacked(domains, domainsLzp, maskLzp, maskPatterns) {
+    var packed = {};
+    var count = 0;
+    if (!domains) return { packed: packed, count: 0 };
+    if (domainsLzp && maskLzp) maskLzp = a2b(applyPatterns(maskLzp, maskPatterns));
     var leftover = "";
-    var state = createUnlzpState();
+    var state = domainsLzp ? createUnlzpState() : null;
     var zones = Object.keys(domains);
     for (var z = 0; z < zones.length; z++) {
       var zone = zones[z];
       var byLen = domains[zone];
       if (!byLen || typeof byLen !== "object") continue;
+      if (!packed[zone]) packed[zone] = {};
       var lens = Object.keys(byLen);
       for (var l = 0; l < lens.length; l++) {
         var nameLen = parseInt(lens[l], 10);
         var val = byLen[lens[l]];
+        var chunk = "";
         if (typeof val === "string") {
-          packed.push({ zone: zone, chunk: val, len: nameLen });
-          continue;
+          chunk = val;
+        } else {
+          var totalChars = Number(val);
+          if (!nameLen || !totalChars || !state) continue;
+          if (leftover.length < totalChars) {
+            var reqd = totalChars <= 8192 ? 8192 : totalChars;
+            var u = unlzp(domainsLzp, maskLzp, reqd, state);
+            domainsLzp = domainsLzp.slice(u[1]);
+            maskLzp = maskLzp.slice(u[2]);
+            leftover += u[0];
+          }
+          chunk = leftover.slice(0, totalChars);
+          leftover = leftover.slice(totalChars);
         }
-        var totalChars = Number(val);
-        if (!nameLen || !totalChars) continue;
-        if (leftover.length < totalChars) {
-          var reqd = totalChars <= 8192 ? 8192 : totalChars;
-          var u = unlzp(domainsLzp, maskLzp, reqd, state);
-          domainsLzp = domainsLzp.slice(u[1]);
-          maskLzp = maskLzp.slice(u[2]);
-          leftover += u[0];
-        }
-        packed.push({ zone: zone, chunk: leftover.slice(0, totalChars), len: nameLen });
-        leftover = leftover.slice(totalChars);
+        packed[zone][String(nameLen)] = chunk;
+        if (nameLen) count += Math.floor(chunk.length / nameLen);
       }
     }
-    var out = [];
-    for (var p = 0; p < packed.length; p++) {
-      var item = packed[p];
-      var chunk = item.chunk;
-      var len = item.len || 0;
-      if (typeof chunk !== "string" || !len) continue;
-      for (var i = 0; i + len <= chunk.length; i += len) {
-        out.push(reversePatterns(chunk.slice(i, i + len), domainPatterns) + "." + item.zone);
+    return { packed: packed, count: count };
+  }
+
+  function extractThreePart(text) {
+    var m = String(text || "").match(/if\s*\(\s*\/\\\.\(([^)]+)\)\\\.\[\^\\.\]\+\$\/\.test\(host\)/);
+    return m ? m[1] : "ru|co|cu|com|info|net|org|gov|edu|int|mil|biz|pp|ne|msk|spb|nnov|od|in|ho|cc|dn|i|tut|v|dp|sl|ddns|dyndns|livejournal|herokuapp|azurewebsites|cloudfront|ucoz|3dn|nov|linode|sl-reverse|kiev|beget|kirov|akadns|scaleway|fastly|hldns|appspot|my1|hwcdn|deviantart|wixmp|wix|netdna-ssl|brightcove|berlogovo|edgecastcdn|trafficmanager|pximg|github|hopto|u-stream|google|keenetic|eu|googleusercontent|3nx|itch|notion|maryno|vercel|pythonanywhere|force|tilda|ggpht|iboards|mybb2|h1n|bdsmlr|narod|sb-cd|4chan|nichost|cv";
+  }
+
+  function toShortHost(host, threePart) {
+    host = String(host || "").toLowerCase().replace(/\.$/, "");
+    var re = threePart ? new RegExp("\\.(" + threePart + ")\\.[^.]+$") : null;
+    if (re && re.test(host)) host = host.replace(/(.+)\.([^.]+\.[^.]+\.[^.]+$)/, "$2");
+    else host = host.replace(/(.+)\.([^.]+\.[^.]+$)/, "$2");
+    return host.replace(/^www\./, "");
+  }
+
+  function chunkHasName(chunk, name) {
+    var n = name.length;
+    if (!chunk || !n) return false;
+    for (var p = 0; p + n <= chunk.length; p += n) {
+      if (chunk.substr(p, n) === name) return true;
+    }
+    return false;
+  }
+
+  function matchPacHost(host, list) {
+    if (!list || !host) return false;
+    host = String(host || "").toLowerCase();
+    if (list.extra) {
+      for (var i = 0; i < list.extra.length; i++) {
+        var d = list.extra[i];
+        if (host === d || host.endsWith("." + d)) return true;
       }
     }
-    return out;
+    if (!list.packed) return matchPackedDomain(host, packDomainList(list.domains));
+    var shost = toShortHost(host, list.threePart);
+    var cur = shost.match(/^(.*)\.([^.]+)$/);
+    if (!cur) return false;
+    var name = list.patterns ? applyPatterns(cur[1], list.patterns) : cur[1];
+    var byLen = list.packed[cur[2]];
+    if (!byLen) return false;
+    var chunk = byLen[name.length];
+    if (chunk == null) chunk = byLen[String(name.length)];
+    return chunkHasName(chunk, name);
   }
 
   function parsePacToLists(text) {
@@ -314,15 +349,14 @@
       throw new Error(preview ? "Ответ не похож на PAC-файл: " + preview : "В ответе нет FindProxyForURL — это не PAC-файл.");
     }
 
-    var exact = {};
-    extractQuotedDomains(source, exact);
-
+    var extra = {};
+    extractQuotedDomains(source, extra);
+    var maps = extractPatternMaps(source);
     var domainsTable = parseDomainsTable(source);
     var domainsLzp = extractAssignedString(source, "domains_lzp");
     var maskLzp = extractAssignedString(source, "mask_lzp");
-    var maps = extractPatternMaps(source);
-    var expanded = expandLzDomains(domainsTable, domainsLzp, maskLzp, maps.domainPatterns, maps.maskPatterns);
-    for (var i = 0; i < expanded.length; i++) addDomain(exact, expanded[i]);
+    var expanded = expandLzPacked(domainsTable, domainsLzp, maskLzp, maps.maskPatterns);
+    var extraList = Object.keys(extra).sort();
 
     var ips = {};
     var decodedIps = decodeIpList(source);
@@ -330,22 +364,25 @@
       var ip = decodedIps[k];
       if (IPV4_RE.test(ip) && ip.indexOf("0.") !== 0 && ip.indexOf("127.") !== 0) ips[ip] = 1;
     }
-
     var cidrs = parseSpecialCidrs(source);
-    var domainList = Object.keys(exact).sort();
-    var ipList = Object.keys(ips).sort(function (a, b) { return ipToInt(a) - ipToInt(b); });
+    var domainCount = expanded.count || extraList.length;
+    var ipList = Object.keys(ips);
 
-    if (domainsLzp && domainList.length < 100) {
-      throw new Error("Не удалось распаковать сжатый PAC (получено только " + domainList.length + " доменов). Обновите дополнение и нажмите «Обновить списки».");
+    if (domainsLzp && domainCount < 100) {
+      throw new Error("Не удалось распаковать сжатый PAC (получено только " + domainCount + " доменов).");
     }
-    if (!domainList.length && !ipList.length && !cidrs.length) {
+    if (!domainCount && !ipList.length && !cidrs.length) {
       throw new Error("Из PAC не удалось получить ни доменов, ни IP.");
     }
     return {
-      domains: domainList,
+      packed: expanded.packed,
+      patterns: maps.domainPatterns || null,
+      threePart: extractThreePart(source),
+      extra: extraList,
+      domains: extraList,
       ips: ipList,
       cidrs: cidrs,
-      domainCount: domainList.length,
+      domainCount: domainCount,
       ipCount: ipList.length
     };
   }
@@ -431,6 +468,7 @@
     parsePacToLists: parsePacToLists,
     packDomainList: packDomainList,
     matchPackedDomain: matchPackedDomain,
+    matchPacHost: matchPacHost,
     matchIpLiteral: matchIpLiteral,
     matchCidr: matchCidr,
     ipToInt: ipToInt,

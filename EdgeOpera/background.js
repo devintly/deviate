@@ -5,6 +5,7 @@ let proxyRules = [];
 let proxyLists = [];
 let pE = {}, pS = {}, bE = {}, bS = {};
 let pIp = {}, bIp = {}, pCidr = [], bCidr = [];
+let pPac = [], bPac = [];
 const tabHosts = {};
 const tabProxied = {};
 
@@ -47,7 +48,12 @@ function ingestRemote(url, type, text) {
     const lists = PacParse.parsePacToLists(text);
     return {
       id: Date.now(), url, type, format: "pac",
-      domains: lists.domains, ips: lists.ips, cidrs: lists.cidrs,
+      packed: lists.packed,
+      patterns: lists.patterns,
+      threePart: lists.threePart,
+      extra: lists.extra,
+      domains: lists.extra,
+      ips: lists.ips, cidrs: lists.cidrs,
       domainCount: lists.domainCount, ipCount: lists.ipCount, updatedAt: Date.now()
     };
   }
@@ -77,6 +83,7 @@ function addListTargets(list, exact, suffix, ipMap, cidrs) {
 function rebuildMaps() {
   pE = {}; pS = {}; bE = {}; bS = {};
   pIp = {}; bIp = {}; pCidr = []; bCidr = [];
+  pPac = []; bPac = [];
   proxyRules.forEach(r => {
     r = normalizeRule(r);
     if (!r) return;
@@ -84,8 +91,14 @@ function rebuildMaps() {
     else { pE[r] = 1; pS["." + r] = 1; }
   });
   proxyLists.forEach(list => {
-    if (list.type === "block") addListTargets(list, bE, bS, bIp, bCidr);
-    else addListTargets(list, pE, pS, pIp, pCidr);
+    const block = list.type === "block";
+    if (list.format === "pac" && list.packed) {
+      (block ? bPac : pPac).push(list);
+      addListTargets({ ips: list.ips, cidrs: list.cidrs, domains: list.extra || [] },
+        block ? bE : pE, block ? bS : pS, block ? bIp : pIp, block ? bCidr : pCidr);
+      return;
+    }
+    addListTargets(list, block ? bE : pE, block ? bS : pS, block ? bIp : pIp, block ? bCidr : pCidr);
   });
 }
 
@@ -102,8 +115,29 @@ function matchMaps(host, exact, suffix) {
   return false;
 }
 
+function isBlockedHost(host) {
+  if (matchMaps(host, bE, bS) || PacParse.matchIpLiteral(host, bIp, bCidr)) return true;
+  for (let i = 0; i < bPac.length; i++) {
+    if (PacParse.matchPacHost(host, bPac[i])) return true;
+  }
+  return false;
+}
+
 function isProxiedHost(host) {
-  return matchMaps(host, pE, pS) || PacParse.matchIpLiteral(host, pIp, pCidr);
+  if (matchMaps(host, pE, pS) || PacParse.matchIpLiteral(host, pIp, pCidr)) return true;
+  for (let i = 0; i < pPac.length; i++) {
+    if (PacParse.matchPacHost(host, pPac[i])) return true;
+  }
+  return false;
+}
+
+function collectPacMeta(block) {
+  return (block ? bPac : pPac).map(list => ({
+    packed: list.packed,
+    patterns: list.patterns || null,
+    threePart: list.threePart || "",
+    extra: list.extra || []
+  }));
 }
 
 function cidrsToPac(cidrs) {
@@ -120,6 +154,8 @@ function buildCompactPac() {
   const userProxy = PacParse.userProxyToPac(proxyConfig);
   const pPacked = PacParse.packDomainList(Object.keys(pE));
   const bPacked = PacParse.packDomainList(Object.keys(bE));
+  const pPacLists = collectPacMeta(false);
+  const bPacLists = collectPacMeta(true);
   return `
     var pPacked = ${JSON.stringify(pPacked)};
     var bPacked = ${JSON.stringify(bPacked)};
@@ -129,6 +165,8 @@ function buildCompactPac() {
     var bIp = ${JSON.stringify(bIp)};
     var pCidr = ${JSON.stringify(cidrsToPac(pCidr))};
     var bCidr = ${JSON.stringify(cidrsToPac(bCidr))};
+    var pPacLists = ${JSON.stringify(pPacLists)};
+    var bPacLists = ${JSON.stringify(bPacLists)};
     var userProxy = ${JSON.stringify(userProxy)};
     function matchSuffix(host, suffix) {
       var parts = host.split("."), current = "";
@@ -163,6 +201,52 @@ function buildCompactPac() {
       }
       return false;
     }
+    function applyPatterns(s, patterns) {
+      if (!patterns) return s;
+      var keys = Object.keys(patterns);
+      for (var i = 0; i < keys.length; i++) {
+        var token = keys[i];
+        s = String(s).split(patterns[token]).join(token);
+      }
+      return s;
+    }
+    function toShortHost(host, threePart) {
+      host = String(host || "").toLowerCase().replace(/\\.$/, "");
+      var re = threePart ? new RegExp("\\\\.(" + threePart + ")\\\\.[^.]+$") : null;
+      if (re && re.test(host)) host = host.replace(/(.+)\\.([^\\.]+\\.[^\\.]+\\.[^.]+$)/, "$2");
+      else host = host.replace(/(.+)\\.([^\\.]+\\.[^.]+$)/, "$2");
+      return host.replace(/^www\\./, "");
+    }
+    function matchPacList(host, list) {
+      if (!list || !host) return false;
+      host = String(host || "").toLowerCase();
+      var extra = list.extra || [];
+      for (var i = 0; i < extra.length; i++) {
+        var d = extra[i];
+        if (host === d || host.length > d.length && host.slice(-(d.length + 1)) === "." + d) return true;
+      }
+      if (!list.packed) return false;
+      var shost = toShortHost(host, list.threePart);
+      var dot = shost.lastIndexOf(".");
+      if (dot < 1) return false;
+      var name = list.patterns ? applyPatterns(shost.slice(0, dot), list.patterns) : shost.slice(0, dot);
+      var byLen = list.packed[shost.slice(dot + 1)];
+      if (!byLen) return false;
+      var chunk = byLen[name.length];
+      if (chunk == null) chunk = byLen[String(name.length)];
+      if (typeof chunk !== "string") return false;
+      var n = name.length;
+      for (var p = 0; p + n <= chunk.length; p += n) {
+        if (chunk.substr(p, n) === name) return true;
+      }
+      return false;
+    }
+    function matchPacArr(host, arr) {
+      for (var i = 0; i < (arr || []).length; i++) {
+        if (matchPacList(host, arr[i])) return true;
+      }
+      return false;
+    }
     function ipToInt(ip) {
       var p = String(ip || "").split(".");
       if (p.length !== 4) return 0;
@@ -179,10 +263,10 @@ function buildCompactPac() {
       return false;
     }
     function isBlocked(host) {
-      return matchPacked(host, bPacked) || matchSuffix(host, bS) || matchIp(host, bIp, bCidr);
+      return matchPacked(host, bPacked) || matchSuffix(host, bS) || matchIp(host, bIp, bCidr) || matchPacArr(host, bPacLists);
     }
     function isProxied(host) {
-      return matchPacked(host, pPacked) || matchSuffix(host, pS) || matchIp(host, pIp, pCidr);
+      return matchPacked(host, pPacked) || matchSuffix(host, pS) || matchIp(host, pIp, pCidr) || matchPacArr(host, pPacLists);
     }
     function FindProxyForURL(url, host) {
       host = (host || "").toLowerCase();
@@ -213,7 +297,8 @@ function applyProxy() {
   rebuildMaps();
   const hasLocal = Object.keys(pE).length + Object.keys(pS).length + Object.keys(bE).length + Object.keys(bS).length > 0;
   const hasIp = Object.keys(pIp).length + Object.keys(bIp).length + pCidr.length + bCidr.length > 0;
-  if (!hasLocal && !hasIp) {
+  const hasPac = pPac.length + bPac.length > 0;
+  if (!hasLocal && !hasIp && !hasPac) {
     applyChromePac({ mode: "direct" });
     return;
   }
@@ -256,7 +341,7 @@ chrome.webRequest.onBeforeRequest.addListener(
     try {
       const host = new URL(details.url).hostname.toLowerCase();
       if (!host) return;
-      rememberTabHost(details.tabId, host, isProxiedHost(host));
+      rememberTabHost(details.tabId, host, isProxiedHost(host) && !isBlockedHost(host));
       updateBadge(details.tabId);
     } catch (e) {}
   },
@@ -279,7 +364,8 @@ chrome.tabs.onUpdated.addListener((tabId, change) => {
 function fetchAndStoreList(url, type, existingId) {
   return fetch(url, {
     cache: "no-store",
-    headers: { Accept: "application/x-ns-proxy-autoconfig, text/plain, application/javascript, */*" }
+    headers: { Accept: "application/x-ns-proxy-autoconfig, text/plain, application/javascript, */*" },
+    signal: AbortSignal.timeout ? AbortSignal.timeout(45000) : undefined
   })
     .then(async r => {
       const text = await r.text();
@@ -329,7 +415,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.action === "getUnproxiedDomains") {
     const domains = tabHosts[msg.tabId] ? Array.from(tabHosts[msg.tabId]) : [];
-    sendResponse({ domains: domains.filter(d => !isProxiedHost(d)) });
+    sendResponse({ domains: domains.filter(d => !isProxiedHost(d) && !isBlockedHost(d)) });
     return true;
   }
 });
@@ -350,6 +436,7 @@ chrome.storage.onChanged.addListener((changes) => {
 function isStalePac(list) {
   if (!list || list.format !== "pac" || !list.url) return false;
   if (list.pacScript || list.pacIndex) return true;
+  if (list.packed && (list.domainCount || 0) >= 100) return false;
   const n = (list.domains && list.domains.length) || 0;
   const ips = (list.ips && list.ips.length) || 0;
   if (!n && !ips) return true;
