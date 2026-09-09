@@ -10,6 +10,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     scopeHost: document.getElementById("scopeHostBtn"), scopeApex: document.getElementById("scopeApexBtn"),
     domainScope: document.getElementById("domainScope"),
     domainsPanel: document.getElementById("domainsPanel"), domainsList: document.getElementById("domainsList"),
+    domainsSearch: document.getElementById("domainsSearch"),
     domainsEmpty: document.getElementById("domainsEmpty"), saveDomains: document.getElementById("saveDomainsBtn"),
     cancelDomains: document.getElementById("cancelDomainsBtn"),
     rulesStatus: document.getElementById("rulesStatus"), openList: document.getElementById("openListBtn"),
@@ -19,10 +20,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     pStatus: document.getElementById("proxyStatus"), pFormStatus: document.getElementById("proxyFormStatus"),
     proxyMain: document.getElementById("proxyMain"), proxyForm: document.getElementById("proxyForm"),
     proxyEmpty: document.getElementById("proxyEmpty"), pCont: document.getElementById("proxyContainer"),
+    proxySearch: document.getElementById("proxySearch"),
     showAddProxy: document.getElementById("showAddProxyBtn"), deleteProxy: document.getElementById("deleteProxyBtn"),
     cancelProxy: document.getElementById("cancelProxyBtn"),
     listsMain: document.getElementById("listsMain"), listsForm: document.getElementById("listsForm"),
-    listsEmpty: document.getElementById("listsEmpty"),
+    listsEmpty: document.getElementById("listsEmpty"), listsSearch: document.getElementById("listsSearch"),
     lName: document.getElementById("listName"), lUrl: document.getElementById("listUrl"),
     lInterval: document.getElementById("listInterval"),
     lViaProxy: document.getElementById("listViaProxy"),
@@ -397,6 +399,42 @@ document.addEventListener("DOMContentLoaded", async () => {
     el.style.color = c; el.textContent = t;
     setTimeout(() => { if (el.textContent === t) el.textContent = ""; }, 2000);
   }
+  function foldSearch(s) {
+    return String(s || "").toLowerCase().replace(/\s+/g, "");
+  }
+  function applySearchFilter(container, itemsSel, query, emptyEl, emptyDefault) {
+    if (!container) return 0;
+    const q = foldSearch(query);
+    let total = 0, shown = 0;
+    container.querySelectorAll(itemsSel).forEach(el => {
+      total++;
+      const hay = el.getAttribute("data-search") || el.textContent || "";
+      const ok = !q || foldSearch(hay).indexOf(q) >= 0;
+      el.style.display = ok ? "" : "none";
+      if (ok) shown++;
+    });
+    if (emptyEl) {
+      if (!total) {
+        emptyEl.textContent = emptyDefault;
+        emptyEl.style.display = "block";
+      } else if (!shown) {
+        emptyEl.textContent = "Ничего не найдено";
+        emptyEl.style.display = "block";
+      } else {
+        emptyEl.style.display = "none";
+      }
+    }
+    return shown;
+  }
+  function filterDomainsList() {
+    applySearchFilter(els.domainsList, ".domain-item", els.domainsSearch && els.domainsSearch.value, els.domainsEmpty, "Нет доменов. Откройте сайт и обновите страницу.");
+  }
+  function filterProxies() {
+    applySearchFilter(els.pCont, ".list-card", els.proxySearch && els.proxySearch.value, els.proxyEmpty, "Прокси пока нет");
+  }
+  function filterLists() {
+    applySearchFilter(els.lCont, ".list-card", els.listsSearch && els.listsSearch.value, els.listsEmpty, "Списков пока нет");
+  }
 
   async function checkAutoReload(rule) {
     if (activeTab && activeTab.url) {
@@ -438,10 +476,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     uniq.sort();
     if (!uniq.length) {
-      els.domainsEmpty.style.display = "block";
+      filterDomainsList();
       return;
     }
-    els.domainsEmpty.style.display = "none";
     covers = covers || {};
     function refreshDomainLine(line, overlay) {
       const pick = line.querySelector("input.domain-pick");
@@ -537,18 +574,22 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
       const item = document.createElement("div");
       item.className = "domain-item";
+      const searchBits = [apex];
       if (isIpHost(apex)) {
         appendLine(item, toGuiRule(apex), "apex", apex, true);
       } else {
         appendLine(item, wildcardRule(apex), "apex", apex, true);
         hosts.forEach(host => {
           if (host === apex) return;
+          searchBits.push(host);
           appendLine(item, wildcardRule(host), "host", apex, false);
         });
       }
+      item.dataset.search = searchBits.join(" ");
       els.domainsList.appendChild(item);
     });
     refreshAllDomainLines();
+    filterDomainsList();
   }
 
   function closeDomainsPanel() {
@@ -556,6 +597,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     els.domainsPanel.classList.remove("open");
     els.viewDomains.classList.remove("open");
     els.domainsList.textContent = "";
+    if (els.domainsSearch) els.domainsSearch.value = "";
   }
 
   function applyDomainDraft() {
@@ -718,11 +760,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function renderProxies() {
     els.pCont.textContent = "";
-    const empty = !currentProxies.length;
-    els.proxyEmpty.style.display = empty ? "block" : "none";
     currentProxies.forEach(p => {
       const card = document.createElement("div");
       card.className = "list-card";
+      card.dataset.search = [p.host || "", String(p.port || ""), proxyTypeLabel(p.type), p.username || ""].join(" ");
       const body = document.createElement("div");
       body.className = "list-card-body";
       const title = document.createElement("div");
@@ -764,6 +805,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       card.appendChild(side);
       els.pCont.appendChild(card);
     });
+    filterProxies();
   }
 
   function showProxyMain() {
@@ -815,14 +857,13 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function renderLists() {
     els.lCont.textContent = "";
-    const empty = !currentLists.length;
-    els.listsEmpty.style.display = empty ? "block" : "none";
     currentLists.forEach(l => {
       const card = document.createElement("div");
       card.className = "list-card";
       const body = document.createElement("div");
       body.className = "list-card-body";
       const name = String(l.name || "").trim();
+      card.dataset.search = [name, l.url || "", l.format === "pac" ? "pac" : "txt"].join(" ");
       if (name) {
         const title = document.createElement("div");
         title.className = "list-card-title";
@@ -859,6 +900,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       card.appendChild(actions);
       els.lCont.appendChild(card);
     });
+    filterLists();
   }
 
   function canonListUrl(url) {
@@ -1070,6 +1112,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (added || removed || changed) await reloadActiveTab();
   });
   els.cancelDomains.addEventListener("click", () => closeDomainsPanel());
+  if (els.domainsSearch) els.domainsSearch.addEventListener("input", filterDomainsList);
+  if (els.proxySearch) els.proxySearch.addEventListener("input", filterProxies);
+  if (els.listsSearch) els.listsSearch.addEventListener("input", filterLists);
 
   els.showAddList.addEventListener("click", () => openListForm(null));
   els.cancelList.addEventListener("click", () => showListsMain());
