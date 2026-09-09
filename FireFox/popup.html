@@ -27,12 +27,8 @@
     input[type="text"], input[type="password"], input[type="number"], select { width: 100%; box-sizing: border-box; border: 0; outline: 0; background: #1e1f22; color: #f2f3f5; padding: 10px 12px; border-radius: 10px; font-size: 13px; margin: 0 0 12px; height: 36px; }
 
     .inputWrap { position: relative; display: flex; align-items: center; background: #1e1f22; border-radius: 10px; margin: 0 0 8px; height: 32px; }
-    .inputWrap input[type="text"] { -webkit-appearance: none; appearance: none; width: 100%; height: 32px; min-height: 32px; max-height: 32px; margin: 0; padding: 0 32px; background: transparent; font-size: 13px; font-weight: 700; text-align: center; line-height: 32px; border: 0; outline: 0; color: #f2f3f5; }
-    .statusIcon { position: absolute; right: 8px; top: 0; bottom: 0; width: 20px; display: flex; align-items: center; justify-content: center; font-size: 14px; line-height: 1; pointer-events: none; color: #da373c; }
-    .statusIcon.in-list { color: #57f287; font-weight: 700; }
-    .statusIcon.in-direct { color: #00a8fc; font-weight: 700; }
-    .statusIcon.covered { color: transparent; }
-    .statusIcon.covered::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: #57f287; box-shadow: 0 0 0 2px rgba(87, 242, 135, 0.28); }
+    .inputWrap input[type="text"] { -webkit-appearance: none; appearance: none; width: 100%; height: 32px; min-height: 32px; max-height: 32px; margin: 0; padding: 0 44px 0 12px; background: transparent; font-size: 13px; font-weight: 700; text-align: center; line-height: 32px; border: 0; outline: 0; color: #f2f3f5; }
+    .statusIcon { position: absolute; right: 6px; top: 0; bottom: 0; min-width: 22px; width: auto; max-width: 42px; display: flex; align-items: center; justify-content: center; font-size: 14px; line-height: 1; pointer-events: auto; cursor: default; user-select: none; color: #f2f3f5; }
 
     button { -webkit-appearance: none; appearance: none; border: 0; border-radius: 8px; padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer; transition: 0.15s ease; display: flex; flex-direction: row; align-items: center; justify-content: center; text-align: center; line-height: 1.2; min-height: 32px; }
 
@@ -108,9 +104,6 @@
     .scope-btn { flex: 1; min-width: 0; min-height: 32px; padding: 6px 8px; font-size: 11px; background: #1e1f22; color: #b5bac1; overflow: hidden; }
     .scope-btn:hover { background: #35373c; }
     .scope-btn.active { background: #5865f2; color: #fff; }
-    .scope-note { font-size: 11px; color: #57f287; margin: 0 0 10px; line-height: 1.35; }
-    .scope-note:empty { display: none; margin: 0; }
-    .scope-note.overridden { color: #00a8fc; }
     .domain-mode { display: none; align-items: center; justify-content: space-between; gap: 6px; flex: 1; min-width: 0; min-height: 32px; margin: 0; padding: 0 8px; background: #1e1f22; border-radius: 8px; font-size: 10px; font-weight: 700; color: #b5bac1; cursor: pointer; }
     .domain-mode.show { display: flex; }
     .domain-mode .domain-mode-off { color: #f2f3f5; }
@@ -149,9 +142,8 @@
         <div class="label">Текущий домен</div>
         <div class="inputWrap">
           <input id="domainInput" type="text" placeholder="*.example.com">
-          <div id="statusIcon" class="statusIcon">❌</div>
+          <div id="statusIcon" class="statusIcon" title="Не добавлен">❌</div>
         </div>
-        <div id="domainCovered" class="scope-note"></div>
         <div id="domainScope" class="scope-row">
           <button id="scopeHostBtn" class="scope-btn active" type="button">Этот домен</button>
           <button id="scopeApexBtn" class="scope-btn" type="button">Основной домен</button>

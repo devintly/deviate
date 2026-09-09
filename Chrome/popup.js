@@ -9,7 +9,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     domainActionRow: document.getElementById("domainActionRow"), domainMode: document.getElementById("domainModeSwitch"),
     domainDirect: document.getElementById("domainDirect"),
     scopeHost: document.getElementById("scopeHostBtn"), scopeApex: document.getElementById("scopeApexBtn"),
-    domainScope: document.getElementById("domainScope"), domainCovered: document.getElementById("domainCovered"),
+    domainScope: document.getElementById("domainScope"),
     domainsPanel: document.getElementById("domainsPanel"), domainsList: document.getElementById("domainsList"),
     domainsEmpty: document.getElementById("domainsEmpty"), saveDomains: document.getElementById("saveDomainsBtn"),
     cancelDomains: document.getElementById("cancelDomainsBtn"),
@@ -129,63 +129,52 @@ document.addEventListener("DOMContentLoaded", async () => {
     return last2;
   }
   function hostOfRule(rule) { return normalize(rule).replace(/^\*\./, ""); }
-  function coveringParentRule(host) {
-    const exact = toGuiRule(host);
-    const all = currentRules.concat(currentDirect);
-    return all.find(r => normalize(r) !== normalize(exact) && matches(host, r)) || "";
+  function coveringParentAction(host) {
+    const exactN = normalize(toGuiRule(host));
+    let bestLen = -1, bestAct = "";
+    function consider(list, act) {
+      (list || []).forEach(r => {
+        if (normalize(r) === exactN || !matches(host, r)) return;
+        const len = hostOfRule(r).length;
+        if (len > bestLen || (len === bestLen && act === "direct")) {
+          bestLen = len;
+          bestAct = act;
+        }
+      });
+    }
+    consider(currentRules, "proxy");
+    consider(currentDirect, "direct");
+    return bestAct;
   }
   function currentTargetRule() {
     if (scopeMode === "apex" && pageApex) return toGuiRule(pageApex);
     return toGuiRule(pageHost || els.domainInput.value);
   }
   let coverSeq = 0;
-  let lastCover = { host: "", listed: false, listName: "" };
+  let lastCover = { host: "", listed: false, listedParent: false };
   function requestCoverInfo(host) {
     return new Promise(resolve => {
       api.runtime.sendMessage({ action: "coverInfo", host }, (res) => {
-        if (api.runtime.lastError) return resolve({ listed: false, listName: "" });
-        resolve(res || { listed: false, listName: "" });
+        if (api.runtime.lastError) return resolve({ listed: false, listedParent: false });
+        resolve(res || { listed: false, listedParent: false });
       });
     });
   }
-  function applyCoverNote(host, parent, exact, direct, info) {
-    const listed = !!(info && info.listed);
-    const listBit = listed && info.listName ? `«${info.listName}»` : "";
-    els.domainCovered.className = "scope-note";
-    if (direct && listed) {
-      els.domainCovered.classList.add("overridden");
-      els.domainCovered.textContent = listBit
-        ? `В списке ${listBit}, напрямую по вашему правилу`
-        : "В списке, напрямую по вашему правилу";
-      return;
-    }
-    if (parent && !exact && scopeMode !== "apex") {
-      els.domainCovered.textContent = `Покрыто правилом ${parent}`;
-      return;
-    }
-    if (listed && !exact) {
-      els.domainCovered.textContent = listBit ? `Проксируется списком ${listBit}` : "Проксируется списком";
-      return;
-    }
-    els.domainCovered.textContent = "";
-  }
-  function refreshCoveredNote() {
-    const host = pageHost || hostOfRule(els.domainInput.value);
-    const parent = coveringParentRule(host);
-    const exactRule = toGuiRule(host);
-    const exact = hasUserRule(exactRule);
-    const direct = exact && isDirectRule(exactRule);
+  function refreshListCover() {
+    const host = hostOfRule(els.domainInput.value);
     if (!host) {
-      els.domainCovered.textContent = "";
-      els.domainCovered.className = "scope-note";
+      lastCover = { host: "", listed: false, listedParent: false };
+      paintStatusIcon();
       return;
     }
-    applyCoverNote(host, parent, exact, direct, lastCover.host === host ? lastCover : null);
     const seq = ++coverSeq;
     requestCoverInfo(host).then(info => {
       if (seq !== coverSeq) return;
-      lastCover = { host, listed: !!(info && info.listed), listName: (info && info.listName) || "" };
-      applyCoverNote(host, parent, exact, direct, lastCover);
+      lastCover = {
+        host,
+        listed: !!(info && info.listed),
+        listedParent: !!(info && info.listedParent)
+      };
       paintStatusIcon();
     });
   }
@@ -200,7 +189,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     } else {
       scopeMode = "host";
     }
-    refreshCoveredNote();
   }
   function setScope(mode, writeInput) {
     scopeMode = mode === "apex" ? "apex" : "host";
@@ -211,21 +199,33 @@ document.addEventListener("DOMContentLoaded", async () => {
     refreshScopeUI();
     refreshIcon();
   }
-  function paintStatusIcon() {
+  function statusForDomain() {
     const v = els.domainInput.value.trim();
     const host = hostOfRule(v);
-    const exact = hasUserRule(toGuiRule(v));
-    const parentCovered = !exact && (currentRules.some(r => matches(v, r)) || currentDirect.some(r => matches(v, r)));
-    const listed = !exact && lastCover.host === host && lastCover.listed;
-    const covered = parentCovered || listed;
-    const direct = exact && isDirectRule(toGuiRule(v));
-    els.statusIcon.className = "statusIcon" + (exact ? (direct ? " in-direct" : " in-list") : covered ? " covered" : "");
-    els.statusIcon.textContent = exact ? "✓" : (covered ? "" : "❌");
+    const rule = toGuiRule(v);
+    if (!host) return { icon: "❌", title: "Не добавлен" };
+    if (hasIn(currentRules, rule)) return { icon: "✅", title: "Проксируется полностью" };
+    if (hasIn(currentDirect, rule)) return { icon: "☑️", title: "Напрямую полностью" };
+    const parentAct = coveringParentAction(host);
+    if (parentAct === "direct") return { icon: "🔵", title: "Напрямую из основного домена" };
+    if (parentAct === "proxy") return { icon: "🟢", title: "Проксируется из основного домена" };
+    if (lastCover.host === host && lastCover.listed) {
+      if (lastCover.listedParent) return { icon: "🟢📑", title: "Проксируется из списка из основного домена" };
+      return { icon: "✅📑", title: "Проксируется из списка полностью" };
+    }
+    return { icon: "❌", title: "Не добавлен" };
+  }
+  function paintStatusIcon() {
+    const st = statusForDomain();
+    els.statusIcon.className = "statusIcon";
+    els.statusIcon.textContent = st.icon;
+    els.statusIcon.title = st.title;
+    els.statusIcon.setAttribute("aria-label", st.title);
   }
   function refreshIcon() {
     paintStatusIcon();
     refreshToggleBtn();
-    refreshCoveredNote();
+    refreshListCover();
   }
   function refreshToggleBtn() {
     const rule = toGuiRule(els.domainInput.value);
@@ -941,7 +941,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       currentDirect = c.directRules.newValue || [];
       refreshIcon();
     }
-    if (c.proxyLists) { currentLists = c.proxyLists.newValue || []; renderLists(); lastCover = { host: "", listed: false, listName: "" }; refreshIcon(); }
+    if (c.proxyLists) { currentLists = c.proxyLists.newValue || []; renderLists(); lastCover = { host: "", listed: false, listedParent: false }; refreshIcon(); }
     if (c.proxyServers) {
       currentProxies = migrateProxies({ proxyServers: c.proxyServers.newValue || [] });
       renderProxies();

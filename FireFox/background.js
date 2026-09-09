@@ -230,6 +230,14 @@ function findCoveringList(host) {
   return null;
 }
 
+function listedViaParent(host) {
+  const parts = String(host || "").split(".").filter(Boolean);
+  for (let i = 1; i <= parts.length - 2; i++) {
+    if (findCoveringList(parts.slice(i).join("."))) return true;
+  }
+  return false;
+}
+
 const fetchProxyHosts = {};
 const fetchDirectHosts = {};
 
@@ -505,7 +513,11 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === "coverInfo") {
     const host = normalizeRule(msg.host || "").replace(/^\*\./, "");
     const list = findCoveringList(host);
-    sendResponse({ listed: !!list, listName: list ? listLabel(list) : "" });
+    sendResponse({
+      listed: !!list,
+      listedParent: !!list && listedViaParent(host),
+      listName: list ? listLabel(list) : ""
+    });
     return true;
   }
   if (msg.action === "getTabDomains" || msg.action === "getUnproxiedDomains") {
