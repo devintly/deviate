@@ -5,7 +5,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     domainInput: document.getElementById("domainInput"), statusIcon: document.getElementById("statusIcon"),
     toggleRule: document.getElementById("toggleRuleBtn"), viewDomains: document.getElementById("viewDomainsBtn"),
     domainsPanel: document.getElementById("domainsPanel"), domainsList: document.getElementById("domainsList"),
-    domainsEmpty: document.getElementById("domainsEmpty"),
+    domainsEmpty: document.getElementById("domainsEmpty"), saveDomains: document.getElementById("saveDomainsBtn"),
     rulesStatus: document.getElementById("rulesStatus"), openList: document.getElementById("openListBtn"),
     pType: document.getElementById("proxyType"), pHost: document.getElementById("proxyHost"),
     pPort: document.getElementById("proxyPort"), pUser: document.getElementById("proxyUser"),
@@ -132,24 +132,42 @@ document.addEventListener("DOMContentLoaded", async () => {
       row.className = "domain-check";
       const cb = document.createElement("input");
       cb.type = "checkbox";
+      cb.dataset.rule = rule;
       cb.checked = hasUserRule(rule);
       const span = document.createElement("span");
       span.textContent = rule;
       span.title = host;
       row.appendChild(cb);
       row.appendChild(span);
-      cb.addEventListener("change", async () => {
-        if (cb.checked) {
-          if (!hasUserRule(rule)) currentRules.push(rule);
-        } else {
-          currentRules = currentRules.filter(i => normalize(i) !== normalize(rule));
-        }
-        await saveRules();
-        refreshIcon();
-        checkAutoReload(rule);
-      });
       els.domainsList.appendChild(row);
     });
+  }
+
+  function closeDomainsPanel() {
+    domainsPanelOpen = false;
+    els.domainsPanel.classList.remove("open");
+    els.domainsList.textContent = "";
+  }
+
+  function applyDomainDraft() {
+    let added = 0, removed = 0;
+    els.domainsList.querySelectorAll("input[type='checkbox']").forEach(cb => {
+      const rule = cb.dataset.rule;
+      if (!rule) return;
+      if (cb.checked) {
+        if (!hasUserRule(rule)) { currentRules.push(rule); added++; }
+      } else if (hasUserRule(rule)) {
+        currentRules = currentRules.filter(i => normalize(i) !== normalize(rule));
+        removed++;
+      }
+    });
+    return { added, removed };
+  }
+
+  async function reloadActiveTab() {
+    if (activeTab && activeTab.id != null) {
+      try { await browser.tabs.reload(activeTab.id); } catch (_) {}
+    }
   }
 
   async function refreshDomainsPanel() {
@@ -240,14 +258,36 @@ document.addEventListener("DOMContentLoaded", async () => {
       refreshIcon();
       flash(els.rulesStatus, "Добавлено");
     }
-    await refreshDomainsPanel();
+    if (domainsPanelOpen) {
+      els.domainsList.querySelectorAll("input[type='checkbox']").forEach(box => {
+        if (normalize(box.dataset.rule) === normalize(rule)) box.checked = hasUserRule(rule);
+      });
+    }
     checkAutoReload(rule);
   });
 
   els.viewDomains.addEventListener("click", async () => {
-    domainsPanelOpen = !domainsPanelOpen;
-    els.domainsPanel.classList.toggle("open", domainsPanelOpen);
-    if (domainsPanelOpen) await refreshDomainsPanel();
+    if (domainsPanelOpen) {
+      closeDomainsPanel();
+      return;
+    }
+    domainsPanelOpen = true;
+    els.domainsPanel.classList.add("open");
+    await refreshDomainsPanel();
+  });
+
+  els.saveDomains.addEventListener("click", async () => {
+    const { added, removed } = applyDomainDraft();
+    if (added || removed) {
+      await saveRules();
+      refreshIcon();
+      const parts = [];
+      if (added) parts.push(`добавлено: ${added}`);
+      if (removed) parts.push(`удалено: ${removed}`);
+      flash(els.rulesStatus, parts.join(", "));
+    }
+    closeDomainsPanel();
+    if (added || removed) await reloadActiveTab();
   });
 
   els.addList.addEventListener("click", async () => {
@@ -297,7 +337,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (c.proxyRules) {
       currentRules = c.proxyRules.newValue || [];
       refreshIcon();
-      refreshDomainsPanel();
     }
     if (c.proxyLists) { currentLists = c.proxyLists.newValue || []; renderLists(); }
     if (c.lastProxyError && c.lastProxyError.newValue) flash(els.pStatus, c.lastProxyError.newValue, "#ff6b6b");

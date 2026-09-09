@@ -52,6 +52,7 @@
     .domain-check:last-child { margin-bottom: 0; }
     .domain-check span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
     .domain-check input[type="checkbox"] { width: 16px; height: 16px; margin: 0; flex-shrink: 0; accent-color: #5865f2; cursor: pointer; }
+    .domains-save { width: 100%; margin-top: 12px; flex: none; }
   </style>
 </head>
 <body>
@@ -83,6 +84,7 @@
           <div class="label">Домены вкладки</div>
           <div id="domainsEmpty" class="domains-empty">Нет доменов. Откройте сайт и обновите страницу.</div>
           <div id="domainsList" class="domains-list"></div>
+          <button id="saveDomainsBtn" class="primary domains-save" type="button">Сохранить домены и закрыть</button>
         </div>
         <div id="rulesStatus" class="hint"></div>
       </div>
