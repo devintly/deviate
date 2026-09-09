@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Deviate",
-  "version": "1.8.4",
+  "version": "1.8.5",
   "description": "Deviate — обход блокировок: проксирование сайтов по правилам средствами SOCKS/HTTP и фильтрация трекеров.",
   "browser_specific_settings": {
     "gecko": {

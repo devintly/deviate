@@ -632,6 +632,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .catch(e => sendResponse({ success: false, error: String(e.message || e) }));
     return true;
   }
+  if (msg.action === "coverInfoMany") {
+    const hosts = Array.isArray(msg.hosts) ? msg.hosts : [];
+    const covers = {};
+    hosts.forEach(h => {
+      const host = normalizeRule(h).replace(/^\*\./, "");
+      if (!host || covers[host]) return;
+      const list = findCoveringList(host);
+      covers[host] = { listed: !!list, listedParent: !!list && listedViaParent(host) };
+    });
+    sendResponse({ covers });
+    return true;
+  }
   if (msg.action === "coverInfo") {
     const host = normalizeRule(msg.host || "").replace(/^\*\./, "");
     const list = findCoveringList(host);

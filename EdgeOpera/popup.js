@@ -152,11 +152,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   let coverSeq = 0;
   let lastCover = { host: "", listed: false, listedParent: false };
+  let domainCovers = {};
   function requestCoverInfo(host) {
     return new Promise(resolve => {
       api.runtime.sendMessage({ action: "coverInfo", host }, (res) => {
         if (api.runtime.lastError) return resolve({ listed: false, listedParent: false });
         resolve(res || { listed: false, listedParent: false });
+      });
+    });
+  }
+  function requestCoverMany(hosts) {
+    return new Promise(resolve => {
+      api.runtime.sendMessage({ action: "coverInfoMany", hosts }, (res) => {
+        if (api.runtime.lastError) return resolve({});
+        resolve((res && res.covers) || {});
       });
     });
   }
@@ -199,28 +208,49 @@ document.addEventListener("DOMContentLoaded", async () => {
     refreshScopeUI();
     refreshIcon();
   }
-  function statusForDomain() {
-    const v = els.domainInput.value.trim();
-    const host = hostOfRule(v);
-    const rule = toGuiRule(v);
-    if (!host) return { icon: "❌", title: "Не добавлен" };
-    if (hasIn(currentRules, rule)) return { icon: "✅", title: "Проксируется полностью" };
-    if (hasIn(currentDirect, rule)) return { icon: "☑️", title: "Напрямую полностью" };
+  const SVG_CHECK = '<svg class="mark-main" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M7.8 12.2l2.8 2.8 5.6-6.4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const SVG_X = '<svg class="mark-main" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M8.6 8.6l6.8 6.8M15.4 8.6l-6.8 6.8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
+  const SVG_DOT = '<svg class="mark-main" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" opacity="0.38"/><circle cx="12" cy="12" r="3.7" fill="currentColor"/></svg>';
+  const SVG_LIST = '<svg class="mark-list" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 8.2l7-3.2 7 3.2-7 3.2-7-3.2z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M5 12.2l7 3.2 7-3.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 16.2l7 3.2 7-3.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const STATUS = {
+    none: { title: "Не добавлен", tone: "none", html: SVG_X },
+    proxyFull: { title: "Проксируется полностью", tone: "proxy", html: SVG_CHECK },
+    directFull: { title: "Напрямую полностью", tone: "direct", html: SVG_CHECK },
+    proxyApex: { title: "Проксируется из основного домена", tone: "proxy", html: SVG_DOT },
+    directApex: { title: "Напрямую из основного домена", tone: "direct", html: SVG_DOT },
+    listFull: { title: "Проксируется из списка полностью", tone: "proxy", html: SVG_CHECK + SVG_LIST },
+    listApex: { title: "Проксируется из списка из основного домена", tone: "proxy", html: SVG_DOT + SVG_LIST }
+  };
+  function coverOf(host, covers) {
+    if (!host || !covers) return null;
+    return covers[host] || covers[normalize(host)] || null;
+  }
+  function statusForHost(host, covers, draft) {
+    const rule = toGuiRule(host);
+    if (!host) return STATUS.none;
+    if (draft && draft.picked) return draft.direct ? STATUS.directFull : STATUS.proxyFull;
+    if (hasIn(currentRules, rule)) return STATUS.proxyFull;
+    if (hasIn(currentDirect, rule)) return STATUS.directFull;
     const parentAct = coveringParentAction(host);
-    if (parentAct === "direct") return { icon: "🔵", title: "Напрямую из основного домена" };
-    if (parentAct === "proxy") return { icon: "🟢", title: "Проксируется из основного домена" };
-    if (lastCover.host === host && lastCover.listed) {
-      if (lastCover.listedParent) return { icon: "🟢📑", title: "Проксируется из списка из основного домена" };
-      return { icon: "✅📑", title: "Проксируется из списка полностью" };
-    }
-    return { icon: "❌", title: "Не добавлен" };
+    if (parentAct === "direct") return STATUS.directApex;
+    if (parentAct === "proxy") return STATUS.proxyApex;
+    const info = coverOf(host, covers);
+    const listed = info ? info.listed : (lastCover.host === host && lastCover.listed);
+    const listedParent = info ? info.listedParent : (lastCover.host === host && lastCover.listedParent);
+    if (listed) return listedParent ? STATUS.listApex : STATUS.listFull;
+    return STATUS.none;
+  }
+  function paintStatusEl(el, st) {
+    if (!el || !st) return;
+    el.innerHTML = `<span class="status-mark ${st.tone}">${st.html}</span>`;
+    el.title = st.title;
+    el.setAttribute("aria-label", st.title);
+  }
+  function statusForDomain() {
+    return statusForHost(hostOfRule(els.domainInput.value), null, null);
   }
   function paintStatusIcon() {
-    const st = statusForDomain();
-    els.statusIcon.className = "statusIcon";
-    els.statusIcon.textContent = st.icon;
-    els.statusIcon.title = st.title;
-    els.statusIcon.setAttribute("aria-label", st.title);
+    paintStatusEl(els.statusIcon, statusForDomain());
   }
   function refreshIcon() {
     paintStatusIcon();
@@ -276,7 +306,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  function renderDomainsList(domains) {
+  function renderDomainsList(domains, covers) {
     els.domainsList.textContent = "";
     const uniq = [];
     (domains || []).forEach(d => {
@@ -289,28 +319,72 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
     els.domainsEmpty.style.display = "none";
+    covers = covers || {};
+    function refreshDomainLine(line) {
+      const pick = line.querySelector("input.domain-pick");
+      const mode = line.querySelector("input.mode-direct");
+      const mark = line.querySelector(".mini-status");
+      if (!pick) return;
+      const picked = !!pick.checked;
+      line.classList.toggle("picked", picked);
+      const host = hostOfRule(pick.dataset.rule);
+      paintStatusEl(mark, statusForHost(host, covers, { picked, direct: !!(mode && mode.checked) }));
+    }
+    function syncApex(apex, checked, direct) {
+      els.domainsList.querySelectorAll("input.domain-pick").forEach(box => {
+        if (box.dataset.kind !== "apex" || box.dataset.apex !== apex) return;
+        box.checked = checked;
+        const line = box.closest(".domain-line");
+        const mode = line && line.querySelector("input.mode-direct");
+        if (mode && direct != null) mode.checked = direct;
+        if (line) refreshDomainLine(line);
+      });
+    }
     function appendLine(parent, rule, kind, apex, bold) {
-      const line = document.createElement("label");
+      const line = document.createElement("div");
       line.className = "domain-line";
       const cb = document.createElement("input");
       cb.type = "checkbox";
+      cb.className = "domain-pick";
       cb.dataset.rule = rule;
       cb.dataset.kind = kind;
       cb.dataset.apex = apex;
       cb.checked = hasUserRule(rule);
+      const mark = document.createElement("span");
+      mark.className = "mini-status";
       const text = document.createElement("span");
       text.className = bold ? "domain-name" : "domain-apex";
       text.textContent = rule;
       text.title = rule;
+      const wrap = document.createElement("label");
+      wrap.className = "mode-wrap";
+      wrap.title = "Проксировать / Напрямую";
+      wrap.addEventListener("click", e => e.stopPropagation());
+      const sw = document.createElement("span");
+      sw.className = "switch mode-switch";
+      const mode = document.createElement("input");
+      mode.type = "checkbox";
+      mode.className = "mode-direct";
+      mode.checked = isDirectRule(rule);
+      const ui = document.createElement("span");
+      ui.className = "switch-ui";
+      sw.appendChild(mode);
+      sw.appendChild(ui);
+      wrap.appendChild(sw);
       line.appendChild(cb);
+      line.appendChild(mark);
       line.appendChild(text);
-      if (kind === "apex") {
-        cb.addEventListener("change", () => {
-          els.domainsList.querySelectorAll('input[data-kind="apex"]').forEach(box => {
-            if (box.dataset.apex === apex) box.checked = cb.checked;
-          });
-        });
-      }
+      line.appendChild(wrap);
+      text.addEventListener("click", () => { cb.checked = !cb.checked; cb.dispatchEvent(new Event("change")); });
+      cb.addEventListener("change", () => {
+        if (kind === "apex") syncApex(apex, cb.checked, mode.checked);
+        else refreshDomainLine(line);
+      });
+      mode.addEventListener("change", () => {
+        if (kind === "apex") syncApex(apex, cb.checked, mode.checked);
+        else refreshDomainLine(line);
+      });
+      refreshDomainLine(line);
       parent.appendChild(line);
     }
     uniq.forEach(host => {
@@ -334,24 +408,30 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function applyDomainDraft() {
-    let added = 0, removed = 0;
+    let added = 0, removed = 0, changed = 0;
     const listed = new Map();
-    els.domainsList.querySelectorAll("input[type='checkbox']").forEach(cb => {
+    els.domainsList.querySelectorAll("input.domain-pick").forEach(cb => {
       const rule = cb.dataset.rule;
       if (!rule) return;
       const n = normalize(rule);
+      const line = cb.closest(".domain-line");
+      const mode = line && line.querySelector("input.mode-direct");
+      const direct = !!(mode && mode.checked);
       const prev = listed.get(n);
-      listed.set(n, { rule, want: cb.checked || (prev && prev.want) });
+      listed.set(n, { rule, want: cb.checked || (prev && prev.want), direct: cb.checked ? direct : (prev && prev.direct) });
     });
-    listed.forEach(({ rule, want }) => {
+    listed.forEach(({ rule, want, direct }) => {
       if (want) {
-        if (!hasUserRule(rule)) { setUserRule(rule, "proxy"); added++; }
+        const was = hasUserRule(rule);
+        const wasDirect = was && isDirectRule(rule);
+        if (!was) { setUserRule(rule, direct ? "direct" : "proxy"); added++; }
+        else if (wasDirect !== !!direct) { setUserRule(rule, direct ? "direct" : "proxy"); changed++; }
       } else if (hasUserRule(rule)) {
         removeUserRule(rule);
         removed++;
       }
     });
-    return { added, removed };
+    return { added, removed, changed };
   }
 
   function reloadActiveTab() {
@@ -360,7 +440,20 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function refreshDomainsPanel() {
     if (!domainsPanelOpen) return;
-    fetchTabDomains().then(renderDomainsList);
+    fetchTabDomains().then(domains => {
+      const hosts = [];
+      (domains || []).forEach(d => {
+        const h = String(d || "").trim().toLowerCase();
+        if (!h) return;
+        hosts.push(h);
+        const a = apexDomain(h);
+        if (a && a !== h) hosts.push(a);
+      });
+      requestCoverMany(hosts).then(covers => {
+        domainCovers = covers;
+        renderDomainsList(domains, covers);
+      });
+    });
   }
 
   const ICON_REFRESH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><polyline points="21 3 21 9 15 9"/></svg>';
@@ -766,6 +859,24 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   });
 
+  function syncOpenDomainLine(rule) {
+    if (!domainsPanelOpen) return;
+    els.domainsList.querySelectorAll("input.domain-pick").forEach(box => {
+      if (normalize(box.dataset.rule) !== normalize(rule)) return;
+      box.checked = hasUserRule(rule);
+      const line = box.closest(".domain-line");
+      const mode = line && line.querySelector("input.mode-direct");
+      if (mode) mode.checked = isDirectRule(rule);
+      if (line) {
+        line.classList.toggle("picked", box.checked);
+        paintStatusEl(line.querySelector(".mini-status"), statusForHost(hostOfRule(rule), domainCovers, {
+          picked: box.checked,
+          direct: isDirectRule(rule)
+        }));
+      }
+    });
+  }
+
   els.toggleRule.addEventListener("click", () => {
     const rule = toGuiRule(els.domainInput.value);
     if (!rule) return flash(els.rulesStatus, "Пустое правило", "#ff6b6b");
@@ -775,11 +886,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       saveRules(() => {
         refreshIcon();
         flash(els.rulesStatus, "Удалено");
-        if (domainsPanelOpen) {
-          els.domainsList.querySelectorAll("input[type='checkbox']").forEach(box => {
-            if (normalize(box.dataset.rule) === normalize(rule)) box.checked = hasUserRule(rule);
-          });
-        }
+        syncOpenDomainLine(rule);
         checkAutoReload(rule);
       });
     } else {
@@ -787,11 +894,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       saveRules(() => {
         refreshIcon();
         flash(els.rulesStatus, "Добавлено");
-        if (domainsPanelOpen) {
-          els.domainsList.querySelectorAll("input[type='checkbox']").forEach(box => {
-            if (normalize(box.dataset.rule) === normalize(rule)) box.checked = hasUserRule(rule);
-          });
-        }
+        syncOpenDomainLine(rule);
         checkAutoReload(rule);
       });
     }
@@ -808,6 +911,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     saveRules(() => {
       refreshIcon();
       flash(els.rulesStatus, els.domainDirect.checked ? "Напрямую" : "Проксировать");
+      syncOpenDomainLine(rule);
       checkAutoReload(rule);
     });
   });
@@ -830,18 +934,19 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   els.saveDomains.addEventListener("click", () => {
-    const { added, removed } = applyDomainDraft();
+    const { added, removed, changed } = applyDomainDraft();
     const finish = () => {
       closeDomainsPanel();
-      if (added || removed) reloadActiveTab();
+      if (added || removed || changed) reloadActiveTab();
     };
-    if (added || removed) {
+    if (added || removed || changed) {
       saveRules(() => {
         refreshIcon();
         const parts = [];
         if (added) parts.push(`добавлено: ${added}`);
         if (removed) parts.push(`удалено: ${removed}`);
-        flash(els.rulesStatus, parts.join(", "));
+        if (changed && !added && !removed) parts.push("сохранено");
+        flash(els.rulesStatus, parts.join(", ") || "Сохранено");
         finish();
       });
     } else {
