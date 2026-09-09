@@ -20,38 +20,34 @@ document.addEventListener("DOMContentLoaded", async () => {
   let currentLists = [];
   let activeTab = null;
   const HOST_ORIGINS = ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"];
-  const hostBanner = document.getElementById("hostPermBanner");
-  const grantHostBtn = document.getElementById("grantHostBtn");
+  const accessError = document.getElementById("accessError");
+  const accessErrorText = document.getElementById("accessErrorText");
 
-  async function hostAccessGranted() {
-    if (!browser.permissions || !browser.permissions.contains) return true;
-    try { return await browser.permissions.contains({ origins: HOST_ORIGINS }); }
-    catch (e) { return true; }
-  }
-
-  function showHostBanner(on) {
-    if (hostBanner) hostBanner.style.display = on ? "block" : "none";
-  }
-
-  async function ensureHostAccess(requestIfMissing) {
-    const ok = await hostAccessGranted();
-    showHostBanner(!ok);
-    if (ok || !requestIfMissing || !browser.permissions || !browser.permissions.request) return ok;
+  async function refreshAccessErrors() {
+    const msgs = [];
     try {
-      const granted = await browser.permissions.request({ origins: HOST_ORIGINS });
-      showHostBanner(!granted);
-      return granted;
-    } catch (e) {
-      return false;
+      if (browser.permissions && browser.permissions.contains) {
+        const sites = await browser.permissions.contains({ origins: HOST_ORIGINS });
+        if (!sites) msgs.push("Нет доступа к сайтам. Включите его в разрешениях расширения — без этого прокси по спискам не работает.");
+      }
+    } catch (e) {}
+    try {
+      if (browser.extension && browser.extension.isAllowedIncognitoAccess) {
+        const incognito = await browser.extension.isAllowedIncognitoAccess();
+        if (!incognito) msgs.push("Нет доступа к приватным окнам. Включите работу в приватных окнах в настройках расширения.");
+      }
+    } catch (e) {}
+    if (accessError && accessErrorText) {
+      accessErrorText.textContent = msgs.join("\n\n");
+      accessError.style.display = msgs.length ? "block" : "none";
     }
   }
 
-  if (grantHostBtn) grantHostBtn.addEventListener("click", () => ensureHostAccess(true));
   if (browser.permissions && browser.permissions.onAdded) {
-    browser.permissions.onAdded.addListener(() => ensureHostAccess(false));
+    browser.permissions.onAdded.addListener(refreshAccessErrors);
   }
   if (browser.permissions && browser.permissions.onRemoved) {
-    browser.permissions.onRemoved.addListener(() => ensureHostAccess(false));
+    browser.permissions.onRemoved.addListener(refreshAccessErrors);
   }
 
   tabs.forEach((tab, i) => {
@@ -246,6 +242,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (c.lastProxyError && c.lastProxyError.newValue) flash(els.pStatus, c.lastProxyError.newValue, "#ff6b6b");
   });
 
-  await ensureHostAccess(true);
+  await refreshAccessErrors();
   await loadState();
 });

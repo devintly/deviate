@@ -22,38 +22,47 @@ document.addEventListener("DOMContentLoaded", async () => {
   let currentLists = [];
   let activeTab = null;
   const HOST_ORIGINS = ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"];
-  const hostBanner = document.getElementById("hostPermBanner");
-  const grantHostBtn = document.getElementById("grantHostBtn");
+  const accessError = document.getElementById("accessError");
+  const accessErrorText = document.getElementById("accessErrorText");
 
-  function hostAccessGranted() {
+  function containsOrigins() {
     return new Promise((resolve) => {
       if (!api.permissions || !api.permissions.contains) return resolve(true);
       api.permissions.contains({ origins: HOST_ORIGINS }, (ok) => resolve(!!ok));
     });
   }
 
-  function showHostBanner(on) {
-    if (hostBanner) hostBanner.style.display = on ? "block" : "none";
-  }
-
-  async function ensureHostAccess(requestIfMissing) {
-    const ok = await hostAccessGranted();
-    showHostBanner(!ok);
-    if (ok || !requestIfMissing || !api.permissions || !api.permissions.request) return ok;
+  function incognitoAllowed() {
     return new Promise((resolve) => {
-      api.permissions.request({ origins: HOST_ORIGINS }, (granted) => {
-        showHostBanner(!granted);
-        resolve(!!granted);
-      });
+      if (!api.extension || !api.extension.isAllowedIncognitoAccess) return resolve(true);
+      let settled = false;
+      const done = (ok) => { if (!settled) { settled = true; resolve(!!ok); } };
+      try {
+        const ret = api.extension.isAllowedIncognitoAccess(done);
+        if (ret && typeof ret.then === "function") ret.then(done).catch(() => done(true));
+      } catch (e) { done(true); }
     });
   }
 
-  if (grantHostBtn) grantHostBtn.addEventListener("click", () => ensureHostAccess(true));
+  async function refreshAccessErrors() {
+    const msgs = [];
+    try {
+      if (!(await containsOrigins())) msgs.push("Нет доступа к сайтам. Включите его в разрешениях расширения — без этого прокси по спискам не работает.");
+    } catch (e) {}
+    try {
+      if (!(await incognitoAllowed())) msgs.push("Нет доступа к режиму инкогнито. Включите «Разрешить в режиме инкогнито» в настройках расширения.");
+    } catch (e) {}
+    if (accessError && accessErrorText) {
+      accessErrorText.textContent = msgs.join("\n\n");
+      accessError.style.display = msgs.length ? "block" : "none";
+    }
+  }
+
   if (api.permissions && api.permissions.onAdded) {
-    api.permissions.onAdded.addListener(() => ensureHostAccess(false));
+    api.permissions.onAdded.addListener(refreshAccessErrors);
   }
   if (api.permissions && api.permissions.onRemoved) {
-    api.permissions.onRemoved.addListener(() => ensureHostAccess(false));
+    api.permissions.onRemoved.addListener(refreshAccessErrors);
   }
 
   tabs.forEach((tab, i) => {
@@ -283,6 +292,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (c.lastProxyError && c.lastProxyError.newValue) flash(els.pStatus, c.lastProxyError.newValue, "#ff6b6b");
   });
 
-  await ensureHostAccess(true);
+  await refreshAccessErrors();
   loadState();
 });

@@ -42,10 +42,9 @@
 <body>
   <div class="wrap">
     <div class="header"><span>Deviate</span><img src="icon.png" alt="Deviate"></div>
-    <div id="hostPermBanner" class="card" style="display:none; margin-bottom:14px;">
-      <div class="label">Нужен доступ к сайтам</div>
-      <div style="font-size:12px; color:#b5bac1; margin-bottom:8px;">Без этого прокси по спискам не работает. Firefox показывает его тумблером, но для Deviate доступ должен быть включён.</div>
-      <button id="grantHostBtn" class="secondary" style="background:#5865f2;">Включить доступ ко всем сайтам</button>
+    <div id="accessError" class="card" style="display:none; margin-bottom:14px; border:1px solid #da373c;">
+      <div class="label" style="color:#ff6b6b;">Ошибка доступа</div>
+      <div id="accessErrorText" style="font-size:12px; color:#f2f3f5; line-height:1.45; white-space:pre-line;"></div>
     </div>
     <div class="tabs">
       <div id="tabRules" class="tab active">Правила</div>
