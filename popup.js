@@ -195,13 +195,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     return displayRuleForHost(pageHost || els.domainInput.value);
   }
   let coverSeq = 0;
-  let lastCover = { host: "", listed: false, listedParent: false, listedParentRule: "" };
+  let lastCover = { host: "", listed: false, listedParent: false, listedParentRule: "", listName: "" };
   let domainCovers = {};
   async function requestCoverInfo(host) {
     try {
-      return await browser.runtime.sendMessage({ action: "coverInfo", host }) || { listed: false, listedParent: false, listedParentRule: "" };
+      return await browser.runtime.sendMessage({ action: "coverInfo", host }) || { listed: false, listedParent: false, listedParentRule: "", listName: "" };
     } catch (e) {
-      return { listed: false, listedParent: false, listedParentRule: "" };
+      return { listed: false, listedParent: false, listedParentRule: "", listName: "" };
     }
   }
   async function requestCoverMany(hosts) {
@@ -215,7 +215,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function refreshListCover() {
     const host = hostOfRule(els.domainInput.value);
     if (!host) {
-      lastCover = { host: "", listed: false, listedParent: false, listedParentRule: "" };
+      lastCover = { host: "", listed: false, listedParent: false, listedParentRule: "", listName: "" };
       paintStatusIcon();
       return;
     }
@@ -226,7 +226,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         host,
         listed: !!(info && info.listed),
         listedParent: !!(info && info.listedParent),
-        listedParentRule: (info && info.listedParentRule) || ""
+        listedParentRule: (info && info.listedParentRule) || "",
+        listName: (info && info.listName) || ""
       };
       paintStatusIcon();
     });
@@ -318,12 +319,21 @@ document.addEventListener("DOMContentLoaded", async () => {
       const p = coveringParent(host);
       return { text: p.rule ? `Напрямую правилом ${p.rule}` : "Напрямую правилом родителя", kind: "direct" };
     }
-    if (st === STATUS.listFull) return { text: "Проксируется списком", kind: "proxy" };
+    if (st === STATUS.listFull) {
+      const info = coverInfoOf(host, covers);
+      const name = info && info.listName;
+      return { text: name ? `Проксируется списком ${name}` : "Проксируется списком", kind: "proxy" };
+    }
     if (st === STATUS.listApex) {
       const info = coverInfoOf(host, covers);
       const rule = info && info.listedParentRule;
-      return { text: rule ? `Проксируется списком из ${rule}` : "Проксируется списком", kind: "proxy" };
+      const name = info && info.listName;
+      if (rule && name) return { text: `Проксируется правилом ${rule} из списка ${name}`, kind: "proxy" };
+      if (rule) return { text: `Проксируется правилом ${rule} из списка`, kind: "proxy" };
+      if (name) return { text: `Проксируется списком ${name}`, kind: "proxy" };
+      return { text: "Проксируется списком", kind: "proxy" };
     }
+    if (st === STATUS.none) return { text: "Правило не применяется", kind: "none" };
     return { text: "", kind: "" };
   }
   function paintStatusCaption() {
@@ -1152,7 +1162,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       currentDirect = c.directRules.newValue || [];
       refreshIcon();
     }
-    if (c.proxyLists) { currentLists = c.proxyLists.newValue || []; renderLists(); lastCover = { host: "", listed: false, listedParent: false, listedParentRule: "" }; refreshIcon(); }
+    if (c.proxyLists) { currentLists = c.proxyLists.newValue || []; renderLists(); lastCover = { host: "", listed: false, listedParent: false, listedParentRule: "", listName: "" }; refreshIcon(); }
     if (c.proxyServers) {
       currentProxies = migrateProxies({ proxyServers: c.proxyServers.newValue || [] });
       renderProxies();

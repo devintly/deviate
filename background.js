@@ -183,6 +183,7 @@ function rebuildMaps() {
     addListTargets(list, pE, pS, pIp, pCidr);
   });
   cacheProxy();
+  recountTabProxied();
 }
 
 function matchMaps(host, exact, suffix) {
@@ -198,11 +199,19 @@ function matchMaps(host, exact, suffix) {
   return false;
 }
 
+function canonHost(host) {
+  host = String(host || "").toLowerCase();
+  if (host.indexOf("www.") === 0) host = host.slice(4);
+  return host;
+}
+
 function isDirectHost(host) {
+  host = canonHost(host);
   return matchMaps(host, dE, dS) || PacParse.matchIpLiteral(host, dIp, []);
 }
 
 function isBlockedHost(host) {
+  host = canonHost(host);
   if (!hasBlock) return false;
   if (matchMaps(host, bE, bS) || PacParse.matchIpLiteral(host, bIp, bCidr)) return true;
   for (let i = 0; i < bPac.length; i++) {
@@ -212,11 +221,18 @@ function isBlockedHost(host) {
 }
 
 function isProxiedHost(host) {
+  host = canonHost(host);
   if (matchMaps(host, pE, pS) || PacParse.matchIpLiteral(host, pIp, pCidr)) return true;
   for (let i = 0; i < pPac.length; i++) {
     if (PacParse.matchPacHost(host, pPac[i])) return true;
   }
   return false;
+}
+
+function hostIsProxied(host) {
+  if (!extensionEnabled || !host) return false;
+  if (isDirectHost(host) || isBlockedHost(host)) return false;
+  return isProxiedHost(host);
 }
 
 function listLabel(list) {
@@ -248,6 +264,7 @@ function findCoveringList(host) {
 }
 
 function listedParentHost(host) {
+  host = canonHost(host);
   const parts = String(host || "").split(".").filter(Boolean);
   for (let i = 1; i <= parts.length - 2; i++) {
     const parent = parts.slice(i).join(".");
@@ -342,18 +359,32 @@ function onProxyRequest(requestInfo) {
   });
 }
 
-function applyProxy() {
-  rebuildMaps();
-}
-
 function rememberTabHost(tabId, host, proxied) {
   if (tabId == null || tabId < 0 || !host) return;
   if (!tabHosts[tabId]) tabHosts[tabId] = new Set();
   tabHosts[tabId].add(host);
-  if (proxied) {
+  if (proxied || hostIsProxied(host)) {
     if (!tabProxied[tabId]) tabProxied[tabId] = new Set();
     tabProxied[tabId].add(host);
   }
+  scheduleBadge(tabId);
+}
+
+function recountTabProxied() {
+  Object.keys(tabHosts).forEach(id => {
+    const tabId = Number(id);
+    const next = new Set();
+    tabHosts[tabId].forEach(h => {
+      if (hostIsProxied(h)) next.add(h);
+    });
+    tabProxied[tabId] = next;
+    delete badgeText[tabId];
+    scheduleBadge(tabId);
+  });
+}
+
+function applyProxy() {
+  rebuildMaps();
 }
 
 function scheduleBadge(tabId) {
@@ -557,7 +588,8 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       covers[host] = {
         listed: !!list,
         listedParent: !!list && listedViaParent(host),
-        listedParentRule: list ? listedParentRule(host) : ""
+        listedParentRule: list ? listedParentRule(host) : "",
+        listName: list ? listLabel(list) : ""
       };
     });
     sendResponse({ covers });
