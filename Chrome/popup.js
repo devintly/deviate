@@ -86,8 +86,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const rule = toGuiRule(els.domainInput.value);
     const inList = hasUserRule(rule);
     els.toggleRule.textContent = inList ? "Удалить домен" : "Добавить домен";
-    els.toggleRule.classList.toggle("danger", inList);
-    els.toggleRule.classList.toggle("primary", !inList);
+    els.toggleRule.className = inList ? "danger" : "primary";
     els.toggleRule.disabled = !rule;
   }
   function flash(el, t, c = "#57f287") {
