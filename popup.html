@@ -34,7 +34,7 @@
     .status-mark .mark-list { width: 15px; height: 15px; display: block; }
     .status-mark.none { color: #da373c; filter: drop-shadow(0 0 5px rgba(218, 55, 60, 0.5)); }
     .status-mark.proxy { color: #57f287; filter: drop-shadow(0 0 5px rgba(87, 242, 135, 0.55)); }
-    .status-mark.direct { color: #00a8fc; filter: drop-shadow(0 0 5px rgba(0, 168, 252, 0.55)); }
+    .status-mark.direct { color: #ffb020; filter: drop-shadow(0 0 5px rgba(255, 176, 32, 0.55)); }
 
     button { -webkit-appearance: none; appearance: none; border: 0; border-radius: 8px; padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer; transition: 0.15s ease; display: flex; flex-direction: row; align-items: center; justify-content: center; text-align: center; line-height: 1.2; min-height: 32px; }
 
@@ -99,8 +99,8 @@
       box-shadow: 0 0 0 1px rgba(87, 242, 135, 0.35), 0 0 10px rgba(87, 242, 135, 0.4);
     }
     .switch.mode-switch input:checked + .switch-ui {
-      background: #00a8fc;
-      box-shadow: 0 0 0 1px rgba(0, 168, 252, 0.35), 0 0 10px rgba(0, 168, 252, 0.45);
+      background: #ffb020;
+      box-shadow: 0 0 0 1px rgba(255, 176, 32, 0.35), 0 0 10px rgba(255, 176, 32, 0.45);
     }
     .switch.mode-switch .switch-ui::after,
     .switch.mode-switch input:checked + .switch-ui::after { background: #fff; }
@@ -147,7 +147,7 @@
     .scope-btn.active { background: #4e5058; color: #f2f3f5; }
     .status-caption { min-height: 16px; margin: 0 0 12px; font-size: 11px; font-weight: 600; line-height: 1.35; color: #b5bac1; }
     .status-caption.proxy { color: #57f287; }
-    .status-caption.direct { color: #00a8fc; }
+    .status-caption.direct { color: #ffb020; }
     .status-caption.none { color: #da373c; }
     .status-caption:empty { visibility: hidden; }
     #panelRules .card #openListBtn { margin-top: auto; }
@@ -156,7 +156,7 @@
     .domain-mode .domain-mode-off { color: #57f287; }
     .domain-mode .domain-mode-on { color: #b5bac1; }
     .domain-mode.on .domain-mode-off { color: #b5bac1; }
-    .domain-mode.on .domain-mode-on { color: #00a8fc; }
+    .domain-mode.on .domain-mode-on { color: #ffb020; }
     .domain-mode .switch { width: 36px; height: 20px; }
     .domain-mode .switch-ui::after { width: 14px; height: 14px; left: 3px; top: 3px; }
     .domain-mode .switch input:checked + .switch-ui::after { left: 19px; }
