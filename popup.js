@@ -205,15 +205,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   function refreshScopeUI() {
     const hasChoice = !!(pageHost && pageApex && pageHost !== pageApex && !isIpHost(pageHost));
-    els.domainScope.classList.toggle("show", hasChoice);
-    if (hasChoice) {
-      els.scopeHost.textContent = `Этот: ${toGuiRule(pageHost)}`;
-      els.scopeApex.textContent = `Основной: ${wildcardRule(pageApex)}`;
-      els.scopeHost.classList.toggle("active", scopeMode === "host");
-      els.scopeApex.classList.toggle("active", scopeMode === "apex");
-    } else {
-      scopeMode = "host";
-    }
+    els.scopeApex.disabled = !hasChoice;
+    if (!hasChoice) scopeMode = "host";
+    els.scopeHost.classList.toggle("active", scopeMode === "host");
+    els.scopeApex.classList.toggle("active", hasChoice && scopeMode === "apex");
   }
   function setScope(mode, writeInput) {
     scopeMode = mode === "apex" ? "apex" : "host";
@@ -237,6 +232,24 @@ document.addEventListener("DOMContentLoaded", async () => {
     listFull: { title: "Проксируется из списка полностью", tone: "proxy", html: SVG_CHECK + SVG_LIST },
     listApex: { title: "Проксируется из списка из основного домена", tone: "proxy", html: SVG_DOT + SVG_LIST }
   };
+  (function paintStatusLegend() {
+    const box = document.getElementById("statusLegend");
+    if (!box) return;
+    [
+      { st: STATUS.proxyFull, label: "Проксируется" },
+      { st: STATUS.directFull, label: "Напрямую" },
+      { st: STATUS.proxyApex, label: "Проксируется правилом *." },
+      { st: STATUS.directApex, label: "Напрямую правилом *." },
+      { st: STATUS.listFull, label: "Проксируется списком" },
+      { st: STATUS.listApex, label: "Проксируется списком из *." }
+    ].forEach(({ st, label }) => {
+      const item = document.createElement("span");
+      item.className = "status-legend-item";
+      item.title = st.title;
+      item.innerHTML = `<span class="status-mark ${st.tone}">${st.html}</span><span>${label}</span>`;
+      box.appendChild(item);
+    });
+  })();
   function coverOf(host, covers) {
     if (!host || !covers) return null;
     return covers[host] || covers[normalize(host)] || null;
@@ -312,7 +325,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const inList = hasUserRule(rule);
     const direct = inList && isDirectRule(rule);
     els.toggleRule.textContent = inList ? "Удалить" : "Добавить домен";
-    els.toggleRule.className = inList ? "danger" : "success";
+    els.toggleRule.className = inList ? "danger" : "primary";
     els.toggleRule.disabled = !rule;
     els.domainActionRow.classList.toggle("has-rule", inList);
     els.domainMode.classList.toggle("show", inList);
