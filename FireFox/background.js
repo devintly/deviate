@@ -298,6 +298,14 @@ browser.storage.onChanged.addListener(async (changes) => {
 function isStalePac(list) {
   if (!list || list.format !== "pac" || !list.url) return false;
   if (list.pacScript || list.pacIndex) return true;
+  const n = (list.domains && list.domains.length) || 0;
+  const ips = (list.ips && list.ips.length) || 0;
+  if (!n && !ips) return true;
+  if (n > 0 && n < 100 && !ips) return true;
+  return false;
+}
+  if (!list || list.format !== "pac" || !list.url) return false;
+  if (list.pacScript || list.pacIndex) return true;
   return !((list.domains && list.domains.length) || (list.ips && list.ips.length));
 }
 

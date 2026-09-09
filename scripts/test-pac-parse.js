@@ -46,7 +46,10 @@ if (fs.existsSync(sample)) {
   ok(lists.ipCount > 1000, "AntiZapret PAC yields IP list: " + lists.ipCount);
   ok(lists.domains.includes("instagram.com"), "contains instagram.com");
   ok(lists.domains.includes("twitter.com"), "contains twitter.com");
+  ok(lists.domains.includes("rutor.info") || lists.domains.includes("rutor.org"), "contains rutor");
+  ok(lists.domains.some(function (d) { return /^rutracker\./.test(d); }), "contains rutracker");
   ok(lists.cidrs.length >= 1, "contains CIDR ranges");
+  ok(!/new Function|eval\(/.test(fs.readFileSync(path.join(__dirname, "../pac-parse.js"), "utf8")), "parser has no eval");
   const packedAz = PacParse.packDomainList(lists.domains);
   ok(PacParse.matchPackedDomain("www.instagram.com", packedAz), "packed AntiZapret matches instagram");
 } else {

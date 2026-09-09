@@ -4,6 +4,8 @@
   var DOMAIN_RE = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
   var SKIP_WORDS = { function: 1, return: 1, direct: 1, proxy: 1, socks: 1, https: 1, http: 1, host: 1, url: 1 };
   var IPV4_RE = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
+  var TABLE_LEN_BITS = 18;
+  var HASH_MASK = (1 << TABLE_LEN_BITS) - 1;
 
   function isHtmlDocument(text) {
     var t = String(text || "").replace(/^\uFEFF/, "").trim();
@@ -50,89 +52,256 @@
     return bits;
   }
 
-  function parseSpecialCidrs(text) {
-    var m = String(text || "").match(/var\s+special\s*=\s*(\[[\s\S]*?\]);/);
-    if (!m) return [];
+  function extractBalanced(text, start, openCh, closeCh) {
+    var depth = 0, inStr = false, quote = "", esc = false;
+    for (var i = start; i < text.length; i++) {
+      var c = text[i];
+      if (inStr) {
+        if (esc) { esc = false; continue; }
+        if (c === "\\") { esc = true; continue; }
+        if (c === quote) inStr = false;
+        continue;
+      }
+      if (c === "\"" || c === "'") { inStr = true; quote = c; continue; }
+      if (c === openCh) depth++;
+      else if (c === closeCh) {
+        depth--;
+        if (depth === 0) return text.slice(start, i + 1);
+      }
+    }
+    return "";
+  }
+
+  function parseJsString(text, i) {
+    var quote = text[i++];
+    if (quote !== "\"" && quote !== "'") return null;
+    var out = "";
+    while (i < text.length) {
+      var c = text[i++];
+      if (c === "\\" && (text[i] === "\n" || text[i] === "\r")) {
+        if (text[i] === "\r" && text[i + 1] === "\n") i++;
+        i++;
+        continue;
+      }
+      if (c === "\\") {
+        if (i >= text.length) break;
+        var n = text[i++];
+        if (n === "n") out += "\n";
+        else if (n === "r") out += "\r";
+        else if (n === "t") out += "\t";
+        else out += n;
+        continue;
+      }
+      if (c === quote) return { value: out, next: i };
+      out += c;
+    }
+    return null;
+  }
+
+  function findAssign(text, name) {
+    var re = new RegExp("(?:(?:^|\\n)(?:var\\s+)?)?" + name + "\\s*=\\s*", "m");
+    var m = re.exec(text);
+    return m ? m.index + m[0].length : -1;
+  }
+
+  function extractAssignedString(text, name) {
+    var i = findAssign(text, name);
+    if (i < 0) return "";
+    while (i < text.length && /\s/.test(text[i])) i++;
+    var parsed = parseJsString(text, i);
+    return parsed ? parsed.value : "";
+  }
+
+  function parseJsStringMap(src) {
+    var out = {};
+    if (!src) return out;
+    var i = 0;
+    if (src.charAt(0) === "{") i = 1;
+    while (i < src.length) {
+      while (i < src.length && /[\s,]/.test(src.charAt(i))) i++;
+      if (i >= src.length || src.charAt(i) === "}") break;
+      var key = parseJsString(src, i);
+      if (!key) break;
+      i = key.next;
+      while (i < src.length && /\s/.test(src.charAt(i))) i++;
+      if (src.charAt(i) !== ":") break;
+      i++;
+      while (i < src.length && /\s/.test(src.charAt(i))) i++;
+      var val = parseJsString(src, i);
+      if (!val) break;
+      out[key.value] = val.value;
+      i = val.next;
+    }
+    return out;
+  }
+
+  function extractPatternMaps(text) {
+    var domainPatterns = null, maskPatterns = null;
+    var idx = text.search(/function\s+patternreplace\s*\(/);
+    if (idx < 0) return { domainPatterns: null, maskPatterns: null };
+    var body = extractBalanced(text, text.indexOf("{", idx), "{", "}");
+    var pos = 0, seen = 0;
+    while (seen < 2) {
+      var m = body.indexOf("var patterns =", pos);
+      if (m < 0) break;
+      var start = body.indexOf("{", m);
+      if (start < 0) break;
+      var raw = extractBalanced(body, start, "{", "}");
+      var map = parseJsStringMap(raw);
+      if (!domainPatterns) domainPatterns = map;
+      else maskPatterns = map;
+      pos = start + raw.length;
+      seen++;
+    }
+    return { domainPatterns: domainPatterns, maskPatterns: maskPatterns };
+  }
+
+  function parseDomainsTable(text) {
+    var i = findAssign(text, "domains");
+    if (i < 0) return null;
+    while (i < text.length && /\s/.test(text[i])) i++;
+    if (text[i] !== "{") return null;
+    var raw = extractBalanced(text, i, "{", "}");
+    if (!raw) return null;
     try {
-      var arr = new Function("return (" + m[1] + ")")();
-      if (!Array.isArray(arr)) return [];
-      return arr.map(function (row) {
-        if (!row || !row[0]) return null;
-        return { net: String(row[0]), bits: maskToBits(row[1]) };
-      }).filter(function (x) { return x && x.net && x.bits; });
+      var json = raw.replace(/([{,]\s*)(\d+)\s*:/g, "$1\"$2\":");
+      return JSON.parse(json);
     } catch (e) {
-      return [];
+      return null;
     }
   }
 
-  function collectFromRuntime(source) {
-    var prelude =
-      "var domains, d_ipaddr, special, domains_lzp, mask_lzp, az_initialized, table, hash, c, fbtw;\n";
-    var tail = "\n;" +
-      "if (typeof FindProxyForURL === 'function') {\n" +
-      "  try { FindProxyForURL('https://init.invalid/', 'init.invalid'); } catch (e0) {}\n" +
-      "}\n" +
-      "var _patterns = (typeof patternreplace === 'function') ? " +
-      "(function(){ var s = Function.prototype.toString.call(patternreplace); " +
-      "var m = s.match(/var patterns = (\\{[\\s\\S]*?\\});/); " +
-      "return m ? (new Function('return (' + m[1] + ')'))() : null; })() : null;\n" +
-      "function _rev(s){\n" +
-      "  if (!_patterns) return s;\n" +
-      "  var keys = Object.keys(_patterns).sort(function(a,b){ return b.length - a.length || b.localeCompare(a); });\n" +
-      "  s = String(s || '');\n" +
-      "  for (var i = 0; i < keys.length; i++) s = s.split(keys[i]).join(_patterns[keys[i]]);\n" +
-      "  return s;\n" +
-      "}\n" +
-      "function _intToIp(n){ n = n >>> 0; return ((n>>>24)&255)+'.'+((n>>>16)&255)+'.'+((n>>>8)&255)+'.'+(n&255); }\n" +
-      "var _domains = [], _ips = [];\n" +
-      "if (typeof domains === 'object' && domains) {\n" +
-      "  var zones = Object.keys(domains);\n" +
-      "  for (var z = 0; z < zones.length; z++) {\n" +
-      "    var zone = zones[z], byLen = domains[zone];\n" +
-      "    if (!byLen || typeof byLen !== 'object') continue;\n" +
-      "    var lens = Object.keys(byLen);\n" +
-      "    for (var l = 0; l < lens.length; l++) {\n" +
-      "      var len = parseInt(lens[l], 10), val = byLen[lens[l]];\n" +
-      "      if (typeof val === 'string' && len) {\n" +
-      "        for (var i = 0; i + len <= val.length; i += len) _domains.push(_rev(val.slice(i, i + len)) + '.' + zone);\n" +
-      "      } else if (Array.isArray(val)) {\n" +
-      "        for (var j = 0; j < val.length; j++) _domains.push(_rev(val[j]) + '.' + zone);\n" +
-      "      }\n" +
-      "    }\n" +
-      "  }\n" +
-      "}\n" +
-      "if (Array.isArray(d_ipaddr)) {\n" +
-      "  for (var k = 0; k < d_ipaddr.length; k++) {\n" +
-      "    if (typeof d_ipaddr[k] === 'number') _ips.push(_intToIp(d_ipaddr[k]));\n" +
-      "  }\n" +
-      "}\n" +
-      "return { domains: _domains, ips: _ips };\n";
+  function parseSpecialCidrs(text) {
+    var out = [];
+    var re = /\["(\d{1,3}(?:\.\d{1,3}){3})",\s*(\d{1,2})\]/g;
+    var m;
+    while ((m = re.exec(String(text || "")))) {
+      out.push({ net: m[1], bits: Number(m[2]) });
+    }
+    return out;
+  }
 
-    var factory = new Function(
-      "dnsDomainIs", "shExpMatch", "isPlainHostName", "dnsDomainLevels",
-      "myIpAddress", "dnsResolve", "isInNet", "convert_addr",
-      "localHostOrDomainIs", "isResolvable", "weekdayRange", "dateRange", "timeRange", "alert",
-      prelude + source + tail
-    );
-    return factory(
-      function () { return false; },
-      function () { return false; },
-      function (h) { return String(h || "").indexOf(".") === -1; },
-      function (h) { return Math.max(0, String(h || "").split(".").length - 1); },
-      function () { return "127.0.0.1"; },
-      function () { return null; },
-      function () { return false; },
-      function (ip) {
-        var b = String(ip || "").split(".");
-        return ((((Number(b[0]) || 0) * 256) + (Number(b[1]) || 0)) * 256 + (Number(b[2]) || 0)) * 256 + (Number(b[3]) || 0);
-      },
-      function () { return false; },
-      function () { return false; },
-      function () { return false; },
-      function () { return false; },
-      function () { return false; },
-      function () {}
-    );
+  function decodeIpList(text) {
+    var raw = extractAssignedString(text, "d_ipaddr");
+    if (!raw) return [];
+    var parts = raw.split(" ");
+    var out = [], prev = 0;
+    for (var i = 0; i < parts.length; i++) {
+      if (!parts[i]) continue;
+      var n = parseInt(parts[i], 36);
+      if (!isFinite(n)) continue;
+      prev = (n + prev) >>> 0;
+      out.push(intToIp(prev));
+    }
+    return out;
+  }
+
+  function a2b(a) {
+    var b, c, d, e = {}, f = 0, g = 0, h = "", i = String.fromCharCode, j = a.length;
+    for (b = 0; 64 > b; b++) e["ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".charAt(b)] = b;
+    for (c = 0; j > c; c++) {
+      for (b = e[a.charAt(c)], f = (f << 6) + b, g += 6; g >= 8;) {
+        d = 255 & f >>> (g -= 8);
+        if (d || j - 2 > c) h += i(d);
+      }
+    }
+    return h;
+  }
+
+  function applyPatterns(s, patterns) {
+    if (!patterns) return s;
+    var keys = Object.keys(patterns);
+    for (var i = 0; i < keys.length; i++) {
+      var token = keys[i];
+      s = String(s).split(patterns[token]).join(token);
+    }
+    return s;
+  }
+
+  function reversePatterns(s, patterns) {
+    if (!patterns) return s;
+    var keys = Object.keys(patterns).sort(function (a, b) {
+      return b.length - a.length || b.localeCompare(a);
+    });
+    s = String(s || "");
+    for (var i = 0; i < keys.length; i++) s = s.split(keys[i]).join(patterns[keys[i]]);
+    return s;
+  }
+
+  function createUnlzpState() {
+    return { table: new Array(1 << TABLE_LEN_BITS), hash: 0 };
+  }
+
+  function unlzp(d, m, lim, state) {
+    var mask = 0, maskpos = 0, dpos = 0, out = new Array(8), outpos = 0, outfinal = "";
+    var c;
+    for (;;) {
+      mask = m.charAt(maskpos++);
+      if (!mask) break;
+      mask = mask.charCodeAt(0);
+      outpos = 0;
+      for (var i = 0; i < 8; i++) {
+        if (mask & (1 << i)) {
+          c = state.table[state.hash];
+        } else {
+          c = d.charAt(dpos++);
+          if (!c) break;
+          c = c.charCodeAt(0);
+          state.table[state.hash] = c;
+        }
+        out[outpos++] = String.fromCharCode(c);
+        state.hash = ((state.hash << 7) ^ c) & HASH_MASK;
+      }
+      if (outpos === 8) outfinal += out.join("");
+      if (outfinal.length >= lim) break;
+    }
+    if (outpos < 8) outfinal += out.slice(0, outpos).join("");
+    return [outfinal, dpos, maskpos];
+  }
+
+  function expandLzDomains(domains, domainsLzp, maskLzp, domainPatterns, maskPatterns) {
+    var packed = [];
+    if (!domains || !domainsLzp) return packed;
+    if (maskLzp) maskLzp = a2b(applyPatterns(maskLzp, maskPatterns));
+    var leftover = "";
+    var state = createUnlzpState();
+    var zones = Object.keys(domains);
+    for (var z = 0; z < zones.length; z++) {
+      var zone = zones[z];
+      var byLen = domains[zone];
+      if (!byLen || typeof byLen !== "object") continue;
+      var lens = Object.keys(byLen);
+      for (var l = 0; l < lens.length; l++) {
+        var nameLen = parseInt(lens[l], 10);
+        var val = byLen[lens[l]];
+        if (typeof val === "string") {
+          packed.push({ zone: zone, chunk: val, len: nameLen });
+          continue;
+        }
+        var totalChars = Number(val);
+        if (!nameLen || !totalChars) continue;
+        if (leftover.length < totalChars) {
+          var reqd = totalChars <= 8192 ? 8192 : totalChars;
+          var u = unlzp(domainsLzp, maskLzp, reqd, state);
+          domainsLzp = domainsLzp.slice(u[1]);
+          maskLzp = maskLzp.slice(u[2]);
+          leftover += u[0];
+        }
+        packed.push({ zone: zone, chunk: leftover.slice(0, totalChars), len: nameLen });
+        leftover = leftover.slice(totalChars);
+      }
+    }
+    var out = [];
+    for (var p = 0; p < packed.length; p++) {
+      var item = packed[p];
+      var chunk = item.chunk;
+      var len = item.len || 0;
+      if (typeof chunk !== "string" || !len) continue;
+      for (var i = 0; i + len <= chunk.length; i += len) {
+        out.push(reversePatterns(chunk.slice(i, i + len), domainPatterns) + "." + item.zone);
+      }
+    }
+    return out;
   }
 
   function parsePacToLists(text) {
@@ -146,20 +315,29 @@
     }
 
     var exact = {};
-    var ips = {};
     extractQuotedDomains(source, exact);
 
-    try {
-      var runtime = collectFromRuntime(source);
-      (runtime.domains || []).forEach(function (d) { addDomain(exact, d); });
-      (runtime.ips || []).forEach(function (ip) {
-        if (IPV4_RE.test(ip) && ip.indexOf("0.") !== 0 && ip.indexOf("127.") !== 0) ips[ip] = 1;
-      });
-    } catch (e) {}
+    var domainsTable = parseDomainsTable(source);
+    var domainsLzp = extractAssignedString(source, "domains_lzp");
+    var maskLzp = extractAssignedString(source, "mask_lzp");
+    var maps = extractPatternMaps(source);
+    var expanded = expandLzDomains(domainsTable, domainsLzp, maskLzp, maps.domainPatterns, maps.maskPatterns);
+    for (var i = 0; i < expanded.length; i++) addDomain(exact, expanded[i]);
+
+    var ips = {};
+    var decodedIps = decodeIpList(source);
+    for (var k = 0; k < decodedIps.length; k++) {
+      var ip = decodedIps[k];
+      if (IPV4_RE.test(ip) && ip.indexOf("0.") !== 0 && ip.indexOf("127.") !== 0) ips[ip] = 1;
+    }
 
     var cidrs = parseSpecialCidrs(source);
     var domainList = Object.keys(exact).sort();
     var ipList = Object.keys(ips).sort(function (a, b) { return ipToInt(a) - ipToInt(b); });
+
+    if (domainsLzp && domainList.length < 100) {
+      throw new Error("Не удалось распаковать сжатый PAC (получено только " + domainList.length + " доменов). Обновите дополнение и нажмите «Обновить списки».");
+    }
     if (!domainList.length && !ipList.length && !cidrs.length) {
       throw new Error("Из PAC не удалось получить ни доменов, ни IP.");
     }
