@@ -47,30 +47,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   let editingListId = null;
   let editingProxyId = null;
   let extensionEnabled = false;
-  const HOST_ORIGINS = ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"];
-  const accessError = document.getElementById("accessError");
-  const accessErrorText = document.getElementById("accessErrorText");
-
-  async function refreshAccessErrors() {
-    const msgs = [];
-    try {
-      if (browser.permissions && browser.permissions.contains) {
-        const sites = await browser.permissions.contains({ origins: HOST_ORIGINS });
-        if (!sites) msgs.push("Нет доступа к сайтам. Включите его в разрешениях расширения — без этого прокси по спискам не работает.");
-      }
-    } catch (e) {}
-    if (accessError && accessErrorText) {
-      accessErrorText.textContent = msgs.join("\n\n");
-      accessError.style.display = msgs.length ? "block" : "none";
-    }
-  }
-
-  if (browser.permissions && browser.permissions.onAdded) {
-    browser.permissions.onAdded.addListener(refreshAccessErrors);
-  }
-  if (browser.permissions && browser.permissions.onRemoved) {
-    browser.permissions.onRemoved.addListener(refreshAccessErrors);
-  }
 
   tabs.forEach((tab, i) => {
     tab.addEventListener("click", () => {
@@ -978,7 +954,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     return {
       url,
       name: els.lName.value.trim(),
-      type: "proxy",
       intervalHours: hours,
       viaProxy: !!els.lViaProxy.checked
     };
@@ -1005,7 +980,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function loadState() {
-    const res = await browser.storage.local.get(["proxyConfig", "proxyServers", "proxyRules", "directRules", "proxyLists", "lastProxyError", "extensionEnabled"]);
+    const res = await browser.storage.local.get(["proxyConfig", "proxyServers", "proxyRules", "directRules", "proxyLists", "extensionEnabled"]);
     currentRules = Array.isArray(res.proxyRules) ? res.proxyRules : [];
     currentDirect = Array.isArray(res.directRules) ? res.directRules : [];
     currentLists = Array.isArray(res.proxyLists) ? res.proxyLists : [];
@@ -1038,7 +1013,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     } catch (_) {}
     refreshScopeUI();
     refreshIcon();
-    if (res.lastProxyError) flash(els.pStatus, res.lastProxyError, "#ff6b6b");
   }
 
   els.showAddProxy.addEventListener("click", () => openProxyForm(null));
@@ -1161,8 +1135,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       const proxyChanged = existing && !!existing.viaProxy !== form.viaProxy;
       const needFetch = !existing || urlChanged || proxyChanged;
       const res = await sendListMessage(needFetch
-        ? { action: "fetchList", id: editingListId, url: form.url, type: form.type, name: form.name, intervalHours: form.intervalHours, viaProxy: form.viaProxy }
-        : { action: "saveListMeta", id: editingListId, url: form.url, type: form.type, name: form.name, intervalHours: form.intervalHours, viaProxy: form.viaProxy });
+        ? { action: "fetchList", id: editingListId, url: form.url, name: form.name, intervalHours: form.intervalHours, viaProxy: form.viaProxy }
+        : { action: "saveListMeta", id: editingListId, url: form.url, name: form.name, intervalHours: form.intervalHours, viaProxy: form.viaProxy });
       if (res && res.success) {
         flash(els.lStatus, existing ? "Сохранено" : "Список добавлен");
         showListsMain();
@@ -1245,9 +1219,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       extensionEnabled = !!c.extensionEnabled.newValue && hasConfiguredProxy();
       refreshPowerBtn();
     }
-    if (c.lastProxyError && c.lastProxyError.newValue) flash(els.pStatus, c.lastProxyError.newValue, "#ff6b6b");
   });
 
-  await refreshAccessErrors();
   await loadState();
 });

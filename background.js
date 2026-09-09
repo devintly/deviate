@@ -42,9 +42,9 @@ function migrateProxyServers(servers, fallback) {
   return withActiveProxy(list, keep);
 }
 
-let pE = {}, pS = {}, bE = {}, bS = {}, dE = {}, dS = {};
-let pIp = {}, bIp = {}, dIp = {}, pCidr = [], bCidr = [];
-let pPac = [], bPac = [];
+let pE = {}, pS = {}, dE = {}, dS = {};
+let pIp = {}, dIp = {}, pCidr = [];
+let pPac = [];
 const ALL_WEB_URLS = ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"];
 const tabHosts = {};
 const tabProxied = {};
@@ -86,7 +86,7 @@ function parseList(text) {
   return Array.from(domains);
 }
 
-function ingestRemote(url, type, text) {
+function ingestRemote(url, text) {
   if (PacParse.isHtmlDocument(text)) {
     throw new Error("Сервер отдал HTML-страницу (часто IPFS-шлюз), а не PAC. Не сохраняйте файл через «Сохранить как» — добавьте URL списка в расширение, оно скачает PAC само.");
   }
@@ -95,7 +95,7 @@ function ingestRemote(url, type, text) {
     return {
       id: Date.now(),
       url,
-      type,
+      type: "proxy",
       format: "pac",
       packed: lists.packed,
       patterns: lists.patterns,
@@ -113,7 +113,7 @@ function ingestRemote(url, type, text) {
     const preview = String(text || "").replace(/\s+/g, " ").trim().slice(0, 180);
     throw new Error(preview ? `Ответ не похож на PAC-файл: ${preview}` : "Пустой ответ вместо PAC-файла");
   }
-  return { id: Date.now(), url, type, format: "txt", domains, ips: [], cidrs: [], domainCount: domains.length, ipCount: 0 };
+  return { id: Date.now(), url, type: "proxy", format: "txt", domains, ips: [], cidrs: [], domainCount: domains.length, ipCount: 0 };
 }
 
 function addListTargets(list, exact, suffix, ipMap, cidrs) {
@@ -131,7 +131,6 @@ function addListTargets(list, exact, suffix, ipMap, cidrs) {
 }
 
 let hasIps = false;
-let hasBlock = false;
 let ffProxy = { type: "direct" };
 const dnsCache = new Map();
 const badgeWait = {};
@@ -142,13 +141,8 @@ function cacheProxy() {
   ffProxy = PacParse.userProxyToFirefox(proxyConfig);
   hasIps = false;
   for (const _ in pIp) { hasIps = true; break; }
-  if (!hasIps) for (const _ in bIp) { hasIps = true; break; }
   if (!hasIps) for (const _ in dIp) { hasIps = true; break; }
-  if (!hasIps) hasIps = pCidr.length + bCidr.length > 0;
-  hasBlock = bPac.length > 0 || bCidr.length > 0;
-  if (!hasBlock) for (const _ in bE) { hasBlock = true; break; }
-  if (!hasBlock) for (const _ in bS) { hasBlock = true; break; }
-  if (!hasBlock) for (const _ in bIp) { hasBlock = true; break; }
+  if (!hasIps) hasIps = pCidr.length > 0;
 }
 
 function addHostRules(rules, exact, suffix, ipMap) {
@@ -169,9 +163,9 @@ function addHostRules(rules, exact, suffix, ipMap) {
 }
 
 function rebuildMaps() {
-  pE = {}; pS = {}; bE = {}; bS = {}; dE = {}; dS = {};
-  pIp = {}; bIp = {}; dIp = {}; pCidr = []; bCidr = [];
-  pPac = []; bPac = [];
+  pE = {}; pS = {}; dE = {}; dS = {};
+  pIp = {}; dIp = {}; pCidr = [];
+  pPac = [];
   addHostRules(proxyRules, pE, pS, pIp);
   addHostRules(directRules, dE, dS, dIp);
   proxyLists.forEach(list => {
@@ -210,16 +204,6 @@ function isDirectHost(host) {
   return matchMaps(host, dE, dS) || PacParse.matchIpLiteral(host, dIp, []);
 }
 
-function isBlockedHost(host) {
-  host = canonHost(host);
-  if (!hasBlock) return false;
-  if (matchMaps(host, bE, bS) || PacParse.matchIpLiteral(host, bIp, bCidr)) return true;
-  for (let i = 0; i < bPac.length; i++) {
-    if (PacParse.matchPacHost(host, bPac[i])) return true;
-  }
-  return false;
-}
-
 function isProxiedHost(host) {
   host = canonHost(host);
   if (matchMaps(host, pE, pS) || PacParse.matchIpLiteral(host, pIp, pCidr)) return true;
@@ -231,7 +215,7 @@ function isProxiedHost(host) {
 
 function hostIsProxied(host) {
   if (!extensionEnabled || !host) return false;
-  if (isDirectHost(host) || isBlockedHost(host)) return false;
+  if (isDirectHost(host)) return false;
   return isProxiedHost(host);
 }
 
@@ -310,7 +294,6 @@ function decideProxySync(host) {
   if (fetchProxyHosts[host]) return ffProxy;
   if (!extensionEnabled) return { type: "direct" };
   if (isDirectHost(host)) return { type: "direct" };
-  if (isBlockedHost(host)) return { type: "http", host: "127.0.0.1", port: 9 };
   if (isProxiedHost(host)) return ffProxy;
   return null;
 }
@@ -337,11 +320,11 @@ function onProxyRequest(requestInfo) {
   const tabId = requestInfo.tabId;
   const sync = decideProxySync(host);
   if (sync) {
-    rememberTabHost(tabId, host, sync.type !== "direct" && sync.port !== 9);
+    rememberTabHost(tabId, host, sync.type !== "direct");
     scheduleBadge(tabId);
     return sync;
   }
-  if (!hasIps || !browser.dns || !browser.dns.resolve || PacParse.IPV4_RE.test(host) || host.indexOf(":") >= 0) {
+  if (!hasIps || PacParse.IPV4_RE.test(host) || host.indexOf(":") >= 0) {
     rememberTabHost(tabId, host, false);
     return { type: "direct" };
   }
@@ -349,7 +332,7 @@ function onProxyRequest(requestInfo) {
     for (let i = 0; i < addrs.length; i++) {
       const hit = decideProxySync(String(addrs[i] || "").replace(/^\[|\]$/g, ""));
       if (hit) {
-        rememberTabHost(tabId, host, hit.port !== 9);
+        rememberTabHost(tabId, host, hit.type !== "direct");
         scheduleBadge(tabId);
         return hit;
       }
@@ -383,10 +366,6 @@ function recountTabProxied() {
   });
 }
 
-function applyProxy() {
-  rebuildMaps();
-}
-
 function toolbarIconOn() {
   return !!(extensionEnabled && proxyConfig && proxyConfig.host);
 }
@@ -415,7 +394,7 @@ async function updateBadge(tabId) {
   try {
     if (!badgeColorsReady) {
       await browser.action.setBadgeBackgroundColor({ color: "#6d6f78" });
-      if (browser.action.setBadgeTextColor) await browser.action.setBadgeTextColor({ color: "#ffffff" });
+      await browser.action.setBadgeTextColor({ color: "#ffffff" });
       badgeColorsReady = true;
     }
     await browser.action.setBadgeText({ tabId, text });
@@ -472,7 +451,7 @@ async function withFetchRoute(url, viaProxy, fn) {
   }
 }
 
-async function fetchAndStoreList(url, type, existingId, msg) {
+async function fetchAndStoreList(url, existingId, msg) {
   url = String(url || "").trim();
   if (!url.startsWith("http")) throw new Error("Введите корректный URL");
   if (findListByUrl(url, existingId)) throw new Error("Список добавить нельзя, он уже существует");
@@ -482,11 +461,11 @@ async function fetchAndStoreList(url, type, existingId, msg) {
     const r = await fetch(url, {
       cache: "no-store",
       headers: { Accept: "application/x-ns-proxy-autoconfig, text/plain, application/javascript, */*" },
-      signal: AbortSignal.timeout ? AbortSignal.timeout(45000) : undefined
+      signal: AbortSignal.timeout(45000)
     });
     const text = await r.text();
     if (!r.ok) throw new Error(`HTTP ${r.status}: ${text.replace(/\s+/g, " ").trim().slice(0, 160)}`);
-    return ingestRemote(url, "proxy", text);
+    return ingestRemote(url, text);
   });
   delete item.pacScript;
   delete item.pacIndex;
@@ -527,7 +506,7 @@ async function updateAllLists() {
   for (const list of proxyLists) {
     if (!list.url) continue;
     try {
-      await fetchAndStoreList(list.url, list.type, list.id, list);
+      await fetchAndStoreList(list.url, list.id, list);
       updated++;
     } catch (e) {}
   }
@@ -545,7 +524,7 @@ async function updateDueLists() {
     const hours = Number(list.intervalHours) > 0 ? Number(list.intervalHours) : 12;
     if (now - (Number(list.updatedAt) || 0) < hours * 3600000) continue;
     try {
-      await fetchAndStoreList(list.url, list.type, list.id, list);
+      await fetchAndStoreList(list.url, list.id, list);
       updated++;
     } catch (e) {}
   }
@@ -558,15 +537,15 @@ async function updateDueLists() {
 
 browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === "fetchList") {
-    fetchAndStoreList(msg.url, msg.type, msg.id, msg)
-      .then(() => applyProxy())
+    fetchAndStoreList(msg.url, msg.id, msg)
+      .then(() => rebuildMaps())
       .then(() => sendResponse({ success: true }))
       .catch(e => sendResponse({ success: false, error: String(e.message || e) }));
     return true;
   }
   if (msg.action === "saveListMeta") {
     saveListMeta(msg)
-      .then(() => applyProxy())
+      .then(() => rebuildMaps())
       .then(() => sendResponse({ success: true }))
       .catch(e => sendResponse({ success: false, error: String(e.message || e) }));
     return true;
@@ -577,8 +556,8 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ success: false, error: "Список не найден" });
       return true;
     }
-    fetchAndStoreList(list.url, list.type, list.id, list)
-      .then(() => applyProxy())
+    fetchAndStoreList(list.url, list.id, list)
+      .then(() => rebuildMaps())
       .then(() => sendResponse({ success: true }))
       .catch(e => sendResponse({ success: false, error: String(e.message || e) }));
     return true;
@@ -617,13 +596,9 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
     return true;
   }
-  if (msg.action === "getTabDomains" || msg.action === "getUnproxiedDomains") {
+  if (msg.action === "getTabDomains") {
     const domains = tabHosts[msg.tabId] ? Array.from(tabHosts[msg.tabId]) : [];
-    sendResponse({
-      domains: msg.action === "getTabDomains"
-        ? domains.sort()
-        : domains.filter(d => !isProxiedHost(d) && !isBlockedHost(d))
-    });
+    sendResponse({ domains: domains.sort() });
     return true;
   }
 });
@@ -694,7 +669,6 @@ browser.storage.local.get(["proxyConfig", "proxyServers", "proxyRules", "directR
   }
   if (Object.keys(persist).length) await browser.storage.local.set(persist);
   const stale = proxyLists.some(isStalePac);
-  try { await browser.proxy.settings.clear({}); } catch (e) {}
   rebuildMaps();
   await syncToolbarIcon();
   await refreshActiveBadge();
