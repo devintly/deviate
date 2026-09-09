@@ -48,11 +48,21 @@
     .domains-panel.open { display: block; }
     .domains-list { max-height: 220px; overflow-y: auto; }
     .domains-empty { font-size: 12px; color: #b5bac1; text-align: center; padding: 8px 4px; }
-    .domain-check { display: flex; align-items: center; gap: 8px; padding: 7px 8px; background: #1e1f22; border-radius: 8px; margin-bottom: 6px; font-size: 12px; cursor: pointer; }
+    .domain-check { display: flex; align-items: flex-start; gap: 8px; padding: 7px 8px; background: #1e1f22; border-radius: 8px; margin-bottom: 6px; font-size: 12px; cursor: pointer; }
     .domain-check:last-child { margin-bottom: 0; }
-    .domain-check span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-    .domain-check input[type="checkbox"] { width: 16px; height: 16px; margin: 0; flex-shrink: 0; accent-color: #5865f2; cursor: pointer; }
+    .domain-check input[type="checkbox"] { width: 16px; height: 16px; margin: 2px 0 0; flex-shrink: 0; accent-color: #5865f2; cursor: pointer; }
+    .domain-meta { flex: 1; min-width: 0; }
+    .domain-name { display: block; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .domain-note { display: block; font-size: 10px; color: #b5bac1; font-weight: 400; margin-top: 2px; line-height: 1.35; }
+    .domain-note.covered { color: #57f287; }
     .domains-save { width: 100%; margin-top: 12px; flex: none; }
+    .scope-row { display: none; gap: 6px; margin: 0 0 12px; }
+    .scope-row.show { display: flex; }
+    .scope-btn { flex: 1; min-width: 0; min-height: 32px; padding: 6px 8px; font-size: 11px; background: #1e1f22; color: #b5bac1; }
+    .scope-btn:hover { background: #35373c; }
+    .scope-btn.active { background: #5865f2; color: #fff; }
+    .scope-note { font-size: 11px; color: #57f287; margin: 0 0 10px; line-height: 1.35; }
+    .scope-note:empty { display: none; margin: 0; }
   </style>
 </head>
 <body>
@@ -75,6 +85,11 @@
           <input id="domainInput" type="text" placeholder="*.example.com">
           <div id="statusIcon" class="statusIcon">❌</div>
         </div>
+        <div id="domainScope" class="scope-row">
+          <button id="scopeHostBtn" class="scope-btn active" type="button">Этот домен</button>
+          <button id="scopeApexBtn" class="scope-btn" type="button">Основной домен</button>
+        </div>
+        <div id="domainCovered" class="scope-note"></div>
         <div class="row">
           <button id="toggleRuleBtn" class="primary" type="button">Добавить домен</button>
           <button id="viewDomainsBtn" class="accent" type="button" title="Домены текущей вкладки">Посмотреть все домены</button>

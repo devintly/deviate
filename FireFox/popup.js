@@ -4,6 +4,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const els = {
     domainInput: document.getElementById("domainInput"), statusIcon: document.getElementById("statusIcon"),
     toggleRule: document.getElementById("toggleRuleBtn"), viewDomains: document.getElementById("viewDomainsBtn"),
+    scopeHost: document.getElementById("scopeHostBtn"), scopeApex: document.getElementById("scopeApexBtn"),
+    domainScope: document.getElementById("domainScope"), domainCovered: document.getElementById("domainCovered"),
     domainsPanel: document.getElementById("domainsPanel"), domainsList: document.getElementById("domainsList"),
     domainsEmpty: document.getElementById("domainsEmpty"), saveDomains: document.getElementById("saveDomainsBtn"),
     rulesStatus: document.getElementById("rulesStatus"), openList: document.getElementById("openListBtn"),
@@ -21,6 +23,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   let currentLists = [];
   let activeTab = null;
   let domainsPanelOpen = false;
+  let pageHost = "";
+  let pageApex = "";
+  let scopeMode = "host";
   const HOST_ORIGINS = ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"];
   const accessError = document.getElementById("accessError");
   const accessErrorText = document.getElementById("accessErrorText");
@@ -71,10 +76,89 @@ document.addEventListener("DOMContentLoaded", async () => {
     const n = normalize(rule);
     return !!n && currentRules.some(r => normalize(r) === n);
   }
+  function isIpHost(h) {
+    return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(h) || (h || "").indexOf(":") >= 0;
+  }
+  const MULTI_SUFFIX = {
+    "ac.uk":1,"co.uk":1,"gov.uk":1,"ltd.uk":1,"me.uk":1,"net.uk":1,"org.uk":1,"plc.uk":1,"sch.uk":1,
+    "com.au":1,"net.au":1,"org.au":1,"edu.au":1,"gov.au":1,"asn.au":1,"id.au":1,
+    "co.nz":1,"net.nz":1,"org.nz":1,"co.jp":1,"ne.jp":1,"or.jp":1,"ac.jp":1,"go.jp":1,
+    "com.br":1,"net.br":1,"org.br":1,"com.tr":1,"com.ua":1,"co.ua":1,"org.ua":1,
+    "com.cn":1,"net.cn":1,"org.cn":1,"com.tw":1,"com.hk":1,"co.kr":1,"com.mx":1,
+    "co.za":1,"co.in":1,"net.in":1,"org.in":1,"co.il":1,"com.sg":1
+  };
+  function apexDomain(host) {
+    const h = normalize(host).replace(/^\*\./, "");
+    if (!h || isIpHost(h)) return h;
+    const parts = h.split(".").filter(Boolean);
+    if (parts.length <= 2) return h;
+    const last2 = parts.slice(-2).join(".");
+    if (MULTI_SUFFIX[last2] && parts.length >= 3) return parts.slice(-3).join(".");
+    return last2;
+  }
+  function hostOfRule(rule) { return normalize(rule).replace(/^\*\./, ""); }
+  function isUnderApex(rule, apex) {
+    const h = hostOfRule(rule);
+    return !!apex && (h === apex || h.endsWith("." + apex));
+  }
+  function coveringParentRule(host) {
+    const exact = toGuiRule(host);
+    return currentRules.find(r => normalize(r) !== normalize(exact) && matches(host, r)) || "";
+  }
+  function currentTargetRule() {
+    if (scopeMode === "apex" && pageApex) return toGuiRule(pageApex);
+    return toGuiRule(pageHost || els.domainInput.value);
+  }
+  function formatHostList(arr, max) {
+    if (!arr.length) return "";
+    if (arr.length <= max) return arr.join(", ");
+    return arr.slice(0, max).join(", ") + " и ещё " + (arr.length - max);
+  }
+  function groupHostsByApex(hosts) {
+    const map = new Map();
+    hosts.forEach(host => {
+      const h = String(host || "").trim().toLowerCase();
+      if (!h) return;
+      const apex = apexDomain(h) || h;
+      if (!map.has(apex)) map.set(apex, []);
+      if (map.get(apex).indexOf(h) < 0) map.get(apex).push(h);
+    });
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }
+  function refreshCoveredNote() {
+    const host = pageHost || hostOfRule(els.domainInput.value);
+    const parent = coveringParentRule(host);
+    const exact = toGuiRule(host);
+    if (parent && !hasUserRule(exact)) els.domainCovered.textContent = `Покрыто правилом ${parent}`;
+    else els.domainCovered.textContent = "";
+  }
+  function refreshScopeUI() {
+    const hasChoice = !!(pageHost && pageApex && pageHost !== pageApex && !isIpHost(pageHost));
+    els.domainScope.classList.toggle("show", hasChoice);
+    if (hasChoice) {
+      els.scopeHost.textContent = `Этот: ${toGuiRule(pageHost)}`;
+      els.scopeApex.textContent = `Основной: ${toGuiRule(pageApex)}`;
+      els.scopeHost.classList.toggle("active", scopeMode === "host");
+      els.scopeApex.classList.toggle("active", scopeMode === "apex");
+    } else {
+      scopeMode = "host";
+    }
+    refreshCoveredNote();
+  }
+  function setScope(mode, writeInput) {
+    scopeMode = mode === "apex" ? "apex" : "host";
+    if (writeInput) {
+      const rule = currentTargetRule();
+      if (rule) els.domainInput.value = rule;
+    }
+    refreshScopeUI();
+    refreshIcon();
+  }
   function refreshIcon() {
     const v = els.domainInput.value.trim();
     els.statusIcon.textContent = currentRules.some(r => matches(v, r)) ? "✅" : "❌";
     refreshToggleBtn();
+    refreshCoveredNote();
   }
   function refreshToggleBtn() {
     const rule = toGuiRule(els.domainInput.value);
@@ -121,24 +205,46 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function renderDomainsList(domains) {
     els.domainsList.textContent = "";
-    if (!domains.length) {
+    const groups = groupHostsByApex(domains);
+    if (!groups.length) {
       els.domainsEmpty.style.display = "block";
       return;
     }
     els.domainsEmpty.style.display = "none";
-    domains.forEach(host => {
-      const rule = toGuiRule(host);
+    groups.forEach(([apex, hosts]) => {
+      const rule = toGuiRule(apex);
+      const inList = hasUserRule(rule);
+      const extras = hosts.filter(h => h !== apex && h !== "www." + apex);
+      const specific = currentRules.filter(r => {
+        const hr = hostOfRule(r);
+        return hr && hr !== apex && isUnderApex(r, apex);
+      });
       const row = document.createElement("label");
       row.className = "domain-check";
       const cb = document.createElement("input");
       cb.type = "checkbox";
       cb.dataset.rule = rule;
-      cb.checked = hasUserRule(rule);
-      const span = document.createElement("span");
-      span.textContent = rule;
-      span.title = host;
+      cb.dataset.apex = apex;
+      cb.checked = inList;
+      const meta = document.createElement("div");
+      meta.className = "domain-meta";
+      const name = document.createElement("span");
+      name.className = "domain-name";
+      name.textContent = rule;
+      name.title = hosts.join(", ");
+      meta.appendChild(name);
+      const notes = [];
+      if (extras.length) notes.push("на вкладке: " + formatHostList(extras, 3));
+      if (inList) notes.push("покрывает все поддомены");
+      else if (specific.length) notes.push("уже в правилах: " + formatHostList(specific, 3));
+      if (notes.length) {
+        const note = document.createElement("span");
+        note.className = "domain-note" + (inList || specific.length ? " covered" : "");
+        note.textContent = notes.join(" · ");
+        meta.appendChild(note);
+      }
       row.appendChild(cb);
-      row.appendChild(span);
+      row.appendChild(meta);
       els.domainsList.appendChild(row);
     });
   }
@@ -153,12 +259,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     let added = 0, removed = 0;
     els.domainsList.querySelectorAll("input[type='checkbox']").forEach(cb => {
       const rule = cb.dataset.rule;
+      const apex = cb.dataset.apex || hostOfRule(rule);
       if (!rule) return;
       if (cb.checked) {
         if (!hasUserRule(rule)) { currentRules.push(rule); added++; }
-      } else if (hasUserRule(rule)) {
-        currentRules = currentRules.filter(i => normalize(i) !== normalize(rule));
-        removed++;
+        const before = currentRules.length;
+        currentRules = currentRules.filter(r => normalize(r) === normalize(rule) || !isUnderApex(r, apex));
+        if (currentRules.length < before) removed += before - currentRules.length;
+      } else if (currentRules.some(r => isUnderApex(r, apex))) {
+        const before = currentRules.length;
+        currentRules = currentRules.filter(r => !isUnderApex(r, apex));
+        removed += before - currentRules.length;
       }
     });
     return { added, removed };
@@ -226,9 +337,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (tabs[0] && tabs[0].url) {
         activeTab = tabs[0];
         const host = new URL(activeTab.url).hostname;
-        if (host) els.domainInput.value = toGuiRule(host);
+        if (host) {
+          pageHost = normalize(host).replace(/^\*\./, "");
+          pageApex = apexDomain(pageHost);
+          scopeMode = "host";
+          els.domainInput.value = toGuiRule(pageHost);
+        }
       }
     } catch (_) {}
+    refreshScopeUI();
     refreshIcon();
     if (res.lastProxyError) flash(els.pStatus, res.lastProxyError, "#ff6b6b");
   }
@@ -265,6 +382,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     checkAutoReload(rule);
   });
+
+  els.scopeHost.addEventListener("click", () => setScope("host", true));
+  els.scopeApex.addEventListener("click", () => setScope("apex", true));
 
   els.viewDomains.addEventListener("click", async () => {
     if (domainsPanelOpen) {
@@ -330,7 +450,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   els.openList.addEventListener("click", () => browser.tabs.create({ url: "list.html" }));
-  els.domainInput.addEventListener("input", refreshIcon);
+  els.domainInput.addEventListener("input", () => {
+    const h = hostOfRule(els.domainInput.value);
+    if (h) {
+      pageHost = h;
+      pageApex = apexDomain(h);
+      if (pageApex && h === pageApex) scopeMode = "host";
+    }
+    refreshScopeUI();
+    refreshIcon();
+  });
 
   browser.storage.onChanged.addListener((c, a) => {
     if (a !== "local") return;
