@@ -146,7 +146,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (MULTI_SUFFIX[last2] && parts.length >= 3) return parts.slice(-3).join(".");
     return last2;
   }
-  function coveringParentAction(host) {
+  function coveringParentAction(host, proxyList, directList) {
     const hostN = hostOfRule(host);
     let bestLen = -1, bestAct = "";
     function consider(list, act) {
@@ -159,8 +159,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
       });
     }
-    consider(currentRules, "proxy");
-    consider(currentDirect, "direct");
+    consider(proxyList || currentRules, "proxy");
+    consider(directList || currentDirect, "direct");
     return bestAct;
   }
   function currentTargetRule() {
@@ -241,12 +241,28 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!host || !covers) return null;
     return covers[host] || covers[normalize(host)] || null;
   }
-  function statusForHost(host, covers, draft) {
+  function collectOverlayRules() {
+    const proxy = [];
+    const direct = [];
+    if (!els.domainsList) return { proxy, direct };
+    els.domainsList.querySelectorAll("input.domain-pick").forEach(cb => {
+      if (!cb.checked) return;
+      const rule = cb.dataset.rule;
+      if (!rule) return;
+      const line = cb.closest(".domain-line");
+      const mode = line && line.querySelector("input.mode-direct");
+      if (mode && mode.checked) direct.push(rule);
+      else proxy.push(rule);
+    });
+    return { proxy, direct };
+  }
+  function statusForHost(host, covers, overlay) {
     if (!host) return STATUS.none;
-    if (draft && draft.picked) return draft.direct ? STATUS.directFull : STATUS.proxyFull;
-    if (hasFullIn(currentRules, host)) return STATUS.proxyFull;
-    if (hasFullIn(currentDirect, host)) return STATUS.directFull;
-    const parentAct = coveringParentAction(host);
+    const proxy = overlay && overlay.proxy || currentRules;
+    const direct = overlay && overlay.direct || currentDirect;
+    if (hasFullIn(proxy, host)) return STATUS.proxyFull;
+    if (hasFullIn(direct, host)) return STATUS.directFull;
+    const parentAct = coveringParentAction(host, proxy, direct);
     if (parentAct === "direct") return STATUS.directApex;
     if (parentAct === "proxy") return STATUS.proxyApex;
     const info = coverOf(host, covers);
@@ -275,13 +291,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       const line = box.closest(".domain-line");
       const mode = line && line.querySelector("input.mode-direct");
       if (mode) mode.checked = isDirectRule(rule);
-      if (line) {
-        line.classList.toggle("picked", box.checked);
-        paintStatusEl(line.querySelector(".mini-status"), statusForHost(hostOfRule(rule), domainCovers, {
-          picked: box.checked,
-          direct: isDirectRule(rule)
-        }));
-      }
+      if (line) line.classList.toggle("picked", box.checked);
+    });
+    const overlay = collectOverlayRules();
+    els.domainsList.querySelectorAll(".domain-line").forEach(line => {
+      const pick = line.querySelector("input.domain-pick");
+      const mark = line.querySelector(".mini-status");
+      if (!pick) return;
+      line.classList.toggle("picked", !!pick.checked);
+      paintStatusEl(mark, statusForHost(hostOfRule(pick.dataset.rule), domainCovers, overlay));
     });
   }
   function refreshIcon() {
@@ -351,15 +369,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     els.domainsEmpty.style.display = "none";
     covers = covers || {};
-    function refreshDomainLine(line) {
+    function refreshDomainLine(line, overlay) {
       const pick = line.querySelector("input.domain-pick");
-      const mode = line.querySelector("input.mode-direct");
       const mark = line.querySelector(".mini-status");
       if (!pick) return;
       const picked = !!pick.checked;
       line.classList.toggle("picked", picked);
       const host = hostOfRule(pick.dataset.rule);
-      paintStatusEl(mark, statusForHost(host, covers, { picked, direct: !!(mode && mode.checked) }));
+      paintStatusEl(mark, statusForHost(host, covers, overlay || collectOverlayRules()));
+    }
+    function refreshAllDomainLines() {
+      const overlay = collectOverlayRules();
+      els.domainsList.querySelectorAll(".domain-line").forEach(line => refreshDomainLine(line, overlay));
     }
     function syncApex(apex, checked, direct) {
       els.domainsList.querySelectorAll("input.domain-pick").forEach(box => {
@@ -368,8 +389,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         const line = box.closest(".domain-line");
         const mode = line && line.querySelector("input.mode-direct");
         if (mode && direct != null) mode.checked = direct;
-        if (line) refreshDomainLine(line);
       });
+      refreshAllDomainLines();
     }
     function appendLine(parent, rule, kind, apex, bold) {
       const line = document.createElement("div");
@@ -409,11 +430,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       text.addEventListener("click", () => { cb.checked = !cb.checked; cb.dispatchEvent(new Event("change")); });
       cb.addEventListener("change", () => {
         if (kind === "apex") syncApex(apex, cb.checked, mode.checked);
-        else refreshDomainLine(line);
+        else refreshAllDomainLines();
       });
       mode.addEventListener("change", () => {
         if (kind === "apex") syncApex(apex, cb.checked, mode.checked);
-        else refreshDomainLine(line);
+        else refreshAllDomainLines();
       });
       refreshDomainLine(line);
       parent.appendChild(line);
@@ -429,6 +450,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!same) appendLine(item, apexRule, "apex", apex, false);
       els.domainsList.appendChild(item);
     });
+    refreshAllDomainLines();
   }
 
   function closeDomainsPanel() {
