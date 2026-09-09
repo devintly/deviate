@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Deviate",
-  "version": "1.4.9",
+  "version": "1.8.9",
   "description": "Deviate — обход блокировок: проксирование сайтов по правилам средствами SOCKS/HTTP.",
   "browser_specific_settings": {
     "gecko": {
@@ -30,7 +30,9 @@
     "wss://*/*"
   ],
   "icons": {
-    "64": "icon.png"
+    "48": "icon.png",
+    "96": "icon.png",
+    "128": "icon.png"
   },
   "background": {
     "scripts": ["pac-parse.js", "background.js"]
@@ -39,7 +41,9 @@
     "default_popup": "popup.html",
     "default_title": "Deviate",
     "default_icon": {
-      "48": "icon.png"
+      "48": "icon.png",
+      "96": "icon.png",
+      "128": "icon.png"
     }
   }
 }

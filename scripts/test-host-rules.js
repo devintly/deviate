@@ -1,0 +1,71 @@
+"use strict";
+
+function isIpHost(h) {
+  h = String(h || "").replace(/^\*\./, "");
+  return /^(?:\d{1,3}\.){3}\d{1,3}$/.test(h) || h.indexOf(":") >= 0;
+}
+function normalize(v) {
+  let s = String(v || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  const wild = s.startsWith("*.");
+  if (wild) s = s.slice(2);
+  s = s.replace(/^\.+|\.+$/g, "");
+  if (!s) return "";
+  if (isIpHost(s)) return s;
+  return wild ? "*." + s : s;
+}
+function addHostRules(rules) {
+  const exact = {}, suffix = {}, ipMap = {};
+  (rules || []).forEach(r => {
+    r = normalize(r);
+    if (!r) return;
+    const wild = r.startsWith("*.");
+    const host = wild ? r.slice(2) : r;
+    if (!host) return;
+    if (isIpHost(host)) {
+      exact[host] = 1;
+      if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(host)) ipMap[host] = 1;
+      return;
+    }
+    if (wild) suffix["." + host] = 1;
+    else exact[host] = 1;
+  });
+  return { exact, suffix, ipMap };
+}
+function matchMaps(host, exact, suffix) {
+  host = (host || "").toLowerCase();
+  if (!host) return false;
+  if (exact[host]) return true;
+  const parts = host.split(".");
+  let current = "";
+  for (let i = parts.length - 1; i >= 0; i--) {
+    current = "." + parts[i] + current;
+    if (suffix[current]) return true;
+  }
+  return false;
+}
+
+function assert(cond, msg) {
+  if (!cond) throw new Error(msg);
+}
+
+const exactOnly = addHostRules(["cdn.example.com"]);
+assert(matchMaps("cdn.example.com", exactOnly.exact, exactOnly.suffix), "exact host");
+assert(!matchMaps("www.cdn.example.com", exactOnly.exact, exactOnly.suffix), "exact must not cover subdomain");
+assert(!matchMaps("example.com", exactOnly.exact, exactOnly.suffix), "exact must not cover parent");
+
+const wild = addHostRules(["*.example.com"]);
+assert(matchMaps("example.com", wild.exact, wild.suffix), "wildcard covers apex");
+assert(matchMaps("www.example.com", wild.exact, wild.suffix), "wildcard covers www");
+assert(matchMaps("cdn.example.com", wild.exact, wild.suffix), "wildcard covers subdomain");
+assert(!matchMaps("example.org", wild.exact, wild.suffix), "wildcard must not cover other tld");
+
+const ip = addHostRules(["*.8.8.8.8", "1.2.3.4"]);
+assert(matchMaps("8.8.8.8", ip.exact, ip.suffix), "ip from starred input");
+assert(matchMaps("1.2.3.4", ip.exact, ip.suffix), "plain ip");
+assert(!matchMaps("8.8.8.9", ip.exact, ip.suffix), "other ip");
+assert(ip.ipMap["8.8.8.8"] && ip.ipMap["1.2.3.4"], "ips indexed");
+assert(normalize("*.1.2.3.4") === "1.2.3.4", "star stripped from ip");
+assert(normalize("Example.COM") === "example.com", "plain domain kept exact");
+assert(normalize("*.Example.COM") === "*.example.com", "wildcard kept");
+
+console.log("test-host-rules: ok");

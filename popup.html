@@ -3,45 +3,152 @@
 <head>
   <meta charset="UTF-8">
   <style>
-    body { margin: 0; width: 380px; background: #1e1f22; color: #f2f3f5; font-family: Inter, Arial, sans-serif; }
-    .wrap { padding: 14px; }
-    .header { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 14px; font-size: 20px; font-weight: 700; color: #ffffff; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 440px; height: 480px; overflow: hidden; background: #1e1f22; color: #f2f3f5; font-family: Inter, Arial, sans-serif; }
+    .wrap { height: 100%; padding: 14px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    .header { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 14px; font-size: 20px; font-weight: 700; color: #ffffff; flex-shrink: 0; position: relative; }
     .header img { width: 28px; height: 28px; border-radius: 0; object-fit: cover; }
-    .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
-    .tab { flex: 1; border: 0; border-radius: 10px; background: #2b2d31; color: #b5bac1; padding: 10px 0; font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; transition: 0.15s; }
-    .tab.active { background: #5865f2; color: #ffffff; }
-    .panel { display: none; }
-    .panel.active { display: block; }
-    .card { background: #2b2d31; border-radius: 14px; padding: 12px; box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset; }
+    .power-btn { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 32px; min-width: 32px; min-height: 32px; padding: 6px; flex: none; background: #2b2d31; color: #949ba4; }
+    .power-btn:hover { background: #35373c; }
+    .power-btn.on { color: #57f287; background: rgba(87, 242, 135, 0.16); }
+    .power-btn.on:hover { background: rgba(87, 242, 135, 0.26); }
+    .power-btn.off { color: #949ba4; }
+    .power-btn svg { width: 18px; height: 18px; display: block; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-shrink: 0; }
+    .tab { flex: 1; border: 0; border-radius: 10px; background: #2b2d31; color: #b5bac1; padding: 8px 0; font-size: 12px; font-weight: 600; cursor: pointer; text-align: center; transition: 0.15s; }
+    .tab.active { background: #f0b232; color: #1e1f22; }
+    .panel { display: none; flex: 1; min-height: 0; min-width: 0; }
+    .panel.active { display: flex; flex-direction: column; }
+    .card { background: #2b2d31; border-radius: 14px; padding: 12px; box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset; flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
     .label { font-size: 11px; text-transform: uppercase; color: #b5bac1; margin: 0 0 6px; font-weight: 700; }
-    .row { display: flex; gap: 6px; }
+    .row { display: flex; gap: 8px; align-items: stretch; }
+    #panelRules .row { margin-bottom: 12px; }
 
-    .inputWrap { position: relative; display: flex; align-items: center; justify-content: center; background: #1e1f22; border-radius: 10px; margin-bottom: 12px; height: 48px; }
-    .inputWrap input { width: 100%; height: 100%; box-sizing: border-box; border: 0; outline: 0; background: transparent; color: #f2f3f5; font-size: 16px; font-weight: bold; text-align: center; padding: 0 40px; margin: 0; }
-    .statusIcon { position: absolute; right: 12px; width: 24px; text-align: center; font-size: 18px; pointer-events: none; }
+    input[type="text"], input[type="password"], input[type="number"], select { width: 100%; box-sizing: border-box; border: 0; outline: 0; background: #1e1f22; color: #f2f3f5; padding: 10px 12px; border-radius: 10px; font-size: 13px; margin: 0 0 12px; height: 36px; }
 
-    input[type="text"], input[type="password"], input[type="number"], select { width: 100%; box-sizing: border-box; border: 0; outline: 0; background: #1e1f22; color: #f2f3f5; padding: 12px; border-radius: 10px; font-size: 13px; margin-bottom: 12px; }
+    .inputWrap { position: relative; display: flex; align-items: center; background: #1e1f22; border-radius: 10px; margin: 0 0 8px; height: 32px; }
+    .inputWrap input[type="text"] { -webkit-appearance: none; appearance: none; width: 100%; height: 32px; min-height: 32px; max-height: 32px; margin: 0; padding: 0 44px 0 12px; background: transparent; font-size: 13px; font-weight: 700; text-align: center; line-height: 32px; border: 0; outline: 0; color: #f2f3f5; }
+    .statusIcon { position: absolute; right: 6px; top: 0; bottom: 0; min-width: 22px; width: auto; max-width: 48px; display: flex; align-items: center; justify-content: center; pointer-events: auto; cursor: default; user-select: none; }
+    .status-mark { display: inline-flex; align-items: center; justify-content: center; gap: 3px; }
+    .status-mark .mark-main { width: 16px; height: 16px; display: block; }
+    .status-mark .mark-list { width: 15px; height: 15px; display: block; }
+    .status-mark.none { color: #da373c; filter: drop-shadow(0 0 5px rgba(218, 55, 60, 0.5)); }
+    .status-mark.proxy { color: #57f287; filter: drop-shadow(0 0 5px rgba(87, 242, 135, 0.55)); }
+    .status-mark.direct { color: #00a8fc; filter: drop-shadow(0 0 5px rgba(0, 168, 252, 0.55)); }
 
-    button { border: 0; border-radius: 10px; padding: 8px 4px; font-size: 12px; font-weight: 700; cursor: pointer; transition: 0.15s ease; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; line-height: 1.3; min-height: 40px; }
+    button { -webkit-appearance: none; appearance: none; border: 0; border-radius: 8px; padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer; transition: 0.15s ease; display: flex; flex-direction: row; align-items: center; justify-content: center; text-align: center; line-height: 1.2; min-height: 32px; }
 
-    .primary { background: #5865f2; color: #fff; flex: 1; }
-    .primary:hover { background: #4752c4; }
-    .danger { background: #da373c; color: #fff; flex: 1; }
+    .primary { background: #f0b232; color: #1e1f22; flex: 1; min-width: 0; }
+    .primary:hover { background: #d49a22; }
+    .success { background: #248046; color: #fff; flex: 1; min-width: 0; }
+    .success:hover { background: #1a6334; }
+    .danger { background: #da373c; color: #fff; flex: 1; min-width: 0; }
     .danger:hover { background: #b52d31; }
-    .secondary { width: 100%; background: #404249; color: #fff; margin-top: 4px; flex: none; display: block; padding: 11px 12px; }
+    .icon-btn { width: 32px; min-width: 32px; min-height: 32px; flex: none; background: #404249; color: #fff; padding: 6px; }
+    .icon-btn:hover { background: #4e5058; }
+    .icon-btn.open { background: #f0b232; color: #1e1f22; }
+    .icon-btn svg { width: 16px; height: 16px; display: block; }
+    .secondary { width: 100%; background: #404249; color: #fff; margin: 0; flex: none; padding: 6px 10px; }
     .secondary:hover { background: #4e5058; }
+    .secondary + .secondary { margin-top: 8px; }
 
-    .hint { min-height: 18px; text-align: center; font-size: 12px; color: #57f287; margin-top: 8px; }
-    .footer { text-align: center; font-size: 11px; color: #949ba4; margin-top: 12px; }
-    .footer a { color: #00a8fc; text-decoration: none; }
-    .list-item { background: #1e1f22; border-radius: 8px; padding: 10px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
-    .list-item .info { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
-    .list-item .del { color: #da373c; cursor: pointer; font-weight: bold; padding: 5px; }
+    .hint { text-align: center; font-size: 12px; color: #57f287; margin-top: 8px; flex-shrink: 0; min-height: 16px; line-height: 1.3; }
+    .hint:empty { display: none; margin: 0; }
+    .footer { text-align: center; font-size: 11px; color: #949ba4; margin-top: 12px; flex-shrink: 0; }
+    .footer a { color: #f0b232; text-decoration: none; }
+    .lists-empty { font-size: 12px; color: #b5bac1; text-align: center; padding: 12px 4px; }
+    .lists-wrap { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; margin: 8px 0; }
+    .lists-add { width: 100%; flex: none; margin-top: 8px; }
+    .form-actions { display: flex; gap: 8px; margin-top: 8px; flex-shrink: 0; }
+    .form-actions .secondary { width: auto; flex: 1; margin-top: 0; }
+    .form-actions .primary, .form-actions .danger { flex: 1; min-height: 36px; }
+    .form-actions .busy { opacity: 0.6; }
+    #listsMain, #proxyMain, #listsForm, #proxyForm { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+    #listsForm, #proxyForm { overflow-x: hidden; overflow-y: auto; }
+    .list-card { display: flex; align-items: stretch; gap: 8px; background: #1e1f22; border-radius: 10px; padding: 8px 8px 8px 10px; margin-bottom: 8px; }
+    .list-card:last-child { margin-bottom: 0; }
+    .list-card-body { flex: 1; min-width: 0; }
+    .list-card-title { font-weight: 700; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .list-card-meta { font-size: 11px; color: #b5bac1; margin-top: 3px; }
+    .list-card-url { font-size: 10px; color: #949ba4; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .list-card-updated { font-size: 10px; color: #949ba4; margin-top: 3px; }
+    .list-card-actions { display: flex; flex-direction: column; justify-content: center; gap: 4px; margin: 0; flex-shrink: 0; }
+    .list-card-actions button { width: 28px; height: 28px; min-width: 28px; min-height: 28px; padding: 0; flex: none; background: #35373c; color: #f2f3f5; border-radius: 8px; }
+    .list-card-actions button:hover { background: #f0b232; color: #1e1f22; }
+    .list-card-actions button:disabled { opacity: 0.6; cursor: default; }
+    .list-card-actions button svg { width: 14px; height: 14px; display: block; }
+    .list-card-actions button.busy svg { animation: list-spin 0.8s linear infinite; }
+    @keyframes list-spin { to { transform: rotate(360deg); } }
+    .list-card-side { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+    .list-card .switch-ui { background: #404249; }
+    .list-card-side button { width: 28px; height: 28px; min-width: 28px; min-height: 28px; padding: 0; flex: none; background: #35373c; color: #f2f3f5; border-radius: 8px; }
+    .list-card-side button:hover { background: #f0b232; color: #1e1f22; }
+    .list-card-side button svg { width: 14px; height: 14px; display: block; }
+    .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 12px; font-size: 12px; font-weight: 700; color: #b5bac1; cursor: pointer; }
+    .switch-hint { display: block; font-size: 10px; font-weight: 400; color: #949ba4; margin-top: 2px; }
+    .switch { position: relative; width: 40px; height: 22px; flex-shrink: 0; }
+    .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .switch-ui { position: absolute; inset: 0; background: #1e1f22; border-radius: 11px; transition: background 0.15s, box-shadow 0.15s; }
+    .switch-ui::after { content: ""; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; background: #b5bac1; border-radius: 50%; transition: 0.15s; }
+    .switch input:checked + .switch-ui { background: #f0b232; }
+    .switch input:checked + .switch-ui::after { left: 21px; background: #fff; }
+    .switch.mode-switch .switch-ui {
+      background: #57f287;
+      box-shadow: 0 0 0 1px rgba(87, 242, 135, 0.35), 0 0 10px rgba(87, 242, 135, 0.4);
+    }
+    .switch.mode-switch input:checked + .switch-ui {
+      background: #00a8fc;
+      box-shadow: 0 0 0 1px rgba(0, 168, 252, 0.35), 0 0 10px rgba(0, 168, 252, 0.45);
+    }
+    .switch.mode-switch .switch-ui::after,
+    .switch.mode-switch input:checked + .switch-ui::after { background: #fff; }
+
+    .domains-overlay { display: none; position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,0.55); padding: 16px; overflow: hidden; }
+    .domains-overlay.open { display: flex; flex-direction: column; }
+    .domains-modal { background: #2b2d31; border-radius: 14px; padding: 12px; flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.45); overflow: hidden; }
+    .domains-list { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; }
+    .domains-empty { font-size: 12px; color: #b5bac1; text-align: center; padding: 8px 4px; }
+    .domain-item { background: #1e1f22; border-radius: 8px; padding: 6px 8px; margin-bottom: 6px; }
+    .domain-item:last-child { margin-bottom: 0; }
+    .domain-line { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 12px; }
+    .domain-line input.domain-pick { width: 16px; height: 16px; margin: 0; flex-shrink: 0; accent-color: #f0b232; cursor: pointer; }
+    .domain-line .mini-status { flex: none; min-width: 34px; height: 18px; display: flex; align-items: center; justify-content: center; }
+    .domain-line .mini-status .mark-main { width: 14px; height: 14px; }
+    .domain-line .mini-status .mark-list { width: 13px; height: 13px; }
+    .domain-line .domain-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; cursor: pointer; }
+    .domain-line .domain-apex { font-weight: 400; color: #b5bac1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; cursor: pointer; }
+    .domain-line .mode-wrap { display: none; flex: none; align-items: center; margin-left: 2px; }
+    .domain-line.picked .mode-wrap { display: flex; }
+    .domain-line .mode-wrap .switch { width: 32px; height: 18px; }
+    .domain-line .mode-wrap .switch-ui::after { width: 12px; height: 12px; left: 3px; top: 3px; }
+    .domain-line .mode-wrap .switch input:checked + .switch-ui::after { left: 17px; }
+    .domains-actions { margin-top: 12px; flex: none; }
+    .scope-row { display: none; gap: 6px; margin: 0 0 12px; }
+    .scope-row.show { display: flex; }
+    .scope-btn { flex: 1; min-width: 0; min-height: 32px; padding: 6px 8px; font-size: 11px; background: #1e1f22; color: #b5bac1; overflow: hidden; }
+    .scope-btn:hover { background: #35373c; }
+    .scope-btn.active { background: #f0b232; color: #1e1f22; }
+    .domain-mode { display: none; align-items: center; justify-content: space-between; gap: 6px; flex: 1; min-width: 0; min-height: 32px; margin: 0; padding: 0 8px; background: #1e1f22; border-radius: 8px; font-size: 10px; font-weight: 700; color: #b5bac1; cursor: pointer; }
+    .domain-mode.show { display: flex; }
+    .domain-mode .domain-mode-off { color: #57f287; }
+    .domain-mode .domain-mode-on { color: #b5bac1; }
+    .domain-mode.on .domain-mode-off { color: #b5bac1; }
+    .domain-mode.on .domain-mode-on { color: #00a8fc; }
+    .domain-mode .switch { width: 36px; height: 20px; }
+    .domain-mode .switch-ui::after { width: 14px; height: 14px; left: 3px; top: 3px; }
+    .domain-mode .switch input:checked + .switch-ui::after { left: 19px; }
+    .row.has-rule #toggleRuleBtn { flex: 0 1 auto; min-width: 110px; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="header"><span>Deviate</span><img src="icon.png" alt="Deviate"></div>
+    <div class="header">
+      <span>Deviate</span>
+      <img src="icon.png" alt="Deviate">
+      <button id="powerBtn" class="power-btn off" type="button" title="Включить расширение" aria-label="Включить расширение" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v8"/><path d="M7.4 6.4a7 7 0 1 0 9.2 0"/></svg>
+      </button>
+    </div>
     <div id="accessError" class="card" style="display:none; margin-bottom:14px; border:1px solid #da373c;">
       <div class="label" style="color:#ff6b6b;">Ошибка доступа</div>
       <div id="accessErrorText" style="font-size:12px; color:#f2f3f5; line-height:1.45; white-space:pre-line;"></div>
@@ -56,66 +163,110 @@
       <div class="card">
         <div class="label">Текущий домен</div>
         <div class="inputWrap">
-          <input id="domainInput" type="text" placeholder="*.example.com">
-          <div id="statusIcon" class="statusIcon">❌</div>
+          <input id="domainInput" type="text" placeholder="example.com или *.example.com">
+          <div id="statusIcon" class="statusIcon" title="Не добавлен"></div>
         </div>
-        <div class="row">
-          <button id="addRuleBtn" class="primary"><span>Добавить этот</span><span>домен</span></button>
-          <button id="addAllBtn" class="primary" style="background:#f47b20;" title="Проксировать все домены вкладки">Все домены</button>
-          <button id="removeRuleBtn" class="danger">Удалить</button>
+        <div id="domainScope" class="scope-row">
+          <button id="scopeHostBtn" class="scope-btn active" type="button">Этот домен</button>
+          <button id="scopeApexBtn" class="scope-btn" type="button">Основной домен</button>
         </div>
-        <button id="openListBtn" class="secondary">Редактор правил</button>
+        <div class="row" id="domainActionRow">
+          <button id="toggleRuleBtn" class="success" type="button">Добавить домен</button>
+          <label id="domainModeSwitch" class="domain-mode">
+            <span class="domain-mode-off">Проксировать</span>
+            <span class="switch mode-switch"><input id="domainDirect" type="checkbox"><span class="switch-ui"></span></span>
+            <span class="domain-mode-on">Напрямую</span>
+          </label>
+          <button id="viewDomainsBtn" class="icon-btn" type="button" title="Домены текущей вкладки" aria-label="Домены текущей вкладки">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
+        </div>
+        <button id="openListBtn" class="secondary" type="button">Редактор правил</button>
         <div id="rulesStatus" class="hint"></div>
       </div>
     </div>
 
     <div id="panelProxy" class="panel">
       <div class="card">
-        <div class="label">Тип прокси</div>
-        <select id="proxyType">
-          <option value="socks">SOCKS5</option>
-          <option value="http">HTTP</option>
-          <option value="https">HTTPS</option>
-        </select>
-        <div class="label">IP адрес / Хост</div>
-        <input id="proxyHost" type="text" placeholder="127.0.0.1">
-        <div class="label">Порт</div>
-        <input id="proxyPort" type="number" placeholder="1080">
-
-        <div class="row">
-          <div style="flex:1;">
-            <div class="label">Логин (Опц.)</div>
-            <input id="proxyUser" type="text" placeholder="user">
-          </div>
-          <div style="flex:1;">
-            <div class="label">Пароль (Опц.)</div>
-            <input id="proxyPass" type="password" placeholder="password">
-          </div>
+        <div id="proxyMain">
+          <div id="proxyEmpty" class="lists-empty">Прокси пока нет</div>
+          <div id="proxyContainer" class="lists-wrap"></div>
+          <button id="showAddProxyBtn" class="primary lists-add" type="button">Добавить прокси</button>
+          <div id="proxyStatus" class="hint"></div>
         </div>
-
-        <button id="saveProxyBtn" class="secondary" style="background:#5865f2; width:100%;">Сохранить настройки</button>
-        <div id="proxyStatus" class="hint"></div>
+        <div id="proxyForm" style="display:none;">
+          <div class="label">Тип прокси</div>
+          <select id="proxyType">
+            <option value="socks">SOCKS5</option>
+            <option value="http">HTTP</option>
+            <option value="https">HTTPS</option>
+          </select>
+          <div class="label">IP адрес / Хост</div>
+          <input id="proxyHost" type="text" placeholder="127.0.0.1">
+          <div class="label">Порт</div>
+          <input id="proxyPort" type="number" min="1" max="65535" placeholder="1080">
+          <div class="row">
+            <div style="flex:1;">
+              <div class="label">Логин (Опц.)</div>
+              <input id="proxyUser" type="text" placeholder="user">
+            </div>
+            <div style="flex:1;">
+              <div class="label">Пароль (Опц.)</div>
+              <input id="proxyPass" type="password" placeholder="password">
+            </div>
+          </div>
+          <div class="form-actions">
+            <button id="saveProxyBtn" class="primary" type="button">Сохранить</button>
+            <button id="deleteProxyBtn" class="danger" type="button" style="display:none;">Удалить</button>
+          </div>
+          <button id="cancelProxyBtn" class="secondary lists-add" type="button">Отмена</button>
+          <div id="proxyFormStatus" class="hint"></div>
+        </div>
       </div>
     </div>
 
     <div id="panelLists" class="panel">
       <div class="card">
-        <div class="label">URL списка (.txt / AdGuard / PAC)</div>
-        <input id="listUrl" type="text" placeholder="https://.../filter.txt или https://.../proxy.pac">
-        <div class="label">Действие</div>
-        <select id="listAction">
-          <option value="proxy">Проксировать (Обход)</option>
-          <option value="block">Блокировать (Реклама/Трекеры)</option>
-        </select>
-        <button id="addListBtn" class="secondary" style="background:#5865f2; width:100%;">Скачать и применить список</button>
-        <button id="refreshListsBtn" class="secondary">Обновить списки</button>
-        <button id="toggleListsBtn" class="secondary" style="display:none;">Управление списками (0)</button>
-        <div id="listsContainer" style="margin-top: 10px; max-height: 160px; overflow-y: auto; display: none;"></div>
-        <div id="listStatus" class="hint"></div>
+        <div id="listsMain">
+          <button id="refreshListsBtn" class="secondary">Обновить все</button>
+          <div id="listsEmpty" class="lists-empty">Списков пока нет</div>
+          <div id="listsContainer" class="lists-wrap"></div>
+          <button id="showAddListBtn" class="primary lists-add" type="button">Добавить список</button>
+          <div id="listStatus" class="hint"></div>
+        </div>
+        <div id="listsForm" style="display:none;">
+          <div class="label">Название (необязательно)</div>
+          <input id="listName" type="text" placeholder="Если пусто — будет ссылка">
+          <div class="label">URL списка (.txt / AdGuard / PAC)</div>
+          <input id="listUrl" type="text" placeholder="https://.../filter.txt или https://.../proxy.pac">
+          <div class="label">Обновление (часы)</div>
+          <input id="listInterval" type="number" min="1" max="168" value="12" placeholder="12">
+          <label class="switch-row">
+            <span>Скачивать через прокси<span class="switch-hint">Выкл — напрямую</span></span>
+            <span class="switch"><input id="listViaProxy" type="checkbox"><span class="switch-ui"></span></span>
+          </label>
+          <div class="form-actions">
+            <button id="saveListBtn" class="primary" type="button">Сохранить</button>
+            <button id="deleteListBtn" class="danger" type="button" style="display:none;">Удалить</button>
+          </div>
+          <button id="cancelListBtn" class="secondary lists-add" type="button">Отмена</button>
+          <div id="listFormStatus" class="hint"></div>
+        </div>
       </div>
     </div>
 
     <div class="footer">Автор: <a href="https://github.com/devintly/deviate" target="_blank">devintly</a> · Автор meguproxy: <a href="https://t.me/shlyapniktgk" target="_blank">@shlyapniktgk</a></div>
+  </div>
+  <div id="domainsPanel" class="domains-overlay">
+    <div class="domains-modal">
+      <div class="label">Домены вкладки</div>
+      <div id="domainsEmpty" class="domains-empty">Нет доменов. Откройте сайт и обновите страницу.</div>
+      <div id="domainsList" class="domains-list"></div>
+      <div class="form-actions domains-actions">
+        <button id="saveDomainsBtn" class="primary" type="button">Сохранить</button>
+        <button id="cancelDomainsBtn" class="secondary" type="button">Отмена</button>
+      </div>
+    </div>
   </div>
   <script src="popup.js"></script>
 </body>
