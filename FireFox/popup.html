@@ -31,10 +31,13 @@
 
     .primary { background: #5865f2; color: #fff; flex: 1; min-width: 0; }
     .primary:hover { background: #4752c4; }
+    .success { background: #248046; color: #fff; flex: 1; min-width: 0; }
+    .success:hover { background: #1a6334; }
     .danger { background: #da373c; color: #fff; flex: 1; min-width: 0; }
     .danger:hover { background: #b52d31; }
-    .accent { background: #f47b20; color: #fff; flex: 1; min-width: 0; }
-    .accent:hover { background: #d96c1c; }
+    .icon-btn { width: 40px; min-width: 40px; flex: none; background: #404249; color: #fff; padding: 8px; }
+    .icon-btn:hover { background: #4e5058; }
+    .icon-btn svg { width: 18px; height: 18px; display: block; }
     .secondary { width: 100%; background: #404249; color: #fff; margin: 0; flex: none; padding: 10px 12px; }
     .secondary:hover { background: #4e5058; }
     .secondary + .secondary { margin-top: 8px; }
@@ -120,8 +123,10 @@
           <button id="scopeApexBtn" class="scope-btn" type="button">Основной домен</button>
         </div>
         <div class="row">
-          <button id="toggleRuleBtn" class="primary" type="button">Добавить домен</button>
-          <button id="viewDomainsBtn" class="accent" type="button" title="Домены текущей вкладки">Посмотреть все домены</button>
+          <button id="toggleRuleBtn" class="success" type="button">Добавить домен</button>
+          <button id="viewDomainsBtn" class="icon-btn" type="button" title="Домены текущей вкладки" aria-label="Домены текущей вкладки">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
         </div>
         <button id="openListBtn" class="secondary" type="button">Редактор правил</button>
         <div id="domainsPanel" class="domains-panel">

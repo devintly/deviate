@@ -114,6 +114,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     return toGuiRule(pageHost || els.domainInput.value);
   }
   function refreshCoveredNote() {
+    if (scopeMode === "apex") {
+      els.domainCovered.textContent = "";
+      return;
+    }
     const host = pageHost || hostOfRule(els.domainInput.value);
     const parent = coveringParentRule(host);
     const exact = toGuiRule(host);
@@ -155,7 +159,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const rule = toGuiRule(els.domainInput.value);
     const inList = hasUserRule(rule);
     els.toggleRule.textContent = inList ? "Удалить домен" : "Добавить домен";
-    els.toggleRule.className = inList ? "danger" : "primary";
+    els.toggleRule.className = inList ? "danger" : "success";
     els.toggleRule.disabled = !rule;
   }
   function flash(el, t, c = "#57f287") {
