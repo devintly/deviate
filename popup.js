@@ -102,10 +102,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function displayRuleForHost(host) {
     const h = hostOfRule(host);
     if (!h) return "";
-    if (isIpHost(h)) return h;
-    const apex = apexDomain(h);
-    if (apex && h !== apex) return wildcardRule(h);
-    return toGuiRule(h);
+    return isIpHost(h) ? h : wildcardRule(h);
   }
   function matches(h, r) {
     const hh = hostOfRule(h), rr = normalize(r);
@@ -128,15 +125,32 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   function hasUserRule(rule) { return hasIn(currentRules, rule) || hasIn(currentDirect, rule); }
   function isDirectRule(rule) { return hasIn(currentDirect, rule); }
+  function existingUserRule(host) {
+    const typed = normalize(host);
+    if (typed && hasUserRule(typed)) return typed;
+    const h = hostOfRule(host);
+    if (!h) return "";
+    if (!isIpHost(h) && hasUserRule("*." + h)) return "*." + h;
+    if (hasUserRule(h)) return h;
+    return "";
+  }
   function removeUserRule(rule) {
     const n = normalize(rule);
     currentRules = currentRules.filter(i => normalize(i) !== n);
     currentDirect = currentDirect.filter(i => normalize(i) !== n);
   }
+  function removeUserRulesForHost(host) {
+    const h = hostOfRule(host);
+    if (!h) return;
+    removeUserRule(h);
+    if (!isIpHost(h)) removeUserRule("*." + h);
+  }
   function setUserRule(rule, action) {
-    removeUserRule(rule);
-    if (action === "direct") currentDirect.push(rule);
-    else currentRules.push(rule);
+    const n = normalize(rule);
+    if (!n) return;
+    removeUserRulesForHost(n);
+    if (action === "direct") currentDirect.push(n);
+    else currentRules.push(n);
   }
   const MULTI_SUFFIX = {
     "ac.uk":1,"co.uk":1,"gov.uk":1,"ltd.uk":1,"me.uk":1,"net.uk":1,"org.uk":1,"plc.uk":1,"sch.uk":1,
@@ -332,12 +346,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   function syncOpenDomainLine(rule) {
     if (!domainsPanelOpen) return;
+    const host = hostOfRule(rule);
     els.domainsList.querySelectorAll("input.domain-pick").forEach(box => {
-      if (normalize(box.dataset.rule) !== normalize(rule)) return;
-      box.checked = hasUserRule(rule);
+      if (hostOfRule(box.dataset.rule) !== host) return;
+      const existing = existingUserRule(box.dataset.rule);
+      box.checked = !!existing;
       const line = box.closest(".domain-line");
       const mode = line && line.querySelector("input.mode-direct");
-      if (mode) mode.checked = isDirectRule(rule);
+      if (mode) mode.checked = !!(existing && isDirectRule(existing));
       if (line) line.classList.toggle("picked", box.checked);
     });
     const overlay = collectOverlayRules();
@@ -356,8 +372,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   function refreshToggleBtn() {
     const rule = toGuiRule(els.domainInput.value);
-    const inList = hasUserRule(rule);
-    const direct = inList && isDirectRule(rule);
+    const existing = existingUserRule(rule);
+    const inList = !!existing;
+    const direct = inList && isDirectRule(existing);
     els.toggleRule.textContent = inList ? "Удалить" : "Добавить домен";
     els.toggleRule.className = inList ? "danger" : "primary";
     els.toggleRule.disabled = !rule;
@@ -448,7 +465,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       cb.dataset.rule = rule;
       cb.dataset.kind = kind;
       cb.dataset.apex = apex;
-      cb.checked = hasUserRule(rule);
+      const existing = existingUserRule(rule);
+      cb.checked = !!existing;
       const mark = document.createElement("span");
       mark.className = "mini-status";
       const text = document.createElement("span");
@@ -464,7 +482,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const mode = document.createElement("input");
       mode.type = "checkbox";
       mode.className = "mode-direct";
-      mode.checked = isDirectRule(rule);
+      mode.checked = !!(existing && isDirectRule(existing));
       const ui = document.createElement("span");
       ui.className = "switch-ui";
       sw.appendChild(mode);
@@ -536,7 +554,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     els.domainsList.querySelectorAll("input.domain-pick").forEach(cb => {
       const rule = cb.dataset.rule;
       if (!rule) return;
-      const n = normalize(rule);
+      const n = hostOfRule(rule) || normalize(rule);
       const line = cb.closest(".domain-line");
       const mode = line && line.querySelector("input.mode-direct");
       const direct = !!(mode && mode.checked);
@@ -544,13 +562,17 @@ document.addEventListener("DOMContentLoaded", async () => {
       listed.set(n, { rule, want: cb.checked || (prev && prev.want), direct: cb.checked ? direct : (prev && prev.direct) });
     });
     listed.forEach(({ rule, want, direct }) => {
+      const existing = existingUserRule(rule);
+      const act = direct ? "direct" : "proxy";
       if (want) {
-        const was = hasUserRule(rule);
-        const wasDirect = was && isDirectRule(rule);
-        if (!was) { setUserRule(rule, direct ? "direct" : "proxy"); added++; }
-        else if (wasDirect !== !!direct) { setUserRule(rule, direct ? "direct" : "proxy"); changed++; }
-      } else if (hasUserRule(rule)) {
-        removeUserRule(rule);
+        const wasDirect = existing && isDirectRule(existing);
+        if (!existing) { setUserRule(rule, act); added++; }
+        else if (wasDirect !== !!direct || normalize(existing) !== normalize(rule)) {
+          setUserRule(rule, act);
+          changed++;
+        }
+      } else if (existing) {
+        removeUserRulesForHost(rule);
         removed++;
       }
     });
@@ -971,9 +993,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   els.toggleRule.addEventListener("click", async () => {
     const rule = toGuiRule(els.domainInput.value);
     if (!rule) return flash(els.rulesStatus, "Пустое правило", "#ff6b6b");
-    els.domainInput.value = rule;
-    if (hasUserRule(rule)) {
-      removeUserRule(rule);
+    const existing = existingUserRule(rule);
+    els.domainInput.value = existing || rule;
+    if (existing) {
+      removeUserRulesForHost(existing);
       await saveRules();
       refreshIcon();
       flash(els.rulesStatus, "Удалено");
@@ -983,23 +1006,24 @@ document.addEventListener("DOMContentLoaded", async () => {
       refreshIcon();
       flash(els.rulesStatus, "Добавлено");
     }
-    syncOpenDomainLine(rule);
-    checkAutoReload(rule);
+    syncOpenDomainLine(existing || rule);
+    checkAutoReload(existing || rule);
   });
 
   els.domainDirect.addEventListener("change", async () => {
-    const rule = toGuiRule(els.domainInput.value);
-    if (!rule || !hasUserRule(rule)) {
+    const typed = toGuiRule(els.domainInput.value);
+    const existing = existingUserRule(typed);
+    if (!typed || !existing) {
       els.domainDirect.checked = false;
       return;
     }
-    els.domainInput.value = rule;
-    setUserRule(rule, els.domainDirect.checked ? "direct" : "proxy");
+    els.domainInput.value = existing;
+    setUserRule(existing, els.domainDirect.checked ? "direct" : "proxy");
     await saveRules();
     refreshIcon();
     flash(els.rulesStatus, els.domainDirect.checked ? "Напрямую" : "Проксировать");
-    syncOpenDomainLine(rule);
-    checkAutoReload(rule);
+    syncOpenDomainLine(existing);
+    checkAutoReload(existing);
   });
 
   els.scopeHost.addEventListener("click", () => setScope("host", true));
@@ -1023,13 +1047,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     const { added, removed, changed } = applyDomainDraft();
     if (added || removed || changed) {
       await saveRules();
-      refreshIcon();
       const parts = [];
       if (added) parts.push(`добавлено: ${added}`);
       if (removed) parts.push(`удалено: ${removed}`);
       if (changed && !added && !removed) parts.push("сохранено");
       flash(els.rulesStatus, parts.join(", ") || "Сохранено");
     }
+    const shown = existingUserRule(els.domainInput.value);
+    if (shown) els.domainInput.value = shown;
+    refreshIcon();
     closeDomainsPanel();
     if (added || removed || changed) await reloadActiveTab();
   });
