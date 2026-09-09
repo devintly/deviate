@@ -360,7 +360,7 @@ async function updateBadge(tabId) {
   badgeText[tabId] = text;
   try {
     if (!badgeColorsReady) {
-      await browser.action.setBadgeBackgroundColor({ color: "#5865f2" });
+      await browser.action.setBadgeBackgroundColor({ color: "#248046" });
       if (browser.action.setBadgeTextColor) await browser.action.setBadgeTextColor({ color: "#ffffff" });
       badgeColorsReady = true;
     }

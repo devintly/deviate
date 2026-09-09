@@ -224,10 +224,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     refreshScopeUI();
     refreshIcon();
   }
-  const SVG_CHECK = '<svg class="mark-main" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M7.8 12.2l2.8 2.8 5.6-6.4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  const SVG_X = '<svg class="mark-main" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M8.6 8.6l6.8 6.8M15.4 8.6l-6.8 6.8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
-  const SVG_DOT = '<svg class="mark-main" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" opacity="0.38"/><circle cx="12" cy="12" r="3.7" fill="currentColor"/></svg>';
-  const SVG_LIST = '<svg class="mark-list" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 8.2l7-3.2 7 3.2-7 3.2-7-3.2z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M5 12.2l7 3.2 7-3.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 16.2l7 3.2 7-3.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const SVG_CHECK = '<svg class="mark-main" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4.5 12.5l5.2 5.3L19.5 6.8" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const SVG_X = '<svg class="mark-main" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/></svg>';
+  const SVG_DOT = '<svg class="mark-main" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.4" fill="currentColor"/></svg>';
+  const SVG_LIST = '<svg class="mark-list" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4.5 8.4l7.5-3.4 7.5 3.4-7.5 3.4-7.5-3.4z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M4.5 12.4l7.5 3.4 7.5-3.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 16.4l7.5 3.4 7.5-3.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const STATUS = {
     none: { title: "Не добавлен", tone: "none", html: SVG_X },
     proxyFull: { title: "Проксируется полностью", tone: "proxy", html: SVG_CHECK },

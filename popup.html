@@ -16,7 +16,7 @@
     .power-btn svg { width: 18px; height: 18px; display: block; }
     .tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-shrink: 0; }
     .tab { flex: 1; border: 0; border-radius: 10px; background: #2b2d31; color: #b5bac1; padding: 8px 0; font-size: 12px; font-weight: 600; cursor: pointer; text-align: center; transition: 0.15s; }
-    .tab.active { background: #5865f2; color: #ffffff; }
+    .tab.active { background: #f0b232; color: #1e1f22; }
     .panel { display: none; flex: 1; min-height: 0; min-width: 0; }
     .panel.active { display: flex; flex-direction: column; }
     .card { background: #2b2d31; border-radius: 14px; padding: 12px; box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset; flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
@@ -28,25 +28,25 @@
 
     .inputWrap { position: relative; display: flex; align-items: center; background: #1e1f22; border-radius: 10px; margin: 0 0 8px; height: 32px; }
     .inputWrap input[type="text"] { -webkit-appearance: none; appearance: none; width: 100%; height: 32px; min-height: 32px; max-height: 32px; margin: 0; padding: 0 44px 0 12px; background: transparent; font-size: 13px; font-weight: 700; text-align: center; line-height: 32px; border: 0; outline: 0; color: #f2f3f5; }
-    .statusIcon { position: absolute; right: 6px; top: 0; bottom: 0; min-width: 22px; width: auto; max-width: 42px; display: flex; align-items: center; justify-content: center; pointer-events: auto; cursor: default; user-select: none; }
-    .status-mark { display: inline-flex; align-items: center; justify-content: center; gap: 2px; }
+    .statusIcon { position: absolute; right: 6px; top: 0; bottom: 0; min-width: 22px; width: auto; max-width: 48px; display: flex; align-items: center; justify-content: center; pointer-events: auto; cursor: default; user-select: none; }
+    .status-mark { display: inline-flex; align-items: center; justify-content: center; gap: 3px; }
     .status-mark .mark-main { width: 16px; height: 16px; display: block; }
-    .status-mark .mark-list { width: 11px; height: 11px; display: block; }
+    .status-mark .mark-list { width: 15px; height: 15px; display: block; }
     .status-mark.none { color: #da373c; filter: drop-shadow(0 0 5px rgba(218, 55, 60, 0.5)); }
     .status-mark.proxy { color: #57f287; filter: drop-shadow(0 0 5px rgba(87, 242, 135, 0.55)); }
     .status-mark.direct { color: #00a8fc; filter: drop-shadow(0 0 5px rgba(0, 168, 252, 0.55)); }
 
     button { -webkit-appearance: none; appearance: none; border: 0; border-radius: 8px; padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer; transition: 0.15s ease; display: flex; flex-direction: row; align-items: center; justify-content: center; text-align: center; line-height: 1.2; min-height: 32px; }
 
-    .primary { background: #5865f2; color: #fff; flex: 1; min-width: 0; }
-    .primary:hover { background: #4752c4; }
+    .primary { background: #f0b232; color: #1e1f22; flex: 1; min-width: 0; }
+    .primary:hover { background: #d49a22; }
     .success { background: #248046; color: #fff; flex: 1; min-width: 0; }
     .success:hover { background: #1a6334; }
     .danger { background: #da373c; color: #fff; flex: 1; min-width: 0; }
     .danger:hover { background: #b52d31; }
     .icon-btn { width: 32px; min-width: 32px; min-height: 32px; flex: none; background: #404249; color: #fff; padding: 6px; }
     .icon-btn:hover { background: #4e5058; }
-    .icon-btn.open { background: #5865f2; }
+    .icon-btn.open { background: #f0b232; color: #1e1f22; }
     .icon-btn svg { width: 16px; height: 16px; display: block; }
     .secondary { width: 100%; background: #404249; color: #fff; margin: 0; flex: none; padding: 6px 10px; }
     .secondary:hover { background: #4e5058; }
@@ -55,7 +55,7 @@
     .hint { text-align: center; font-size: 12px; color: #57f287; margin-top: 8px; flex-shrink: 0; min-height: 16px; line-height: 1.3; }
     .hint:empty { display: none; margin: 0; }
     .footer { text-align: center; font-size: 11px; color: #949ba4; margin-top: 12px; flex-shrink: 0; }
-    .footer a { color: #00a8fc; text-decoration: none; }
+    .footer a { color: #f0b232; text-decoration: none; }
     .lists-empty { font-size: 12px; color: #b5bac1; text-align: center; padding: 12px 4px; }
     .lists-wrap { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; margin: 8px 0; }
     .lists-add { width: 100%; flex: none; margin-top: 8px; }
@@ -74,7 +74,7 @@
     .list-card-updated { font-size: 10px; color: #949ba4; margin-top: 3px; }
     .list-card-actions { display: flex; flex-direction: column; justify-content: center; gap: 4px; margin: 0; flex-shrink: 0; }
     .list-card-actions button { width: 28px; height: 28px; min-width: 28px; min-height: 28px; padding: 0; flex: none; background: #35373c; color: #f2f3f5; border-radius: 8px; }
-    .list-card-actions button:hover { background: #4752c4; color: #fff; }
+    .list-card-actions button:hover { background: #f0b232; color: #1e1f22; }
     .list-card-actions button:disabled { opacity: 0.6; cursor: default; }
     .list-card-actions button svg { width: 14px; height: 14px; display: block; }
     .list-card-actions button.busy svg { animation: list-spin 0.8s linear infinite; }
@@ -82,7 +82,7 @@
     .list-card-side { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
     .list-card .switch-ui { background: #404249; }
     .list-card-side button { width: 28px; height: 28px; min-width: 28px; min-height: 28px; padding: 0; flex: none; background: #35373c; color: #f2f3f5; border-radius: 8px; }
-    .list-card-side button:hover { background: #4752c4; color: #fff; }
+    .list-card-side button:hover { background: #f0b232; color: #1e1f22; }
     .list-card-side button svg { width: 14px; height: 14px; display: block; }
     .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 12px; font-size: 12px; font-weight: 700; color: #b5bac1; cursor: pointer; }
     .switch-hint { display: block; font-size: 10px; font-weight: 400; color: #949ba4; margin-top: 2px; }
@@ -90,17 +90,18 @@
     .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
     .switch-ui { position: absolute; inset: 0; background: #1e1f22; border-radius: 11px; }
     .switch-ui::after { content: ""; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; background: #b5bac1; border-radius: 50%; transition: 0.15s; }
-    .switch input:checked + .switch-ui { background: #5865f2; }
+    .switch input:checked + .switch-ui { background: #f0b232; }
     .switch input:checked + .switch-ui::after { left: 21px; background: #fff; }
-    .switch.mode-switch .switch-ui,
-    .switch.mode-switch input:checked + .switch-ui,
-    .switch.mode-switch input:not(:checked) + .switch-ui {
-      background: #5865f2;
-      box-shadow: 0 0 0 1px rgba(88, 101, 242, 0.35), 0 0 10px rgba(88, 101, 242, 0.45);
+    .switch.mode-switch .switch-ui {
+      background: #57f287;
+      box-shadow: 0 0 0 1px rgba(87, 242, 135, 0.35), 0 0 10px rgba(87, 242, 135, 0.4);
+    }
+    .switch.mode-switch input:checked + .switch-ui {
+      background: #00a8fc;
+      box-shadow: 0 0 0 1px rgba(0, 168, 252, 0.35), 0 0 10px rgba(0, 168, 252, 0.45);
     }
     .switch.mode-switch .switch-ui::after,
-    .switch.mode-switch input:checked + .switch-ui::after,
-    .switch.mode-switch input:not(:checked) + .switch-ui::after { background: #fff; }
+    .switch.mode-switch input:checked + .switch-ui::after { background: #fff; }
 
     .domains-overlay { display: none; position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,0.55); padding: 16px; overflow: hidden; }
     .domains-overlay.open { display: flex; flex-direction: column; }
@@ -110,10 +111,10 @@
     .domain-item { background: #1e1f22; border-radius: 8px; padding: 6px 8px; margin-bottom: 6px; }
     .domain-item:last-child { margin-bottom: 0; }
     .domain-line { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 12px; }
-    .domain-line input.domain-pick { width: 16px; height: 16px; margin: 0; flex-shrink: 0; accent-color: #5865f2; cursor: pointer; }
-    .domain-line .mini-status { flex: none; min-width: 32px; height: 18px; display: flex; align-items: center; justify-content: center; }
+    .domain-line input.domain-pick { width: 16px; height: 16px; margin: 0; flex-shrink: 0; accent-color: #f0b232; cursor: pointer; }
+    .domain-line .mini-status { flex: none; min-width: 34px; height: 18px; display: flex; align-items: center; justify-content: center; }
     .domain-line .mini-status .mark-main { width: 14px; height: 14px; }
-    .domain-line .mini-status .mark-list { width: 10px; height: 10px; }
+    .domain-line .mini-status .mark-list { width: 13px; height: 13px; }
     .domain-line .domain-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; cursor: pointer; }
     .domain-line .domain-apex { font-weight: 400; color: #b5bac1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; cursor: pointer; }
     .domain-line .mode-wrap { display: none; flex: none; align-items: center; margin-left: 2px; }
@@ -126,13 +127,13 @@
     .scope-row.show { display: flex; }
     .scope-btn { flex: 1; min-width: 0; min-height: 32px; padding: 6px 8px; font-size: 11px; background: #1e1f22; color: #b5bac1; overflow: hidden; }
     .scope-btn:hover { background: #35373c; }
-    .scope-btn.active { background: #5865f2; color: #fff; }
+    .scope-btn.active { background: #f0b232; color: #1e1f22; }
     .domain-mode { display: none; align-items: center; justify-content: space-between; gap: 6px; flex: 1; min-width: 0; min-height: 32px; margin: 0; padding: 0 8px; background: #1e1f22; border-radius: 8px; font-size: 10px; font-weight: 700; color: #b5bac1; cursor: pointer; }
     .domain-mode.show { display: flex; }
-    .domain-mode .domain-mode-off { color: #f2f3f5; }
+    .domain-mode .domain-mode-off { color: #57f287; }
     .domain-mode .domain-mode-on { color: #b5bac1; }
     .domain-mode.on .domain-mode-off { color: #b5bac1; }
-    .domain-mode.on .domain-mode-on { color: #f2f3f5; }
+    .domain-mode.on .domain-mode-on { color: #00a8fc; }
     .domain-mode .switch { width: 36px; height: 20px; }
     .domain-mode .switch-ui::after { width: 14px; height: 14px; left: 3px; top: 3px; }
     .domain-mode .switch input:checked + .switch-ui::after { left: 19px; }
