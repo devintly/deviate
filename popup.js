@@ -763,7 +763,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     currentProxies.forEach(p => {
       const card = document.createElement("div");
       card.className = "list-card";
-      card.dataset.search = [p.host || "", String(p.port || ""), proxyTypeLabel(p.type), p.username || ""].join(" ");
+      card.dataset.search = p.host || "";
       const body = document.createElement("div");
       body.className = "list-card-body";
       const title = document.createElement("div");
@@ -863,7 +863,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const body = document.createElement("div");
       body.className = "list-card-body";
       const name = String(l.name || "").trim();
-      card.dataset.search = [name, l.url || "", l.format === "pac" ? "pac" : "txt"].join(" ");
+      card.dataset.search = name || String(l.url || "");
       if (name) {
         const title = document.createElement("div");
         title.className = "list-card-title";
