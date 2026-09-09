@@ -9,7 +9,7 @@
     .header { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 14px; font-size: 20px; font-weight: 700; color: #ffffff; flex-shrink: 0; }
     .header img { width: 28px; height: 28px; border-radius: 0; object-fit: cover; }
     .tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-shrink: 0; }
-    .tab { flex: 1; border: 0; border-radius: 10px; background: #2b2d31; color: #b5bac1; padding: 10px 0; font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; transition: 0.15s; }
+    .tab { flex: 1; border: 0; border-radius: 10px; background: #2b2d31; color: #b5bac1; padding: 8px 0; font-size: 12px; font-weight: 600; cursor: pointer; text-align: center; transition: 0.15s; }
     .tab.active { background: #5865f2; color: #ffffff; }
     .panel { display: none; flex: 1; min-height: 0; min-width: 0; }
     .panel.active { display: flex; flex-direction: column; }
@@ -27,7 +27,7 @@
     .statusIcon.covered { color: transparent; }
     .statusIcon.covered::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: #57f287; box-shadow: 0 0 0 2px rgba(87, 242, 135, 0.28); }
 
-    button { -webkit-appearance: none; appearance: none; border: 0; border-radius: 10px; padding: 8px 10px; font-size: 12px; font-weight: 700; cursor: pointer; transition: 0.15s ease; display: flex; flex-direction: row; align-items: center; justify-content: center; text-align: center; line-height: 1.25; min-height: 40px; }
+    button { -webkit-appearance: none; appearance: none; border: 0; border-radius: 8px; padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer; transition: 0.15s ease; display: flex; flex-direction: row; align-items: center; justify-content: center; text-align: center; line-height: 1.2; min-height: 32px; }
 
     .primary { background: #5865f2; color: #fff; flex: 1; min-width: 0; }
     .primary:hover { background: #4752c4; }
@@ -35,10 +35,11 @@
     .success:hover { background: #1a6334; }
     .danger { background: #da373c; color: #fff; flex: 1; min-width: 0; }
     .danger:hover { background: #b52d31; }
-    .icon-btn { width: 40px; min-width: 40px; flex: none; background: #404249; color: #fff; padding: 8px; }
+    .icon-btn { width: 32px; min-width: 32px; min-height: 32px; flex: none; background: #404249; color: #fff; padding: 6px; }
     .icon-btn:hover { background: #4e5058; }
     .icon-btn.open { background: #5865f2; }
-    .secondary { width: 100%; background: #404249; color: #fff; margin: 0; flex: none; padding: 10px 12px; }
+    .icon-btn svg { width: 16px; height: 16px; display: block; }
+    .secondary { width: 100%; background: #404249; color: #fff; margin: 0; flex: none; padding: 6px 10px; }
     .secondary:hover { background: #4e5058; }
     .secondary + .secondary { margin-top: 8px; }
 
@@ -49,6 +50,11 @@
     .lists-empty { font-size: 12px; color: #b5bac1; text-align: center; padding: 12px 4px; }
     .lists-wrap { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; margin: 8px 0; }
     .lists-add { width: 100%; flex: none; margin-top: 8px; }
+    .form-actions { display: flex; gap: 8px; margin-top: 8px; flex-shrink: 0; }
+    .form-actions .secondary { width: auto; flex: 1; margin-top: 0; }
+    .icon-action { flex: 1; min-height: 36px; }
+    .icon-action svg { width: 18px; height: 18px; display: block; }
+    .icon-action.busy { opacity: 0.6; }
     #listsMain, #proxyMain, #listsForm, #proxyForm { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
     #listsForm, #proxyForm { overflow-x: hidden; overflow-y: auto; }
     .list-card { display: flex; align-items: stretch; gap: 8px; background: #1e1f22; border-radius: 10px; padding: 8px 8px 8px 10px; margin-bottom: 8px; }
@@ -90,7 +96,7 @@
     .domain-line input[type="checkbox"] { width: 16px; height: 16px; margin: 0; flex-shrink: 0; accent-color: #5865f2; cursor: pointer; }
     .domain-line .domain-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
     .domain-line .domain-apex { font-weight: 400; color: #b5bac1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-    .domains-save { width: 100%; margin-top: 12px; flex: none; }
+    .domains-actions { margin-top: 12px; flex: none; }
     .scope-row { display: none; gap: 6px; margin: 0 0 12px; }
     .scope-row.show { display: flex; }
     .scope-btn { flex: 1; min-width: 0; min-height: 32px; padding: 6px 8px; font-size: 11px; background: #1e1f22; color: #b5bac1; overflow: hidden; }
@@ -165,9 +171,15 @@
               <input id="proxyPass" type="password" placeholder="password">
             </div>
           </div>
-          <button id="saveProxyBtn" class="primary lists-add" type="button">Добавить прокси</button>
-          <button id="deleteProxyBtn" class="danger lists-add" type="button" style="display:none;">Удалить прокси</button>
-          <button id="cancelProxyBtn" class="secondary lists-add" type="button">Назад</button>
+          <div class="form-actions">
+            <button id="saveProxyBtn" class="primary icon-action" type="button" title="Сохранить" aria-label="Сохранить">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
+            </button>
+            <button id="deleteProxyBtn" class="danger icon-action" type="button" title="Удалить" aria-label="Удалить" style="display:none;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 14h10l1-14"/><path d="M9 7V5h6v2"/></svg>
+            </button>
+          </div>
+          <button id="cancelProxyBtn" class="secondary lists-add" type="button">Отмена</button>
           <div id="proxyFormStatus" class="hint"></div>
         </div>
       </div>
@@ -198,9 +210,15 @@
             <span>Скачивать через прокси<span class="switch-hint">Выкл — напрямую</span></span>
             <span class="switch"><input id="listViaProxy" type="checkbox"><span class="switch-ui"></span></span>
           </label>
-          <button id="saveListBtn" class="primary lists-add" type="button">Добавить список</button>
-          <button id="deleteListBtn" class="danger lists-add" type="button" style="display:none;">Удалить список</button>
-          <button id="cancelListBtn" class="secondary lists-add" type="button">Назад</button>
+          <div class="form-actions">
+            <button id="saveListBtn" class="primary icon-action" type="button" title="Сохранить" aria-label="Сохранить">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
+            </button>
+            <button id="deleteListBtn" class="danger icon-action" type="button" title="Удалить" aria-label="Удалить" style="display:none;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 14h10l1-14"/><path d="M9 7V5h6v2"/></svg>
+            </button>
+          </div>
+          <button id="cancelListBtn" class="secondary lists-add" type="button">Отмена</button>
           <div id="listFormStatus" class="hint"></div>
         </div>
       </div>
@@ -213,7 +231,10 @@
       <div class="label">Домены вкладки</div>
       <div id="domainsEmpty" class="domains-empty">Нет доменов. Откройте сайт и обновите страницу.</div>
       <div id="domainsList" class="domains-list"></div>
-      <button id="saveDomainsBtn" class="primary domains-save" type="button">Сохранить домены и закрыть</button>
+      <div class="form-actions domains-actions">
+        <button id="saveDomainsBtn" class="primary" type="button">Сохранить</button>
+        <button id="cancelDomainsBtn" class="secondary" type="button">Отмена</button>
+      </div>
     </div>
   </div>
   <script src="popup.js"></script>
