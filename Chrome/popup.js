@@ -258,6 +258,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function closeDomainsPanel() {
     domainsPanelOpen = false;
     els.domainsPanel.classList.remove("open");
+    els.viewDomains.classList.remove("open");
     els.domainsList.textContent = "";
   }
 
@@ -426,7 +427,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function showProxyMain() {
     editingProxyId = null;
     els.proxyForm.style.display = "none";
-    els.proxyMain.style.display = "block";
+    els.proxyMain.style.display = "flex";
     renderProxies();
   }
 
@@ -441,7 +442,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function openProxyForm(item) {
     els.proxyMain.style.display = "none";
-    els.proxyForm.style.display = "block";
+    els.proxyForm.style.display = "flex";
     els.pFormStatus.textContent = "";
     if (item) {
       editingProxyId = item.id;
@@ -525,7 +526,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function showListsMain() {
     editingListId = null;
     els.listsForm.style.display = "none";
-    els.listsMain.style.display = "block";
+    els.listsMain.style.display = "flex";
     renderLists();
   }
 
@@ -540,7 +541,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function openListForm(item) {
     els.listsMain.style.display = "none";
-    els.listsForm.style.display = "block";
+    els.listsForm.style.display = "flex";
     els.lFormStatus.textContent = "";
     if (item) {
       editingListId = item.id;
@@ -705,7 +706,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     domainsPanelOpen = true;
     els.domainsPanel.classList.add("open");
+    els.viewDomains.classList.add("open");
     refreshDomainsPanel();
+  });
+  els.domainsPanel.addEventListener("click", (e) => {
+    if (e.target === els.domainsPanel) closeDomainsPanel();
   });
 
   els.saveDomains.addEventListener("click", () => {

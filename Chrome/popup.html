@@ -4,16 +4,16 @@
   <meta charset="UTF-8">
   <style>
     * { box-sizing: border-box; }
-    body { margin: 0; width: 380px; background: #1e1f22; color: #f2f3f5; font-family: Inter, Arial, sans-serif; }
-    .wrap { padding: 14px; }
-    .header { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 14px; font-size: 20px; font-weight: 700; color: #ffffff; }
+    html, body { margin: 0; width: 440px; height: 580px; overflow: hidden; background: #1e1f22; color: #f2f3f5; font-family: Inter, Arial, sans-serif; }
+    .wrap { height: 100%; padding: 14px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    .header { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 14px; font-size: 20px; font-weight: 700; color: #ffffff; flex-shrink: 0; }
     .header img { width: 28px; height: 28px; border-radius: 0; object-fit: cover; }
-    .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-shrink: 0; }
     .tab { flex: 1; border: 0; border-radius: 10px; background: #2b2d31; color: #b5bac1; padding: 10px 0; font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; transition: 0.15s; }
     .tab.active { background: #5865f2; color: #ffffff; }
-    .panel { display: none; }
-    .panel.active { display: block; }
-    .card { background: #2b2d31; border-radius: 14px; padding: 12px; box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset; }
+    .panel { display: none; flex: 1; min-height: 0; min-width: 0; }
+    .panel.active { display: flex; flex-direction: column; }
+    .card { background: #2b2d31; border-radius: 14px; padding: 12px; box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset; flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
     .label { font-size: 11px; text-transform: uppercase; color: #b5bac1; margin: 0 0 6px; font-weight: 700; }
     .row { display: flex; gap: 8px; align-items: stretch; }
     #panelRules .row { margin-bottom: 12px; }
@@ -37,18 +37,20 @@
     .danger:hover { background: #b52d31; }
     .icon-btn { width: 40px; min-width: 40px; flex: none; background: #404249; color: #fff; padding: 8px; }
     .icon-btn:hover { background: #4e5058; }
-    .icon-btn svg { width: 18px; height: 18px; display: block; }
+    .icon-btn.open { background: #5865f2; }
     .secondary { width: 100%; background: #404249; color: #fff; margin: 0; flex: none; padding: 10px 12px; }
     .secondary:hover { background: #4e5058; }
     .secondary + .secondary { margin-top: 8px; }
 
     .hint { text-align: center; font-size: 12px; color: #57f287; margin-top: 8px; }
     .hint:empty { display: none; margin: 0; }
-    .footer { text-align: center; font-size: 11px; color: #949ba4; margin-top: 12px; }
+    .footer { text-align: center; font-size: 11px; color: #949ba4; margin-top: 12px; flex-shrink: 0; }
     .footer a { color: #00a8fc; text-decoration: none; }
     .lists-empty { font-size: 12px; color: #b5bac1; text-align: center; padding: 12px 4px; }
-    .lists-wrap { max-height: 280px; overflow-y: auto; margin: 8px 0; }
+    .lists-wrap { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; margin: 8px 0; }
     .lists-add { width: 100%; flex: none; margin-top: 8px; }
+    #listsMain, #proxyMain, #listsForm, #proxyForm { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+    #listsForm, #proxyForm { overflow-x: hidden; overflow-y: auto; }
     .list-card { display: flex; align-items: stretch; gap: 8px; background: #1e1f22; border-radius: 10px; padding: 8px 8px 8px 10px; margin-bottom: 8px; }
     .list-card:last-child { margin-bottom: 0; }
     .list-card-body { flex: 1; min-width: 0; }
@@ -77,9 +79,10 @@
     .switch input:checked + .switch-ui { background: #5865f2; }
     .switch input:checked + .switch-ui::after { left: 21px; background: #fff; }
 
-    .domains-panel { display: none; margin-top: 12px; }
-    .domains-panel.open { display: block; }
-    .domains-list { max-height: 220px; overflow-y: auto; }
+    .domains-overlay { display: none; position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,0.55); padding: 16px; overflow: hidden; }
+    .domains-overlay.open { display: flex; flex-direction: column; }
+    .domains-modal { background: #2b2d31; border-radius: 14px; padding: 12px; flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.45); overflow: hidden; }
+    .domains-list { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; }
     .domains-empty { font-size: 12px; color: #b5bac1; text-align: center; padding: 8px 4px; }
     .domain-item { background: #1e1f22; border-radius: 8px; padding: 6px 8px; margin-bottom: 6px; }
     .domain-item:last-child { margin-bottom: 0; }
@@ -90,7 +93,7 @@
     .domains-save { width: 100%; margin-top: 12px; flex: none; }
     .scope-row { display: none; gap: 6px; margin: 0 0 12px; }
     .scope-row.show { display: flex; }
-    .scope-btn { flex: 1; min-width: 0; min-height: 32px; padding: 6px 8px; font-size: 11px; background: #1e1f22; color: #b5bac1; }
+    .scope-btn { flex: 1; min-width: 0; min-height: 32px; padding: 6px 8px; font-size: 11px; background: #1e1f22; color: #b5bac1; overflow: hidden; }
     .scope-btn:hover { background: #35373c; }
     .scope-btn.active { background: #5865f2; color: #fff; }
     .scope-note { font-size: 11px; color: #57f287; margin: 0 0 10px; line-height: 1.35; }
@@ -129,12 +132,6 @@
           </button>
         </div>
         <button id="openListBtn" class="secondary" type="button">Редактор правил</button>
-        <div id="domainsPanel" class="domains-panel">
-          <div class="label">Домены вкладки</div>
-          <div id="domainsEmpty" class="domains-empty">Нет доменов. Откройте сайт и обновите страницу.</div>
-          <div id="domainsList" class="domains-list"></div>
-          <button id="saveDomainsBtn" class="primary domains-save" type="button">Сохранить домены и закрыть</button>
-        </div>
         <div id="rulesStatus" class="hint"></div>
       </div>
     </div>
@@ -210,6 +207,14 @@
     </div>
 
     <div class="footer">Автор: <a href="https://github.com/devintly/deviate" target="_blank">devintly</a> · Автор meguproxy: <a href="https://t.me/shlyapniktgk" target="_blank">@shlyapniktgk</a></div>
+  </div>
+  <div id="domainsPanel" class="domains-overlay">
+    <div class="domains-modal">
+      <div class="label">Домены вкладки</div>
+      <div id="domainsEmpty" class="domains-empty">Нет доменов. Откройте сайт и обновите страницу.</div>
+      <div id="domainsList" class="domains-list"></div>
+      <button id="saveDomainsBtn" class="primary domains-save" type="button">Сохранить домены и закрыть</button>
+    </div>
   </div>
   <script src="popup.js"></script>
 </body>
