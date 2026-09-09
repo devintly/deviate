@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Deviate",
-  "version": "1.3",
+  "version": "1.4.9",
   "description": "Deviate — обход блокировок: проксирование сайтов по правилам средствами SOCKS/HTTP.",
   "minimum_chrome_version": "100.0",
   "permissions": [
@@ -10,10 +10,14 @@
     "tabs",
     "alarms",
     "webRequest",
-    "webRequestAuthProvider"
+    "webRequestAuthProvider",
+    "unlimitedStorage"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "http://*/*",
+    "https://*/*",
+    "ws://*/*",
+    "wss://*/*"
   ],
   "icons": {
     "64": "icon.png"

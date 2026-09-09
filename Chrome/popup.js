@@ -13,6 +13,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     pPass: document.getElementById("proxyPass"), saveProxy: document.getElementById("saveProxyBtn"),
     pStatus: document.getElementById("proxyStatus"), lUrl: document.getElementById("listUrl"),
     lAct: document.getElementById("listAction"), addList: document.getElementById("addListBtn"),
+    refreshLists: document.getElementById("refreshListsBtn"),
     toggleLists: document.getElementById("toggleListsBtn"), lCont: document.getElementById("listsContainer"),
     lStatus: document.getElementById("listStatus")
   };
@@ -20,6 +21,34 @@ document.addEventListener("DOMContentLoaded", async () => {
   let currentRules = [];
   let currentLists = [];
   let activeTab = null;
+  const HOST_ORIGINS = ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"];
+  const accessError = document.getElementById("accessError");
+  const accessErrorText = document.getElementById("accessErrorText");
+
+  function containsOrigins() {
+    return new Promise((resolve) => {
+      if (!api.permissions || !api.permissions.contains) return resolve(true);
+      api.permissions.contains({ origins: HOST_ORIGINS }, (ok) => resolve(!!ok));
+    });
+  }
+
+  async function refreshAccessErrors() {
+    const msgs = [];
+    try {
+      if (!(await containsOrigins())) msgs.push("Нет доступа к сайтам. Включите его в разрешениях расширения — без этого прокси по спискам не работает.");
+    } catch (e) {}
+    if (accessError && accessErrorText) {
+      accessErrorText.textContent = msgs.join("\n\n");
+      accessError.style.display = msgs.length ? "block" : "none";
+    }
+  }
+
+  if (api.permissions && api.permissions.onAdded) {
+    api.permissions.onAdded.addListener(refreshAccessErrors);
+  }
+  if (api.permissions && api.permissions.onRemoved) {
+    api.permissions.onRemoved.addListener(refreshAccessErrors);
+  }
 
   tabs.forEach((tab, i) => {
     tab.addEventListener("click", () => {
@@ -75,9 +104,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     currentLists.forEach(l => {
       const div = document.createElement("div"); div.className = "list-item";
       const infoDiv = document.createElement("div"); infoDiv.className = "info"; infoDiv.title = l.url;
-      const isPac = l.format === "pac" || !!l.pacScript;
+      const isPac = l.format === "pac";
       const typ = l.type === "block" ? "🛑 Блок" : (isPac ? "📜 PAC" : "🚀 Прокси");
-      infoDiv.textContent = `[${typ}] ${isPac ? "скрипт" : `${(l.domains || []).length} шт.`}`;
+      const count = `${l.domainCount || (l.domains || []).length} дом. / ${l.ipCount || (l.ips || []).length} IP`;
+      infoDiv.textContent = `[${typ}] ${count}`;
       infoDiv.appendChild(document.createElement("br"));
       const span = document.createElement("span"); span.style.color = "#b5bac1"; span.style.fontSize = "10px"; span.textContent = l.url;
       infoDiv.appendChild(span);
@@ -193,12 +223,44 @@ document.addEventListener("DOMContentLoaded", async () => {
   els.addList.addEventListener("click", () => {
     const url = els.lUrl.value.trim();
     if (!url.startsWith("http")) return flash(els.lStatus, "Введите корректный URL", "#ff6b6b");
+    els.addList.disabled = true;
     els.addList.textContent = "Загрузка...";
+    let done = false;
+    const finish = (ok, err) => {
+      if (done) return;
+      done = true;
+      els.addList.disabled = false;
+      els.addList.textContent = "Скачать и применить список";
+      if (ok) { els.lUrl.value = ""; flash(els.lStatus, "Список применен!"); }
+      else flash(els.lStatus, err, "#ff6b6b");
+    };
+    const timer = setTimeout(() => finish(false, "Таймаут загрузки списка"), 60000);
     api.runtime.sendMessage({ action: "fetchList", url, type: els.lAct.value }, (res) => {
-        if (api.runtime.lastError) {}
-        els.addList.textContent = "Скачать и применить список";
-        if (res && res.success) { els.lUrl.value = ""; flash(els.lStatus, "Список применен!"); }
-        else flash(els.lStatus, (res && res.error) ? String(res.error).slice(0, 180) : "Ошибка скачивания", "#ff6b6b");
+      clearTimeout(timer);
+      if (api.runtime.lastError) return finish(false, String(api.runtime.lastError.message || "Фон расширения не ответил").slice(0, 180));
+      if (res && res.success) finish(true);
+      else finish(false, (res && res.error) ? String(res.error).slice(0, 180) : "Ошибка скачивания");
+    });
+  });
+
+  els.refreshLists.addEventListener("click", () => {
+    if (!currentLists.length) return flash(els.lStatus, "Списков нет", "#ff6b6b");
+    els.refreshLists.disabled = true;
+    els.refreshLists.textContent = "Обновление...";
+    let done = false;
+    const finish = (ok, msg, color) => {
+      if (done) return;
+      done = true;
+      els.refreshLists.disabled = false;
+      els.refreshLists.textContent = "Обновить списки";
+      flash(els.lStatus, msg, color);
+    };
+    const timer = setTimeout(() => finish(false, "Таймаут обновления", "#ff6b6b"), 60000);
+    api.runtime.sendMessage({ action: "refreshLists" }, (res) => {
+      clearTimeout(timer);
+      if (api.runtime.lastError) return finish(false, String(api.runtime.lastError.message || "Фон расширения не ответил").slice(0, 180), "#ff6b6b");
+      if (res && res.success) finish(true, `Обновлено: ${res.updated || 0}`);
+      else finish(false, (res && res.error) ? String(res.error).slice(0, 180) : "Ошибка обновления", "#ff6b6b");
     });
   });
 
@@ -215,5 +277,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (c.lastProxyError && c.lastProxyError.newValue) flash(els.pStatus, c.lastProxyError.newValue, "#ff6b6b");
   });
 
+  await refreshAccessErrors();
   loadState();
 });
