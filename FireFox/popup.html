@@ -58,9 +58,8 @@
     .lists-add { width: 100%; flex: none; margin-top: 8px; }
     .form-actions { display: flex; gap: 8px; margin-top: 8px; flex-shrink: 0; }
     .form-actions .secondary { width: auto; flex: 1; margin-top: 0; }
-    .icon-action { flex: 1; min-height: 36px; }
-    .icon-action svg { width: 18px; height: 18px; display: block; }
-    .icon-action.busy { opacity: 0.6; }
+    .form-actions .primary, .form-actions .danger { flex: 1; min-height: 36px; }
+    .form-actions .busy { opacity: 0.6; }
     #listsMain, #proxyMain, #listsForm, #proxyForm { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
     #listsForm, #proxyForm { overflow-x: hidden; overflow-y: auto; }
     .list-card { display: flex; align-items: stretch; gap: 8px; background: #1e1f22; border-radius: 10px; padding: 8px 8px 8px 10px; margin-bottom: 8px; }
@@ -184,12 +183,8 @@
             </div>
           </div>
           <div class="form-actions">
-            <button id="saveProxyBtn" class="primary icon-action" type="button" title="Сохранить" aria-label="Сохранить">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
-            </button>
-            <button id="deleteProxyBtn" class="danger icon-action" type="button" title="Удалить" aria-label="Удалить" style="display:none;">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 14h10l1-14"/><path d="M9 7V5h6v2"/></svg>
-            </button>
+            <button id="saveProxyBtn" class="primary" type="button">Сохранить</button>
+            <button id="deleteProxyBtn" class="danger" type="button" style="display:none;">Удалить</button>
           </div>
           <button id="cancelProxyBtn" class="secondary lists-add" type="button">Отмена</button>
           <div id="proxyFormStatus" class="hint"></div>
@@ -223,12 +218,8 @@
             <span class="switch"><input id="listViaProxy" type="checkbox"><span class="switch-ui"></span></span>
           </label>
           <div class="form-actions">
-            <button id="saveListBtn" class="primary icon-action" type="button" title="Сохранить" aria-label="Сохранить">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
-            </button>
-            <button id="deleteListBtn" class="danger icon-action" type="button" title="Удалить" aria-label="Удалить" style="display:none;">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 14h10l1-14"/><path d="M9 7V5h6v2"/></svg>
-            </button>
+            <button id="saveListBtn" class="primary" type="button">Сохранить</button>
+            <button id="deleteListBtn" class="danger" type="button" style="display:none;">Удалить</button>
           </div>
           <button id="cancelListBtn" class="secondary lists-add" type="button">Отмена</button>
           <div id="listFormStatus" class="hint"></div>

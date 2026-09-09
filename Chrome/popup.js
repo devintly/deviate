@@ -481,14 +481,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       els.pPort.value = item.port || "";
       els.pUser.value = item.username || "";
       els.pPass.value = item.password || "";
-      els.saveProxy.title = "Сохранить";
-      els.saveProxy.setAttribute("aria-label", "Сохранить");
-      els.deleteProxy.style.display = "flex";
+      els.saveProxy.textContent = "Сохранить";
+      els.deleteProxy.style.display = "";
     } else {
       editingProxyId = null;
       resetProxyForm();
-      els.saveProxy.title = "Добавить прокси";
-      els.saveProxy.setAttribute("aria-label", "Добавить прокси");
+      els.saveProxy.textContent = "Сохранить";
       els.deleteProxy.style.display = "none";
     }
   }
@@ -582,14 +580,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       els.lAct.value = item.type === "block" ? "block" : "proxy";
       els.lInterval.value = String(Number(item.intervalHours) > 0 ? Number(item.intervalHours) : 12);
       els.lViaProxy.checked = !!item.viaProxy;
-      els.saveList.title = "Сохранить";
-      els.saveList.setAttribute("aria-label", "Сохранить");
-      els.deleteList.style.display = "flex";
+      els.saveList.textContent = "Сохранить";
+      els.deleteList.style.display = "";
     } else {
       editingListId = null;
       resetListForm();
-      els.saveList.title = "Добавить список";
-      els.saveList.setAttribute("aria-label", "Добавить список");
+      els.saveList.textContent = "Сохранить";
       els.deleteList.style.display = "none";
     }
   }
@@ -783,6 +779,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (dup) return flash(els.lFormStatus, "Список добавить нельзя, он уже существует", "#ff6b6b");
     els.saveList.disabled = true;
     els.saveList.classList.add("busy");
+    els.saveList.textContent = "Сохранение...";
     const existing = editingListId != null ? currentLists.find(l => l.id === editingListId) : null;
     const urlChanged = existing && canonListUrl(existing.url) !== canonListUrl(form.url);
     const proxyChanged = existing && !!existing.viaProxy !== form.viaProxy;
@@ -800,6 +797,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }).finally(() => {
       els.saveList.disabled = false;
       els.saveList.classList.remove("busy");
+      els.saveList.textContent = "Сохранить";
     });
   });
 
