@@ -1,6 +1,7 @@
 let proxyConfig = { type: "socks", host: "", port: 0, username: "", password: "" };
 let proxyRules = [];
 let proxyLists = [];
+let extensionEnabled = false;
 
 function configFromServers(list) {
   const on = (list || []).find(p => p.enabled && p.host && Number(p.port) > 0);
@@ -217,6 +218,7 @@ function findListByUrl(url, exceptId) {
 function decideProxySync(host) {
   if (fetchDirectHosts[host]) return { type: "direct" };
   if (fetchProxyHosts[host]) return ffProxy;
+  if (!extensionEnabled) return { type: "direct" };
   if (isBlockedHost(host)) return { type: "http", host: "127.0.0.1", port: 9 };
   if (isProxiedHost(host)) return ffProxy;
   return null;
@@ -290,7 +292,7 @@ function scheduleBadge(tabId) {
 
 async function updateBadge(tabId) {
   if (tabId == null || tabId < 0) return;
-  const n = tabProxied[tabId] ? tabProxied[tabId].size : 0;
+  const n = extensionEnabled && tabProxied[tabId] ? tabProxied[tabId].size : 0;
   try {
     await browser.action.setBadgeBackgroundColor({ tabId, color: "#5865f2" });
     if (browser.action.setBadgeTextColor) await browser.action.setBadgeTextColor({ tabId, color: "#ffffff" });
@@ -490,6 +492,10 @@ browser.storage.onChanged.addListener(async (changes) => {
   }
   if (changes.proxyRules) { proxyRules = changes.proxyRules.newValue || []; need = true; }
   if (changes.proxyLists) { proxyLists = changes.proxyLists.newValue || []; need = true; }
+  if (changes.extensionEnabled) {
+    extensionEnabled = !!changes.extensionEnabled.newValue && !!(proxyConfig && proxyConfig.host);
+    need = true;
+  }
   if (need) {
     rebuildMaps();
     await refreshActiveBadge();
@@ -514,12 +520,18 @@ function stripLegacyPac(list) {
   return list;
 }
 
-browser.storage.local.get(["proxyConfig", "proxyServers", "proxyRules", "proxyLists"]).then(async (res) => {
+browser.storage.local.get(["proxyConfig", "proxyServers", "proxyRules", "proxyLists", "extensionEnabled"]).then(async (res) => {
   const servers = migrateProxyServers(res.proxyServers, res.proxyConfig);
   proxyConfig = configFromServers(servers);
+  if (res.extensionEnabled == null) extensionEnabled = !!(proxyConfig && proxyConfig.host);
+  else extensionEnabled = !!res.extensionEnabled && !!(proxyConfig && proxyConfig.host);
+  const persist = {};
   if (JSON.stringify(servers) !== JSON.stringify(res.proxyServers || [])) {
-    await browser.storage.local.set({ proxyServers: servers, proxyConfig });
+    persist.proxyServers = servers;
+    persist.proxyConfig = proxyConfig;
   }
+  if (res.extensionEnabled !== extensionEnabled) persist.extensionEnabled = extensionEnabled;
+  if (Object.keys(persist).length) await browser.storage.local.set(persist);
   if (res.proxyRules) proxyRules = res.proxyRules;
   if (res.proxyLists) proxyLists = res.proxyLists.map(stripLegacyPac);
   const stale = proxyLists.some(isStalePac);

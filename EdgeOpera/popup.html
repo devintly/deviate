@@ -6,8 +6,14 @@
     * { box-sizing: border-box; }
     html, body { margin: 0; width: 440px; height: 580px; overflow: hidden; background: #1e1f22; color: #f2f3f5; font-family: Inter, Arial, sans-serif; }
     .wrap { height: 100%; padding: 14px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
-    .header { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 14px; font-size: 20px; font-weight: 700; color: #ffffff; flex-shrink: 0; }
+    .header { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 14px; font-size: 20px; font-weight: 700; color: #ffffff; flex-shrink: 0; position: relative; }
     .header img { width: 28px; height: 28px; border-radius: 0; object-fit: cover; }
+    .power-btn { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 32px; min-width: 32px; min-height: 32px; padding: 6px; flex: none; background: #2b2d31; color: #949ba4; }
+    .power-btn:hover { background: #35373c; }
+    .power-btn.on { color: #57f287; background: rgba(87, 242, 135, 0.16); }
+    .power-btn.on:hover { background: rgba(87, 242, 135, 0.26); }
+    .power-btn.off { color: #949ba4; }
+    .power-btn svg { width: 18px; height: 18px; display: block; }
     .tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-shrink: 0; }
     .tab { flex: 1; border: 0; border-radius: 10px; background: #2b2d31; color: #b5bac1; padding: 8px 0; font-size: 12px; font-weight: 600; cursor: pointer; text-align: center; transition: 0.15s; }
     .tab.active { background: #5865f2; color: #ffffff; }
@@ -108,7 +114,13 @@
 </head>
 <body>
   <div class="wrap">
-    <div class="header"><span>Deviate</span><img src="icon.png" alt="Deviate"></div>
+    <div class="header">
+      <span>Deviate</span>
+      <img src="icon.png" alt="Deviate">
+      <button id="powerBtn" class="power-btn off" type="button" title="Включить расширение" aria-label="Включить расширение" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v8"/><path d="M7.4 6.4a7 7 0 1 0 9.2 0"/></svg>
+      </button>
+    </div>
     <div id="accessError" class="card" style="display:none; margin-bottom:14px; border:1px solid #da373c;">
       <div class="label" style="color:#ff6b6b;">Ошибка доступа</div>
       <div id="accessErrorText" style="font-size:12px; color:#f2f3f5; line-height:1.45; white-space:pre-line;"></div>

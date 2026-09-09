@@ -3,6 +3,7 @@ importScripts("pac-parse.js");
 let proxyConfig = { type: "socks", host: "", port: 0, username: "", password: "" };
 let proxyRules = [];
 let proxyLists = [];
+let extensionEnabled = false;
 let pE = {}, pS = {}, bE = {}, bS = {};
 let pIp = {}, bIp = {}, pCidr = [], bCidr = [];
 let pPac = [], bPac = [];
@@ -368,11 +369,15 @@ function applyChromePac(value, done) {
 function applyProxy() {
   rebuildMaps();
   return new Promise(resolve => {
+    const done = () => resolve();
+    if (!extensionEnabled) {
+      applyChromePac({ mode: "direct" }, done);
+      return;
+    }
     const hasLocal = Object.keys(pE).length + Object.keys(pS).length + Object.keys(bE).length + Object.keys(bS).length > 0;
     const hasIp = Object.keys(pIp).length + Object.keys(bIp).length + pCidr.length + bCidr.length > 0;
     const hasPac = pPac.length + bPac.length > 0;
     const hasFetch = Object.keys(fetchProxyHosts).length + Object.keys(fetchDirectHosts).length > 0;
-    const done = () => resolve();
     if (!hasLocal && !hasIp && !hasPac && !hasFetch) {
       applyChromePac({ mode: "direct" }, done);
       return;
@@ -404,7 +409,7 @@ function scheduleBadge(tabId) {
 
 function updateBadge(tabId) {
   if (tabId == null || tabId < 0) return;
-  const n = tabProxied[tabId] ? tabProxied[tabId].size : 0;
+  const n = extensionEnabled && tabProxied[tabId] ? tabProxied[tabId].size : 0;
   chrome.action.setBadgeBackgroundColor({ tabId, color: "#5865f2" });
   chrome.action.setBadgeText({ tabId, text: n ? String(n) : "" });
 }
@@ -601,6 +606,10 @@ chrome.storage.onChanged.addListener((changes) => {
   }
   if (changes.proxyRules) { proxyRules = changes.proxyRules.newValue || []; need = true; }
   if (changes.proxyLists) { proxyLists = changes.proxyLists.newValue || []; need = true; }
+  if (changes.extensionEnabled) {
+    extensionEnabled = !!changes.extensionEnabled.newValue && !!(proxyConfig && proxyConfig.host);
+    need = true;
+  }
   if (need) applyProxy();
 });
 
@@ -622,16 +631,23 @@ function stripLegacyPac(list) {
   return list;
 }
 
-chrome.storage.local.get(["proxyConfig", "proxyServers", "proxyRules", "proxyLists"], (res) => {
+chrome.storage.local.get(["proxyConfig", "proxyServers", "proxyRules", "proxyLists", "extensionEnabled"], (res) => {
   const servers = migrateProxyServers(res.proxyServers, res.proxyConfig);
   proxyConfig = configFromServers(servers);
+  if (res.extensionEnabled == null) extensionEnabled = !!(proxyConfig && proxyConfig.host);
+  else extensionEnabled = !!res.extensionEnabled && !!(proxyConfig && proxyConfig.host);
+  const persist = {};
+  if (JSON.stringify(servers) !== JSON.stringify(res.proxyServers || [])) {
+    persist.proxyServers = servers;
+    persist.proxyConfig = proxyConfig;
+  }
+  if (res.extensionEnabled !== extensionEnabled) persist.extensionEnabled = extensionEnabled;
   const finish = () => {
     if (res.proxyRules) proxyRules = res.proxyRules;
     if (res.proxyLists) proxyLists = (res.proxyLists || []).map(stripLegacyPac);
     applyProxy();
     if (proxyLists.some(isStalePac)) updateAllLists();
   };
-  if (JSON.stringify(servers) !== JSON.stringify(res.proxyServers || [])) {
-    chrome.storage.local.set({ proxyServers: servers, proxyConfig }, finish);
-  } else finish();
+  if (Object.keys(persist).length) chrome.storage.local.set(persist, finish);
+  else finish();
 });

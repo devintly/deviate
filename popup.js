@@ -26,7 +26,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     showAddList: document.getElementById("showAddListBtn"), saveList: document.getElementById("saveListBtn"),
     deleteList: document.getElementById("deleteListBtn"), cancelList: document.getElementById("cancelListBtn"),
     refreshLists: document.getElementById("refreshListsBtn"), lCont: document.getElementById("listsContainer"),
-    lStatus: document.getElementById("listStatus"), lFormStatus: document.getElementById("listFormStatus")
+    lStatus: document.getElementById("listStatus"), lFormStatus: document.getElementById("listFormStatus"),
+    powerBtn: document.getElementById("powerBtn")
   };
 
   let currentRules = [];
@@ -39,6 +40,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   let scopeMode = "host";
   let editingListId = null;
   let editingProxyId = null;
+  let extensionEnabled = false;
   const HOST_ORIGINS = ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"];
   const accessError = document.getElementById("accessError");
   const accessErrorText = document.getElementById("accessErrorText");
@@ -358,13 +360,40 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function persistProxies(list) {
+    const prevHad = !!configFromServers(currentProxies).host;
     const keep = (list.find(p => p.enabled) || list[0] || {}).id;
     currentProxies = withActiveProxy(list, keep);
+    const cfg = configFromServers(currentProxies);
+    if (!cfg.host) extensionEnabled = false;
+    else if (!prevHad) extensionEnabled = true;
     await browser.storage.local.set({
       proxyServers: currentProxies,
-      proxyConfig: configFromServers(currentProxies)
+      proxyConfig: cfg,
+      extensionEnabled
     });
     renderProxies();
+    refreshPowerBtn();
+  }
+
+  function hasConfiguredProxy() {
+    return !!configFromServers(currentProxies).host;
+  }
+
+  function refreshPowerBtn() {
+    const on = extensionEnabled && hasConfiguredProxy();
+    els.powerBtn.classList.toggle("on", on);
+    els.powerBtn.classList.toggle("off", !on);
+    const label = !hasConfiguredProxy() ? "Сначала добавьте прокси" : (on ? "Выключить расширение" : "Включить расширение");
+    els.powerBtn.title = label;
+    els.powerBtn.setAttribute("aria-label", label);
+    els.powerBtn.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+
+  function showProxyTab() {
+    tabs.forEach(t => t.classList.remove("active"));
+    panels.forEach(p => p.classList.remove("active"));
+    document.getElementById("tabProxy").classList.add("active");
+    document.getElementById("panelProxy").classList.add("active");
   }
 
   function renderProxies() {
@@ -593,16 +622,21 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function loadState() {
-    const res = await browser.storage.local.get(["proxyConfig", "proxyServers", "proxyRules", "proxyLists", "lastProxyError"]);
+    const res = await browser.storage.local.get(["proxyConfig", "proxyServers", "proxyRules", "proxyLists", "lastProxyError", "extensionEnabled"]);
     currentRules = Array.isArray(res.proxyRules) ? res.proxyRules : [];
     currentLists = Array.isArray(res.proxyLists) ? res.proxyLists : [];
+    currentProxies = Array.isArray(res.proxyServers) ? res.proxyServers.slice() : [];
     const migrated = migrateProxies(res);
+    const cfg = configFromServers(migrated);
+    if (res.extensionEnabled == null) extensionEnabled = !!cfg.host;
+    else extensionEnabled = !!res.extensionEnabled && !!cfg.host;
     const prev = Array.isArray(res.proxyServers) ? res.proxyServers : [];
-    if (JSON.stringify(migrated) !== JSON.stringify(prev)) {
+    if (JSON.stringify(migrated) !== JSON.stringify(prev) || res.extensionEnabled !== extensionEnabled) {
       await persistProxies(migrated);
     } else {
       currentProxies = migrated;
       renderProxies();
+      refreshPowerBtn();
     }
     renderLists();
     try {
@@ -775,6 +809,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     refreshIcon();
   });
 
+  els.powerBtn.addEventListener("click", async () => {
+    if (!hasConfiguredProxy()) {
+      showProxyTab();
+      flash(els.pStatus, "Сначала добавьте прокси", "#ff6b6b");
+      return;
+    }
+    extensionEnabled = !extensionEnabled;
+    await browser.storage.local.set({ extensionEnabled });
+    refreshPowerBtn();
+  });
+
   browser.storage.onChanged.addListener((c, a) => {
     if (a !== "local") return;
     if (c.proxyRules) {
@@ -782,7 +827,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       refreshIcon();
     }
     if (c.proxyLists) { currentLists = c.proxyLists.newValue || []; renderLists(); }
-    if (c.proxyServers) { currentProxies = migrateProxies({ proxyServers: c.proxyServers.newValue || [] }); renderProxies(); }
+    if (c.proxyServers) {
+      currentProxies = migrateProxies({ proxyServers: c.proxyServers.newValue || [] });
+      renderProxies();
+      refreshPowerBtn();
+    }
+    if (c.extensionEnabled) {
+      extensionEnabled = !!c.extensionEnabled.newValue && hasConfiguredProxy();
+      refreshPowerBtn();
+    }
     if (c.lastProxyError && c.lastProxyError.newValue) flash(els.pStatus, c.lastProxyError.newValue, "#ff6b6b");
   });
 
