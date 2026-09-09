@@ -68,4 +68,19 @@ assert(normalize("*.1.2.3.4") === "1.2.3.4", "star stripped from ip");
 assert(normalize("Example.COM") === "example.com", "plain domain kept exact");
 assert(normalize("*.Example.COM") === "*.example.com", "wildcard kept");
 
+function addListTargets(domains) {
+  const exact = {}, suffix = {};
+  (domains || []).forEach(d => {
+    d = normalize(d);
+    if (!d) return;
+    if (d.startsWith("*.")) suffix["." + d.slice(2)] = 1;
+    else { exact[d] = 1; suffix["." + d] = 1; }
+  });
+  return { exact, suffix };
+}
+const fromList = addListTargets(["example.com"]);
+assert(matchMaps("example.com", fromList.exact, fromList.suffix), "list apex");
+assert(matchMaps("cdn.example.com", fromList.exact, fromList.suffix), "list parent rule covers subdomain");
+assert(matchMaps("a.b.example.com", fromList.exact, fromList.suffix), "list parent rule covers nested subdomain");
+
 console.log("test-host-rules: ok");
