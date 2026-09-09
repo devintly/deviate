@@ -21,6 +21,40 @@ document.addEventListener("DOMContentLoaded", async () => {
   let currentRules = [];
   let currentLists = [];
   let activeTab = null;
+  const HOST_ORIGINS = ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"];
+  const hostBanner = document.getElementById("hostPermBanner");
+  const grantHostBtn = document.getElementById("grantHostBtn");
+
+  function hostAccessGranted() {
+    return new Promise((resolve) => {
+      if (!api.permissions || !api.permissions.contains) return resolve(true);
+      api.permissions.contains({ origins: HOST_ORIGINS }, (ok) => resolve(!!ok));
+    });
+  }
+
+  function showHostBanner(on) {
+    if (hostBanner) hostBanner.style.display = on ? "block" : "none";
+  }
+
+  async function ensureHostAccess(requestIfMissing) {
+    const ok = await hostAccessGranted();
+    showHostBanner(!ok);
+    if (ok || !requestIfMissing || !api.permissions || !api.permissions.request) return ok;
+    return new Promise((resolve) => {
+      api.permissions.request({ origins: HOST_ORIGINS }, (granted) => {
+        showHostBanner(!granted);
+        resolve(!!granted);
+      });
+    });
+  }
+
+  if (grantHostBtn) grantHostBtn.addEventListener("click", () => ensureHostAccess(true));
+  if (api.permissions && api.permissions.onAdded) {
+    api.permissions.onAdded.addListener(() => ensureHostAccess(false));
+  }
+  if (api.permissions && api.permissions.onRemoved) {
+    api.permissions.onRemoved.addListener(() => ensureHostAccess(false));
+  }
 
   tabs.forEach((tab, i) => {
     tab.addEventListener("click", () => {
@@ -249,5 +283,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (c.lastProxyError && c.lastProxyError.newValue) flash(els.pStatus, c.lastProxyError.newValue, "#ff6b6b");
   });
 
+  await ensureHostAccess(true);
   loadState();
 });
