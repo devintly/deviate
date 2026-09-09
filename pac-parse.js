@@ -343,19 +343,16 @@
     };
   }
 
-  var compiledCache = typeof WeakMap !== "undefined" ? new WeakMap() : null;
+  var compiledCache = new WeakMap();
 
   function getCompiled(list) {
     if (!list) return null;
     if (list.idx && list.extraMap) return list;
-    if (compiledCache) {
-      var cached = compiledCache.get(list);
-      if (cached) return cached;
-      cached = compilePacList(list);
-      compiledCache.set(list, cached);
-      return cached;
-    }
-    return compilePacList(list);
+    var cached = compiledCache.get(list);
+    if (cached) return cached;
+    cached = compilePacList(list);
+    compiledCache.set(list, cached);
+    return cached;
   }
 
   function matchPacHost(host, list) {
@@ -425,20 +422,6 @@
     };
   }
 
-  function packDomainList(domains) {
-    var packed = {};
-    (domains || []).forEach(function (d) {
-      d = String(d || "").toLowerCase().replace(/^www\./, "");
-      var i = d.lastIndexOf(".");
-      if (i < 1) return;
-      var name = d.slice(0, i), zone = d.slice(i + 1);
-      if (!packed[zone]) packed[zone] = {};
-      var k = String(name.length);
-      packed[zone][k] = (packed[zone][k] || "") + name;
-    });
-    return packed;
-  }
-
   function compileCidrs(cidrs) {
     var out = [];
     for (var i = 0; i < (cidrs || []).length; i++) {
@@ -488,24 +471,16 @@
     return out;
   }
 
-  function userProxyToPac(cfg) {
-    if (!cfg || !cfg.host || !cfg.port) return "DIRECT";
-    var t = cfg.type === "socks" ? "SOCKS5" : (cfg.type === "https" ? "HTTPS" : "PROXY");
-    return t + " " + cfg.host + ":" + cfg.port + "; DIRECT";
-  }
-
   var api = {
     isHtmlDocument: isHtmlDocument,
     isPacText: isPacText,
     parsePacToLists: parsePacToLists,
-    packDomainList: packDomainList,
     compilePacList: compilePacList,
     compileCidrs: compileCidrs,
     matchPacHost: matchPacHost,
     matchIpLiteral: matchIpLiteral,
     ipToInt: ipToInt,
     userProxyToFirefox: userProxyToFirefox,
-    userProxyToPac: userProxyToPac,
     IPV4_RE: IPV4_RE
   };
 
