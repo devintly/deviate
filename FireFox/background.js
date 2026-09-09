@@ -155,7 +155,30 @@ function isProxiedHost(host) {
   return false;
 }
 
+const fetchProxyHosts = {};
+const fetchDirectHosts = {};
+
+function canonListUrl(url) {
+  return String(url || "").trim().replace(/\/+$/, "").toLowerCase();
+}
+
+function listMeta(msg, existing) {
+  const name = msg && msg.name != null ? String(msg.name).trim() : ((existing && existing.name) || "");
+  let hours = Number(msg && msg.intervalHours);
+  if (!(hours > 0)) hours = existing && Number(existing.intervalHours) > 0 ? Number(existing.intervalHours) : 12;
+  if (hours > 168) hours = 168;
+  const viaProxy = msg && msg.viaProxy != null ? !!msg.viaProxy : !!(existing && existing.viaProxy);
+  return { name, intervalHours: hours, viaProxy };
+}
+
+function findListByUrl(url, exceptId) {
+  const c = canonListUrl(url);
+  return proxyLists.find(l => canonListUrl(l.url) === c && (exceptId == null || l.id !== exceptId));
+}
+
 function decideProxySync(host) {
+  if (fetchDirectHosts[host]) return { type: "direct" };
+  if (fetchProxyHosts[host]) return ffProxy;
   if (isBlockedHost(host)) return { type: "http", host: "127.0.0.1", port: 9 };
   if (isProxiedHost(host)) return ffProxy;
   return null;
@@ -183,7 +206,7 @@ function onProxyRequest(requestInfo) {
   const tabId = requestInfo.tabId;
   const sync = decideProxySync(host);
   if (sync) {
-    rememberTabHost(tabId, host, sync.port !== 9);
+    rememberTabHost(tabId, host, sync.type !== "direct" && sync.port !== 9);
     scheduleBadge(tabId);
     return sync;
   }
@@ -271,27 +294,67 @@ browser.tabs.onUpdated.addListener((tabId, change) => {
   updateBadge(tabId);
 });
 
-async function fetchAndStoreList(url, type, existingId) {
-  const r = await fetch(url, {
-    cache: "no-store",
-    headers: { Accept: "application/x-ns-proxy-autoconfig, text/plain, application/javascript, */*" },
-    signal: AbortSignal.timeout ? AbortSignal.timeout(45000) : undefined
+async function withFetchRoute(url, viaProxy, fn) {
+  let host = "";
+  try { host = new URL(url).hostname.toLowerCase(); } catch (e) {}
+  const bucket = viaProxy ? fetchProxyHosts : fetchDirectHosts;
+  if (host) bucket[host] = (bucket[host] || 0) + 1;
+  try { return await fn(); }
+  finally {
+    if (host) {
+      bucket[host]--;
+      if (bucket[host] <= 0) delete bucket[host];
+    }
+  }
+}
+
+async function fetchAndStoreList(url, type, existingId, msg) {
+  url = String(url || "").trim();
+  if (!url.startsWith("http")) throw new Error("Введите корректный URL");
+  if (findListByUrl(url, existingId)) throw new Error("Список добавить нельзя, он уже существует");
+  const existing = existingId != null ? proxyLists.find(x => x.id === existingId) : null;
+  const meta = listMeta(msg || {}, existing);
+  const item = await withFetchRoute(url, meta.viaProxy, async () => {
+    const r = await fetch(url, {
+      cache: "no-store",
+      headers: { Accept: "application/x-ns-proxy-autoconfig, text/plain, application/javascript, */*" },
+      signal: AbortSignal.timeout ? AbortSignal.timeout(45000) : undefined
+    });
+    const text = await r.text();
+    if (!r.ok) throw new Error(`HTTP ${r.status}: ${text.replace(/\s+/g, " ").trim().slice(0, 160)}`);
+    return ingestRemote(url, type || (existing && existing.type) || "proxy", text);
   });
-  const text = await r.text();
-  if (!r.ok) throw new Error(`HTTP ${r.status}: ${text.replace(/\s+/g, " ").trim().slice(0, 160)}`);
-  const item = ingestRemote(url, type, text);
+  delete item.pacScript;
+  delete item.pacIndex;
+  item.name = meta.name;
+  item.intervalHours = meta.intervalHours;
+  item.viaProxy = meta.viaProxy;
+  item.updatedAt = Date.now();
   if (existingId != null) {
     item.id = existingId;
     const idx = proxyLists.findIndex(x => x.id === existingId);
-    if (idx >= 0) proxyLists[idx] = Object.assign({}, proxyLists[idx], item, { url, type: proxyLists[idx].type || type });
+    if (idx >= 0) proxyLists[idx] = Object.assign({}, proxyLists[idx], item, { url, type: type || proxyLists[idx].type || "proxy" });
     else proxyLists.push(item);
   } else {
     proxyLists.push(item);
   }
-  delete item.pacScript;
-  delete item.pacIndex;
   await browser.storage.local.set({ proxyLists });
   return item;
+}
+
+async function saveListMeta(msg) {
+  const idx = proxyLists.findIndex(x => x.id === msg.id);
+  if (idx < 0) throw new Error("Список не найден");
+  const url = String(msg.url || proxyLists[idx].url || "").trim();
+  if (!url.startsWith("http")) throw new Error("Введите корректный URL");
+  if (findListByUrl(url, msg.id)) throw new Error("Список добавить нельзя, он уже существует");
+  const meta = listMeta(msg, proxyLists[idx]);
+  proxyLists[idx].name = meta.name;
+  proxyLists[idx].intervalHours = meta.intervalHours;
+  proxyLists[idx].viaProxy = meta.viaProxy;
+  proxyLists[idx].type = msg.type || proxyLists[idx].type;
+  proxyLists[idx].url = url;
+  await browser.storage.local.set({ proxyLists });
 }
 
 async function updateAllLists() {
@@ -300,7 +363,7 @@ async function updateAllLists() {
   for (const list of proxyLists) {
     if (!list.url) continue;
     try {
-      await fetchAndStoreList(list.url, list.type, list.id);
+      await fetchAndStoreList(list.url, list.type, list.id, list);
       updated++;
     } catch (e) {}
   }
@@ -309,9 +372,48 @@ async function updateAllLists() {
   return { updated };
 }
 
+async function updateDueLists() {
+  if (!proxyLists.length) return { updated: 0 };
+  const now = Date.now();
+  let updated = 0;
+  for (const list of proxyLists) {
+    if (!list.url) continue;
+    const hours = Number(list.intervalHours) > 0 ? Number(list.intervalHours) : 12;
+    if (now - (Number(list.updatedAt) || 0) < hours * 3600000) continue;
+    try {
+      await fetchAndStoreList(list.url, list.type, list.id, list);
+      updated++;
+    } catch (e) {}
+  }
+  if (updated) {
+    rebuildMaps();
+    await refreshActiveBadge();
+  }
+  return { updated };
+}
+
 browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === "fetchList") {
-    fetchAndStoreList(msg.url, msg.type)
+    fetchAndStoreList(msg.url, msg.type, msg.id, msg)
+      .then(() => applyProxy())
+      .then(() => sendResponse({ success: true }))
+      .catch(e => sendResponse({ success: false, error: String(e.message || e) }));
+    return true;
+  }
+  if (msg.action === "saveListMeta") {
+    saveListMeta(msg)
+      .then(() => applyProxy())
+      .then(() => sendResponse({ success: true }))
+      .catch(e => sendResponse({ success: false, error: String(e.message || e) }));
+    return true;
+  }
+  if (msg.action === "refreshList") {
+    const list = proxyLists.find(x => x.id === msg.id);
+    if (!list) {
+      sendResponse({ success: false, error: "Список не найден" });
+      return true;
+    }
+    fetchAndStoreList(list.url, list.type, list.id, list)
       .then(() => applyProxy())
       .then(() => sendResponse({ success: true }))
       .catch(e => sendResponse({ success: false, error: String(e.message || e) }));
@@ -334,9 +436,9 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-browser.alarms.create("updateLists", { periodInMinutes: 60 });
+browser.alarms.create("updateLists", { periodInMinutes: 30 });
 browser.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === "updateLists") updateAllLists();
+  if (alarm.name === "updateLists") updateDueLists();
 });
 
 browser.storage.onChanged.addListener(async (changes) => {

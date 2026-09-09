@@ -43,9 +43,27 @@
     .hint:empty { display: none; margin: 0; }
     .footer { text-align: center; font-size: 11px; color: #949ba4; margin-top: 12px; }
     .footer a { color: #00a8fc; text-decoration: none; }
-    .list-item { background: #1e1f22; border-radius: 8px; padding: 10px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
-    .list-item .info { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
-    .list-item .del { color: #da373c; cursor: pointer; font-weight: bold; padding: 5px; }
+    .lists-empty { font-size: 12px; color: #b5bac1; text-align: center; padding: 12px 4px; }
+    .lists-wrap { max-height: 280px; overflow-y: auto; margin: 8px 0; }
+    .lists-add { width: 100%; flex: none; margin-top: 8px; }
+    .list-card { background: #1e1f22; border-radius: 10px; padding: 10px; margin-bottom: 8px; }
+    .list-card:last-child { margin-bottom: 0; }
+    .list-card-title { font-weight: 700; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .list-card-meta { font-size: 11px; color: #b5bac1; margin-top: 4px; }
+    .list-card-url { font-size: 10px; color: #949ba4; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .list-card-actions { display: flex; gap: 6px; margin-top: 8px; }
+    .list-card-actions button { flex: 1; min-height: 32px; font-size: 11px; padding: 6px 8px; background: #404249; color: #fff; }
+    .list-card-actions button:hover { background: #4e5058; }
+    .list-card-actions .mini-primary { background: #5865f2; }
+    .list-card-actions .mini-primary:hover { background: #4752c4; }
+    .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 12px; font-size: 12px; font-weight: 700; color: #b5bac1; cursor: pointer; }
+    .switch-hint { display: block; font-size: 10px; font-weight: 400; color: #949ba4; margin-top: 2px; }
+    .switch { position: relative; width: 40px; height: 22px; flex-shrink: 0; }
+    .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .switch-ui { position: absolute; inset: 0; background: #1e1f22; border-radius: 11px; }
+    .switch-ui::after { content: ""; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; background: #b5bac1; border-radius: 50%; transition: 0.15s; }
+    .switch input:checked + .switch-ui { background: #5865f2; }
+    .switch input:checked + .switch-ui::after { left: 21px; background: #fff; }
 
     .domains-panel { display: none; margin-top: 12px; }
     .domains-panel.open { display: block; }
@@ -138,18 +156,34 @@
 
     <div id="panelLists" class="panel">
       <div class="card">
-        <div class="label">URL списка (.txt / AdGuard / PAC)</div>
-        <input id="listUrl" type="text" placeholder="https://.../filter.txt или https://.../proxy.pac">
-        <div class="label">Действие</div>
-        <select id="listAction">
-          <option value="proxy">Проксировать (Обход)</option>
-          <option value="block">Блокировать (Реклама/Трекеры)</option>
-        </select>
-        <button id="addListBtn" class="secondary" style="background:#5865f2; width:100%;">Скачать и применить список</button>
-        <button id="refreshListsBtn" class="secondary">Обновить списки</button>
-        <button id="toggleListsBtn" class="secondary" style="display:none;">Управление списками (0)</button>
-        <div id="listsContainer" style="margin-top: 10px; max-height: 160px; overflow-y: auto; display: none;"></div>
-        <div id="listStatus" class="hint"></div>
+        <div id="listsMain">
+          <button id="refreshListsBtn" class="secondary">Обновить все</button>
+          <div id="listsEmpty" class="lists-empty">Списков пока нет</div>
+          <div id="listsContainer" class="lists-wrap"></div>
+          <button id="showAddListBtn" class="primary lists-add" type="button">Добавить список</button>
+          <div id="listStatus" class="hint"></div>
+        </div>
+        <div id="listsForm" style="display:none;">
+          <div class="label">Название (необязательно)</div>
+          <input id="listName" type="text" placeholder="Если пусто — будет ссылка">
+          <div class="label">URL списка (.txt / AdGuard / PAC)</div>
+          <input id="listUrl" type="text" placeholder="https://.../filter.txt или https://.../proxy.pac">
+          <div class="label">Тип правила</div>
+          <select id="listAction">
+            <option value="proxy">Проксировать (Обход)</option>
+            <option value="block">Блокировать (Реклама/Трекеры)</option>
+          </select>
+          <div class="label">Обновление (часы)</div>
+          <input id="listInterval" type="number" min="1" max="168" value="12" placeholder="12">
+          <label class="switch-row">
+            <span>Скачивать через прокси<span class="switch-hint">Выкл — напрямую</span></span>
+            <span class="switch"><input id="listViaProxy" type="checkbox"><span class="switch-ui"></span></span>
+          </label>
+          <button id="saveListBtn" class="primary lists-add" type="button">Добавить список</button>
+          <button id="deleteListBtn" class="danger lists-add" type="button" style="display:none;">Удалить список</button>
+          <button id="cancelListBtn" class="secondary lists-add" type="button">Назад</button>
+          <div id="listFormStatus" class="hint"></div>
+        </div>
       </div>
     </div>
 

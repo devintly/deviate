@@ -12,11 +12,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     pType: document.getElementById("proxyType"), pHost: document.getElementById("proxyHost"),
     pPort: document.getElementById("proxyPort"), pUser: document.getElementById("proxyUser"),
     pPass: document.getElementById("proxyPass"), saveProxy: document.getElementById("saveProxyBtn"),
-    pStatus: document.getElementById("proxyStatus"), lUrl: document.getElementById("listUrl"),
-    lAct: document.getElementById("listAction"), addList: document.getElementById("addListBtn"),
-    refreshLists: document.getElementById("refreshListsBtn"),
-    toggleLists: document.getElementById("toggleListsBtn"), lCont: document.getElementById("listsContainer"),
-    lStatus: document.getElementById("listStatus")
+    pStatus: document.getElementById("proxyStatus"),
+    listsMain: document.getElementById("listsMain"), listsForm: document.getElementById("listsForm"),
+    listsEmpty: document.getElementById("listsEmpty"),
+    lName: document.getElementById("listName"), lUrl: document.getElementById("listUrl"),
+    lAct: document.getElementById("listAction"), lInterval: document.getElementById("listInterval"),
+    lViaProxy: document.getElementById("listViaProxy"),
+    showAddList: document.getElementById("showAddListBtn"), saveList: document.getElementById("saveListBtn"),
+    deleteList: document.getElementById("deleteListBtn"), cancelList: document.getElementById("cancelListBtn"),
+    refreshLists: document.getElementById("refreshListsBtn"), lCont: document.getElementById("listsContainer"),
+    lStatus: document.getElementById("listStatus"), lFormStatus: document.getElementById("listFormStatus")
   };
 
   let currentRules = [];
@@ -26,6 +31,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   let pageHost = "";
   let pageApex = "";
   let scopeMode = "host";
+  let editingListId = null;
   const HOST_ORIGINS = ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"];
   const accessError = document.getElementById("accessError");
   const accessErrorText = document.getElementById("accessErrorText");
@@ -58,10 +64,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       tab.classList.add("active");
       panels[i].classList.add("active");
     });
-  });
-
-  els.toggleLists.addEventListener("click", () => {
-    els.lCont.style.display = els.lCont.style.display === "none" ? "block" : "none";
   });
 
   function normalize(v) { return String(v||"").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^www\./, ""); }
@@ -276,36 +278,123 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function renderLists() {
     els.lCont.textContent = "";
-    if (currentLists.length > 0) {
-      els.toggleLists.style.display = "block";
-      els.toggleLists.textContent = `Управление списками (${currentLists.length})`;
-    } else {
-      els.toggleLists.style.display = "none";
-      els.lCont.style.display = "none";
-    }
-
+    const empty = !currentLists.length;
+    els.listsEmpty.style.display = empty ? "block" : "none";
     currentLists.forEach(l => {
-      const div = document.createElement("div"); div.className = "list-item";
-      const infoDiv = document.createElement("div"); infoDiv.className = "info"; infoDiv.title = l.url;
-      const isPac = l.format === "pac";
-      const typ = l.type === "block" ? "🛑 Блок" : (isPac ? "📜 PAC" : "🚀 Прокси");
-      const count = `${l.domainCount || (l.domains || []).length} дом. / ${l.ipCount || (l.ips || []).length} IP`;
-      infoDiv.textContent = `[${typ}] ${count}`;
-      infoDiv.appendChild(document.createElement("br"));
-      const span = document.createElement("span"); span.style.color = "#b5bac1"; span.style.fontSize = "10px"; span.textContent = l.url;
-      infoDiv.appendChild(span);
-      const delDiv = document.createElement("div"); delDiv.className = "del"; delDiv.dataset.id = l.id; delDiv.textContent = "✖";
-      div.appendChild(infoDiv); div.appendChild(delDiv); els.lCont.appendChild(div);
+      const card = document.createElement("div");
+      card.className = "list-card";
+      const name = String(l.name || "").trim();
+      if (name) {
+        const title = document.createElement("div");
+        title.className = "list-card-title";
+        title.textContent = name;
+        title.title = name;
+        card.appendChild(title);
+      }
+      const meta = document.createElement("div");
+      meta.className = "list-card-meta";
+      const fmt = l.format === "pac" ? "PAC" : "txt";
+      const kind = l.type === "block" ? "блокировать" : "проксировать";
+      const domains = l.domainCount || (l.domains || []).length || 0;
+      const ips = l.ipCount || (l.ips || []).length || 0;
+      meta.textContent = `${fmt} · ${kind} · ${domains} дом. / ${ips} IP`;
+      const urlLine = document.createElement("div");
+      urlLine.className = "list-card-url";
+      urlLine.textContent = l.url || "";
+      urlLine.title = l.url || "";
+      const actions = document.createElement("div");
+      actions.className = "list-card-actions";
+      const refreshBtn = document.createElement("button");
+      refreshBtn.type = "button";
+      refreshBtn.className = "mini-primary";
+      refreshBtn.textContent = "Обновить";
+      refreshBtn.addEventListener("click", () => refreshOneList(l.id, refreshBtn));
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.textContent = "Редактировать";
+      editBtn.addEventListener("click", () => openListForm(l));
+      actions.appendChild(refreshBtn);
+      actions.appendChild(editBtn);
+      card.appendChild(meta);
+      card.appendChild(urlLine);
+      card.appendChild(actions);
+      els.lCont.appendChild(card);
     });
+  }
 
-    document.querySelectorAll(".del").forEach(btn => {
-      btn.addEventListener("click", async (e) => {
-        const id = Number(e.target.dataset.id);
-        currentLists = currentLists.filter(x => x.id !== id);
-        await browser.storage.local.set({ proxyLists: currentLists });
-        renderLists();
-      });
-    });
+  function canonListUrl(url) {
+    return String(url || "").trim().replace(/\/+$/, "").toLowerCase();
+  }
+
+  function showListsMain() {
+    editingListId = null;
+    els.listsForm.style.display = "none";
+    els.listsMain.style.display = "block";
+    renderLists();
+  }
+
+  function resetListForm() {
+    els.lName.value = "";
+    els.lUrl.value = "";
+    els.lAct.value = "proxy";
+    els.lInterval.value = "12";
+    els.lViaProxy.checked = false;
+    els.lFormStatus.textContent = "";
+  }
+
+  function openListForm(item) {
+    els.listsMain.style.display = "none";
+    els.listsForm.style.display = "block";
+    els.lFormStatus.textContent = "";
+    if (item) {
+      editingListId = item.id;
+      els.lName.value = item.name || "";
+      els.lUrl.value = item.url || "";
+      els.lAct.value = item.type === "block" ? "block" : "proxy";
+      els.lInterval.value = String(Number(item.intervalHours) > 0 ? Number(item.intervalHours) : 12);
+      els.lViaProxy.checked = !!item.viaProxy;
+      els.saveList.textContent = "Сохранить";
+      els.deleteList.style.display = "flex";
+    } else {
+      editingListId = null;
+      resetListForm();
+      els.saveList.textContent = "Добавить список";
+      els.deleteList.style.display = "none";
+    }
+  }
+
+  function collectListForm() {
+    const url = els.lUrl.value.trim();
+    let hours = Number(els.lInterval.value);
+    if (!(hours > 0)) hours = 12;
+    if (hours > 168) hours = 168;
+    return {
+      url,
+      name: els.lName.value.trim(),
+      type: els.lAct.value,
+      intervalHours: hours,
+      viaProxy: !!els.lViaProxy.checked
+    };
+  }
+
+  async function sendListMessage(payload) {
+    return Promise.race([
+      browser.runtime.sendMessage(payload),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Таймаут")), 60000))
+    ]);
+  }
+
+  async function refreshOneList(id, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = "..."; }
+    try {
+      const res = await sendListMessage({ action: "refreshList", id });
+      if (res && res.success) flash(els.lStatus, "Обновлено");
+      else flash(els.lStatus, (res && res.error) ? String(res.error).slice(0, 180) : "Ошибка обновления", "#ff6b6b");
+    } catch (e) {
+      flash(els.lStatus, String(e.message || e).slice(0, 180), "#ff6b6b");
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = "Обновить"; }
+    }
   }
 
   async function loadState() {
@@ -398,24 +487,43 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (added || removed) await reloadActiveTab();
   });
 
-  els.addList.addEventListener("click", async () => {
-    const url = els.lUrl.value.trim();
-    if (!url.startsWith("http")) return flash(els.lStatus, "Введите корректный URL", "#ff6b6b");
-    els.addList.disabled = true;
-    els.addList.textContent = "Загрузка...";
+  els.showAddList.addEventListener("click", () => openListForm(null));
+  els.cancelList.addEventListener("click", () => showListsMain());
+
+  els.saveList.addEventListener("click", async () => {
+    const form = collectListForm();
+    if (!form.url.startsWith("http")) return flash(els.lFormStatus, "Введите корректный URL", "#ff6b6b");
+    const dup = currentLists.find(l => canonListUrl(l.url) === canonListUrl(form.url) && l.id !== editingListId);
+    if (dup) return flash(els.lFormStatus, "Список добавить нельзя, он уже существует", "#ff6b6b");
+    els.saveList.disabled = true;
+    const prev = els.saveList.textContent;
+    els.saveList.textContent = editingListId ? "Сохранение..." : "Загрузка...";
     try {
-      const res = await Promise.race([
-        browser.runtime.sendMessage({ action: "fetchList", url, type: els.lAct.value }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Таймаут загрузки списка")), 60000))
-      ]);
-      if (res && res.success) { els.lUrl.value = ""; flash(els.lStatus, "Список применен!"); }
-      else flash(els.lStatus, (res && res.error) ? String(res.error).slice(0, 180) : "Ошибка скачивания", "#ff6b6b");
+      const existing = editingListId != null ? currentLists.find(l => l.id === editingListId) : null;
+      const urlChanged = existing && canonListUrl(existing.url) !== canonListUrl(form.url);
+      const proxyChanged = existing && !!existing.viaProxy !== form.viaProxy;
+      const needFetch = !existing || urlChanged || proxyChanged;
+      const res = await sendListMessage(needFetch
+        ? { action: "fetchList", id: editingListId, url: form.url, type: form.type, name: form.name, intervalHours: form.intervalHours, viaProxy: form.viaProxy }
+        : { action: "saveListMeta", id: editingListId, url: form.url, type: form.type, name: form.name, intervalHours: form.intervalHours, viaProxy: form.viaProxy });
+      if (res && res.success) {
+        flash(els.lStatus, existing ? "Сохранено" : "Список добавлен");
+        showListsMain();
+      } else flash(els.lFormStatus, (res && res.error) ? String(res.error).slice(0, 180) : "Ошибка", "#ff6b6b");
     } catch (e) {
-      flash(els.lStatus, String(e.message || e).slice(0, 180), "#ff6b6b");
+      flash(els.lFormStatus, String(e.message || e).slice(0, 180), "#ff6b6b");
     } finally {
-      els.addList.disabled = false;
-      els.addList.textContent = "Скачать и применить список";
+      els.saveList.disabled = false;
+      els.saveList.textContent = prev;
     }
+  });
+
+  els.deleteList.addEventListener("click", async () => {
+    if (editingListId == null) return;
+    currentLists = currentLists.filter(x => x.id !== editingListId);
+    await browser.storage.local.set({ proxyLists: currentLists });
+    flash(els.lStatus, "Удалено");
+    showListsMain();
   });
 
   els.refreshLists.addEventListener("click", async () => {
@@ -423,17 +531,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     els.refreshLists.disabled = true;
     els.refreshLists.textContent = "Обновление...";
     try {
-      const res = await Promise.race([
-        browser.runtime.sendMessage({ action: "refreshLists" }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Таймаут обновления")), 60000))
-      ]);
+      const res = await sendListMessage({ action: "refreshLists" });
       if (res && res.success) flash(els.lStatus, `Обновлено: ${res.updated || 0}`);
       else flash(els.lStatus, (res && res.error) ? String(res.error).slice(0, 180) : "Ошибка обновления", "#ff6b6b");
     } catch (e) {
       flash(els.lStatus, String(e.message || e).slice(0, 180), "#ff6b6b");
     } finally {
       els.refreshLists.disabled = false;
-      els.refreshLists.textContent = "Обновить списки";
+      els.refreshLists.textContent = "Обновить все";
     }
   });
 
