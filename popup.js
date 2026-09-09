@@ -219,8 +219,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   function refreshScopeUI() {
     const hasChoice = !!(pageHost && pageApex && pageHost !== pageApex && !isIpHost(pageHost));
-    els.scopeApex.disabled = !hasChoice;
     if (!hasChoice) scopeMode = "host";
+    els.scopeApex.hidden = !hasChoice;
+    els.scopeApex.disabled = !hasChoice;
+    if (els.domainScope) els.domainScope.style.display = hasChoice ? "flex" : "none";
     els.scopeHost.classList.toggle("active", scopeMode === "host");
     els.scopeApex.classList.toggle("active", hasChoice && scopeMode === "apex");
   }
