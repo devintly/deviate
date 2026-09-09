@@ -101,6 +101,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (hasIn(list, h)) return true;
     return !isIpHost(h) && hasIn(list, "*." + h);
   }
+  function fullRuleIn(list, host) {
+    const h = hostOfRule(host);
+    if (!h || !list) return "";
+    if (!isIpHost(h) && hasIn(list, "*." + h)) return "*." + h;
+    if (hasIn(list, h)) return h;
+    return "";
+  }
   function hasUserRule(rule) { return hasIn(currentRules, rule) || hasIn(currentDirect, rule); }
   function isDirectRule(rule) { return hasIn(currentDirect, rule); }
   function existingUserRule(host) {
@@ -233,13 +240,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   const SVG_DOT = '<svg class="mark-main" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.4" fill="currentColor"/></svg>';
   const SVG_LIST = '<svg class="mark-list" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4.5 8.4l7.5-3.4 7.5 3.4-7.5 3.4-7.5-3.4z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M4.5 12.4l7.5 3.4 7.5-3.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 16.4l7.5 3.4 7.5-3.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const STATUS = {
-    none: { title: "Не добавлен", tone: "none", html: SVG_X },
-    proxyFull: { title: "Проксируется полностью", tone: "proxy", html: SVG_CHECK },
-    directFull: { title: "Напрямую полностью", tone: "direct", html: SVG_CHECK },
-    proxyApex: { title: "Проксируется из основного домена", tone: "proxy", html: SVG_DOT },
-    directApex: { title: "Напрямую из основного домена", tone: "direct", html: SVG_DOT },
-    listFull: { title: "Проксируется из списка полностью", tone: "proxy", html: SVG_CHECK + SVG_LIST },
-    listApex: { title: "Проксируется из списка из основного домена", tone: "proxy", html: SVG_DOT + SVG_LIST }
+    none: { title: "Правило не применяется", tone: "none", html: SVG_X },
+    proxyFull: { title: "Проксируется правилом", tone: "proxy", html: SVG_CHECK },
+    directFull: { title: "Идёт напрямую правилом", tone: "direct", html: SVG_CHECK },
+    proxyApex: { title: "Проксируется правилом", tone: "proxy", html: SVG_DOT },
+    directApex: { title: "Идёт напрямую правилом", tone: "direct", html: SVG_DOT },
+    listFull: { title: "Проксируется списком", tone: "proxy", html: SVG_CHECK + SVG_LIST },
+    listApex: { title: "Проксируется списком по правилу", tone: "proxy", html: SVG_DOT + SVG_LIST }
   };
   function coverOf(host, covers) {
     if (!host || !covers) return null;
@@ -275,33 +282,41 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (listed) return listedParent ? STATUS.listApex : STATUS.listFull;
     return STATUS.none;
   }
-  function paintStatusEl(el, st) {
+  function paintStatusEl(el, st, title) {
     if (!el || !st) return;
     el.innerHTML = `<span class="status-mark ${st.tone}">${st.html}</span>`;
-    el.title = st.title;
-    el.setAttribute("aria-label", st.title);
+    const label = title || st.title;
+    el.title = label;
+    el.setAttribute("aria-label", label);
   }
-  function syncModeWrap(line) {
-    if (!line) return;
-    const wrap = line.querySelector(".mode-wrap");
-    const mode = line.querySelector("input.mode-direct");
-    if (wrap && mode) wrap.classList.toggle("on", !!mode.checked);
+  function paintHostStatus(el, host, covers, overlay) {
+    const st = statusForHost(host, covers, overlay);
+    const cap = statusCaptionFor(host, covers, overlay);
+    paintStatusEl(el, st, cap.text);
   }
   function coverInfoOf(host, covers) {
     return coverOf(host, covers) || (lastCover.host === host ? lastCover : null);
   }
-  function statusCaptionFor(host, covers) {
+  function statusCaptionFor(host, covers, overlay) {
     if (!host) return { text: "", kind: "" };
-    const st = statusForHost(host, covers, null);
-    if (st === STATUS.proxyFull) return { text: "Проксируется", kind: "proxy" };
-    if (st === STATUS.directFull) return { text: "Напрямую", kind: "direct" };
+    const proxy = overlay && Array.isArray(overlay.proxy) ? overlay.proxy : currentRules;
+    const direct = overlay && Array.isArray(overlay.direct) ? overlay.direct : currentDirect;
+    const st = statusForHost(host, covers, overlay);
+    if (st === STATUS.proxyFull) {
+      const rule = fullRuleIn(proxy, host);
+      return { text: rule ? `Проксируется правилом ${rule}` : "Проксируется правилом", kind: "proxy" };
+    }
+    if (st === STATUS.directFull) {
+      const rule = fullRuleIn(direct, host);
+      return { text: rule ? `Идёт напрямую правилом ${rule}` : "Идёт напрямую правилом", kind: "direct" };
+    }
     if (st === STATUS.proxyApex) {
-      const p = coveringParent(host);
-      return { text: p.rule ? `Проксируется правилом ${p.rule}` : "Проксируется правилом родителя", kind: "proxy" };
+      const p = coveringParent(host, proxy, direct);
+      return { text: p.rule ? `Проксируется правилом ${p.rule}` : "Проксируется правилом", kind: "proxy" };
     }
     if (st === STATUS.directApex) {
-      const p = coveringParent(host);
-      return { text: p.rule ? `Напрямую правилом ${p.rule}` : "Напрямую правилом родителя", kind: "direct" };
+      const p = coveringParent(host, proxy, direct);
+      return { text: p.rule ? `Идёт напрямую правилом ${p.rule}` : "Идёт напрямую правилом", kind: "direct" };
     }
     if (st === STATUS.listFull) {
       const info = coverInfoOf(host, covers);
@@ -312,9 +327,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       const info = coverInfoOf(host, covers);
       const rule = info && info.listedParentRule;
       const name = info && info.listName;
-      if (rule && name) return { text: `Проксируется правилом ${rule} из списка ${name}`, kind: "proxy" };
-      if (rule) return { text: `Проксируется правилом ${rule} из списка`, kind: "proxy" };
+      if (name && rule) return { text: `Проксируется списком ${name} по правилу ${rule}`, kind: "proxy" };
       if (name) return { text: `Проксируется списком ${name}`, kind: "proxy" };
+      if (rule) return { text: `Проксируется правилом ${rule}`, kind: "proxy" };
       return { text: "Проксируется списком", kind: "proxy" };
     }
     if (st === STATUS.none) return { text: "Правило не применяется", kind: "none" };
@@ -323,7 +338,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function paintStatusCaption() {
     if (!els.statusCaption) return;
     const host = hostOfRule(els.domainInput.value);
-    const cap = statusCaptionFor(host, null);
+    const cap = statusCaptionFor(host, null, null);
     els.statusCaption.textContent = cap.text;
     els.statusCaption.className = "status-caption" + (cap.kind ? " " + cap.kind : "");
     if (els.statusIcon && cap.text) {
@@ -331,11 +346,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       els.statusIcon.setAttribute("aria-label", cap.text);
     }
   }
-  function statusForDomain() {
-    return statusForHost(hostOfRule(els.domainInput.value), null, null);
-  }
   function paintStatusIcon() {
-    paintStatusEl(els.statusIcon, statusForDomain());
+    const host = hostOfRule(els.domainInput.value);
+    paintHostStatus(els.statusIcon, host, null, null);
     paintStatusCaption();
   }
   function syncOpenDomainLine(rule) {
@@ -348,10 +361,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const line = box.closest(".domain-line");
       const mode = line && line.querySelector("input.mode-direct");
       if (mode) mode.checked = !!(existing && isDirectRule(existing));
-      if (line) {
-        line.classList.toggle("picked", box.checked);
-        syncModeWrap(line);
-      }
+      if (line) line.classList.toggle("picked", box.checked);
     });
     const overlay = collectOverlayRules();
     els.domainsList.querySelectorAll(".domain-line").forEach(line => {
@@ -359,8 +369,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const mark = line.querySelector(".mini-status");
       if (!pick) return;
       line.classList.toggle("picked", !!pick.checked);
-      syncModeWrap(line);
-      paintStatusEl(mark, statusForHost(hostOfRule(pick.dataset.rule), domainCovers, overlay));
+      paintHostStatus(mark, hostOfRule(pick.dataset.rule), domainCovers, overlay);
     });
   }
   function refreshIcon() {
@@ -472,9 +481,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!pick) return;
       const picked = !!pick.checked;
       line.classList.toggle("picked", picked);
-      syncModeWrap(line);
       const host = hostOfRule(pick.dataset.rule);
-      paintStatusEl(mark, statusForHost(host, covers, overlay || collectOverlayRules()));
+      paintHostStatus(mark, host, covers, overlay || collectOverlayRules());
     }
     function refreshAllDomainLines() {
       const overlay = collectOverlayRules();
@@ -511,26 +519,17 @@ document.addEventListener("DOMContentLoaded", async () => {
       wrap.className = "mode-wrap";
       wrap.title = "Проксировать / Напрямую";
       wrap.addEventListener("click", e => e.stopPropagation());
-      const off = document.createElement("span");
-      off.className = "mode-label-off";
-      off.textContent = "Проксировать";
       const sw = document.createElement("span");
       sw.className = "switch mode-switch";
       const mode = document.createElement("input");
       mode.type = "checkbox";
       mode.className = "mode-direct";
       mode.checked = !!(existing && isDirectRule(existing));
-      wrap.classList.toggle("on", mode.checked);
       const ui = document.createElement("span");
       ui.className = "switch-ui";
       sw.appendChild(mode);
       sw.appendChild(ui);
-      const on = document.createElement("span");
-      on.className = "mode-label-on";
-      on.textContent = "Напрямую";
-      wrap.appendChild(off);
       wrap.appendChild(sw);
-      wrap.appendChild(on);
       line.appendChild(cb);
       line.appendChild(mark);
       line.appendChild(text);
