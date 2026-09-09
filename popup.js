@@ -655,6 +655,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   const ICON_REFRESH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><polyline points="21 3 21 9 15 9"/></svg>';
   const ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
 
+  function pluralRu(n, one, few, many) {
+    n = Math.abs(Number(n)) || 0;
+    const n10 = n % 10;
+    const n100 = n % 100;
+    if (n10 === 1 && n100 !== 11) return one;
+    if (n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14)) return few;
+    return many;
+  }
   function formatListUpdated(ts) {
     const n = Number(ts);
     if (!(n > 0)) return "ещё не обновлялся";
@@ -876,7 +884,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const fmt = l.format === "pac" ? "PAC" : "txt";
       const domains = l.domainCount || (l.domains || []).length || 0;
       const ips = l.ipCount || (l.ips || []).length || 0;
-      meta.textContent = `${fmt} · ${domains} дом. / ${ips} IP`;
+      meta.textContent = `${fmt} · ${domains} ${pluralRu(domains, "домен", "домена", "доменов")} / ${ips} IP`;
       const urlLine = document.createElement("div");
       urlLine.className = "list-card-url";
       urlLine.textContent = l.url || "";
