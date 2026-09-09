@@ -2,9 +2,10 @@ importScripts("pac-parse.js");
 
 let proxyConfig = { type: "socks", host: "", port: 0, username: "", password: "" };
 let proxyRules = [];
+let directRules = [];
 let proxyLists = [];
 let extensionEnabled = false;
-let pE = {}, pS = {}, bE = {}, bS = {};
+let pE = {}, pS = {}, bE = {}, bS = {}, dE = {}, dS = {};
 let pIp = {}, bIp = {}, pCidr = [], bCidr = [];
 let pPac = [], bPac = [];
 const ALL_WEB_URLS = ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"];
@@ -139,25 +140,28 @@ function addListTargets(list, exact, suffix, ipMap, cidrs) {
   for (let i = 0; i < compiled.length; i++) cidrs.push(compiled[i]);
 }
 
-function rebuildMaps() {
-  pE = {}; pS = {}; bE = {}; bS = {};
-  pIp = {}; bIp = {}; pCidr = []; bCidr = [];
-  pPac = []; bPac = [];
-  proxyRules.forEach(r => {
+function addHostRules(rules, exact, suffix) {
+  (rules || []).forEach(r => {
     r = normalizeRule(r);
     if (!r) return;
-    if (r.startsWith("*.")) pS["." + r.slice(2)] = 1;
-    else { pE[r] = 1; pS["." + r] = 1; }
+    if (r.startsWith("*.")) suffix["." + r.slice(2)] = 1;
+    else { exact[r] = 1; suffix["." + r] = 1; }
   });
+}
+
+function rebuildMaps() {
+  pE = {}; pS = {}; bE = {}; bS = {}; dE = {}; dS = {};
+  pIp = {}; bIp = {}; pCidr = []; bCidr = [];
+  pPac = []; bPac = [];
+  addHostRules(proxyRules, pE, pS);
+  addHostRules(directRules, dE, dS);
   proxyLists.forEach(list => {
-    const block = list.type === "block";
     if (list.format === "pac" && list.packed) {
-      (block ? bPac : pPac).push(PacParse.compilePacList(list));
-      addListTargets({ ips: list.ips, cidrs: list.cidrs, domains: list.extra || [] },
-        block ? bE : pE, block ? bS : pS, block ? bIp : pIp, block ? bCidr : pCidr);
+      pPac.push(PacParse.compilePacList(list));
+      addListTargets({ ips: list.ips, cidrs: list.cidrs, domains: list.extra || [] }, pE, pS, pIp, pCidr);
       return;
     }
-    addListTargets(list, block ? bE : pE, block ? bS : pS, block ? bIp : pIp, block ? bCidr : pCidr);
+    addListTargets(list, pE, pS, pIp, pCidr);
   });
 }
 
@@ -174,6 +178,10 @@ function matchMaps(host, exact, suffix) {
   return false;
 }
 
+function isDirectHost(host) {
+  return matchMaps(host, dE, dS);
+}
+
 function isBlockedHost(host) {
   if (matchMaps(host, bE, bS) || PacParse.matchIpLiteral(host, bIp, bCidr)) return true;
   for (let i = 0; i < bPac.length; i++) {
@@ -188,6 +196,34 @@ function isProxiedHost(host) {
     if (PacParse.matchPacHost(host, pPac[i])) return true;
   }
   return false;
+}
+
+function listLabel(list) {
+  const name = String((list && list.name) || "").trim();
+  if (name) return name;
+  try { return new URL(list.url).hostname; } catch (e) {}
+  return String((list && list.url) || "список");
+}
+
+function findCoveringList(host) {
+  host = String(host || "").toLowerCase();
+  if (host.indexOf("www.") === 0) host = host.slice(4);
+  if (!host) return null;
+  let pacIdx = 0;
+  for (let i = 0; i < proxyLists.length; i++) {
+    const list = proxyLists[i];
+    const e = {}, s = {}, ip = {};
+    const cidr = [];
+    if (list.format === "pac" && list.packed) {
+      const compiled = pPac[pacIdx++];
+      if (compiled && PacParse.matchPacHost(host, compiled)) return list;
+      addListTargets({ ips: list.ips, cidrs: list.cidrs, domains: list.extra || [] }, e, s, ip, cidr);
+    } else {
+      addListTargets(list, e, s, ip, cidr);
+    }
+    if (matchMaps(host, e, s) || PacParse.matchIpLiteral(host, ip, cidr)) return list;
+  }
+  return null;
 }
 
 function collectPacMeta(block) {
@@ -210,13 +246,16 @@ function buildCompactPac() {
   const userProxy = PacParse.userProxyToPac(proxyConfig);
   const pPacked = PacParse.packDomainList(Object.keys(pE));
   const bPacked = PacParse.packDomainList(Object.keys(bE));
+  const dPacked = PacParse.packDomainList(Object.keys(dE));
   const pPacLists = collectPacMeta(false);
   const bPacLists = collectPacMeta(true);
   return `
     var pPacked = ${JSON.stringify(pPacked)};
     var bPacked = ${JSON.stringify(bPacked)};
+    var dPacked = ${JSON.stringify(dPacked)};
     var pS = ${JSON.stringify(pS)};
     var bS = ${JSON.stringify(bS)};
+    var dS = ${JSON.stringify(dS)};
     var pIp = ${JSON.stringify(pIp)};
     var bIp = ${JSON.stringify(bIp)};
     var pCidr = ${JSON.stringify(cidrsToPac(pCidr))};
@@ -254,6 +293,7 @@ function buildCompactPac() {
     bPacLists = prepareLists(bPacLists);
     pPacked = indexPacked(pPacked);
     bPacked = indexPacked(bPacked);
+    dPacked = indexPacked(dPacked);
     function matchSuffix(host, suffix) {
       var parts = host.split("."), current = "";
       for (var i = parts.length - 1; i >= 0; i--) {
@@ -333,6 +373,9 @@ function buildCompactPac() {
       }
       return false;
     }
+    function isDirect(host) {
+      return matchPacked(host, dPacked) || matchSuffix(host, dS);
+    }
     function isBlocked(host) {
       return matchPacked(host, bPacked) || matchSuffix(host, bS) || matchIp(host, bIp, bCidr) || matchPacArr(host, bPacLists);
     }
@@ -344,11 +387,13 @@ function buildCompactPac() {
       if (!host) return "DIRECT";
       if (fetchDirect[host]) return "DIRECT";
       if (fetchProxy[host]) return userProxy;
+      if (isDirect(host)) return "DIRECT";
       if (isBlocked(host)) return "PROXY 127.0.0.1:9";
       if (isProxied(host)) return userProxy;
       if (hasIpLists && !/^[0-9a-fA-F:.]*$/.test(host)) {
         var oip = dnsResolve(host);
         if (oip) {
+          if (isDirect(oip)) return "DIRECT";
           if (isBlocked(oip)) return "PROXY 127.0.0.1:9";
           if (isProxied(oip)) return userProxy;
         }
@@ -430,7 +475,7 @@ chrome.webRequest.onBeforeRequest.addListener(
     try {
       const host = new URL(details.url).hostname.toLowerCase();
       if (!host) return;
-      rememberTabHost(details.tabId, host, isProxiedHost(host) && !isBlockedHost(host));
+      rememberTabHost(details.tabId, host, isProxiedHost(host) && !isBlockedHost(host) && !isDirectHost(host));
       scheduleBadge(details.tabId);
     } catch (e) {}
   },
@@ -479,7 +524,7 @@ function fetchAndStoreList(url, type, existingId, msg) {
   }).then(async r => {
     const text = await r.text();
     if (!r.ok) throw new Error(`HTTP ${r.status}: ${text.replace(/\s+/g, " ").trim().slice(0, 160)}`);
-    const item = ingestRemote(url, type || (existing && existing.type) || "proxy", text);
+    const item = ingestRemote(url, "proxy", text);
     delete item.pacScript;
     delete item.pacIndex;
     item.name = meta.name;
@@ -489,7 +534,7 @@ function fetchAndStoreList(url, type, existingId, msg) {
     if (existingId != null) {
       item.id = existingId;
       const idx = proxyLists.findIndex(x => x.id === existingId);
-      if (idx >= 0) proxyLists[idx] = Object.assign({}, proxyLists[idx], item, { url, type: type || proxyLists[idx].type || "proxy" });
+      if (idx >= 0) proxyLists[idx] = Object.assign({}, proxyLists[idx], item, { url, type: "proxy" });
       else proxyLists.push(item);
     } else proxyLists.push(item);
     return new Promise((resolve, reject) => {
@@ -511,7 +556,7 @@ function saveListMeta(msg) {
   proxyLists[idx].name = meta.name;
   proxyLists[idx].intervalHours = meta.intervalHours;
   proxyLists[idx].viaProxy = meta.viaProxy;
-  proxyLists[idx].type = msg.type || proxyLists[idx].type;
+  proxyLists[idx].type = "proxy";
   proxyLists[idx].url = url;
   return new Promise((resolve, reject) => {
     chrome.storage.local.set({ proxyLists }, () => {
@@ -579,6 +624,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .catch(e => sendResponse({ success: false, error: String(e.message || e) }));
     return true;
   }
+  if (msg.action === "coverInfo") {
+    const host = normalizeRule(msg.host || "").replace(/^\*\./, "");
+    const list = findCoveringList(host);
+    sendResponse({ listed: !!list, listName: list ? listLabel(list) : "" });
+    return true;
+  }
   if (msg.action === "getTabDomains" || msg.action === "getUnproxiedDomains") {
     const domains = tabHosts[msg.tabId] ? Array.from(tabHosts[msg.tabId]) : [];
     sendResponse({
@@ -605,6 +656,7 @@ chrome.storage.onChanged.addListener((changes) => {
     need = true;
   }
   if (changes.proxyRules) { proxyRules = changes.proxyRules.newValue || []; need = true; }
+  if (changes.directRules) { directRules = changes.directRules.newValue || []; need = true; }
   if (changes.proxyLists) { proxyLists = changes.proxyLists.newValue || []; need = true; }
   if (changes.extensionEnabled) {
     extensionEnabled = !!changes.extensionEnabled.newValue && !!(proxyConfig && proxyConfig.host);
@@ -631,7 +683,7 @@ function stripLegacyPac(list) {
   return list;
 }
 
-chrome.storage.local.get(["proxyConfig", "proxyServers", "proxyRules", "proxyLists", "extensionEnabled"], (res) => {
+chrome.storage.local.get(["proxyConfig", "proxyServers", "proxyRules", "directRules", "proxyLists", "extensionEnabled"], (res) => {
   const servers = migrateProxyServers(res.proxyServers, res.proxyConfig);
   proxyConfig = configFromServers(servers);
   if (res.extensionEnabled == null) extensionEnabled = !!(proxyConfig && proxyConfig.host);
@@ -642,9 +694,14 @@ chrome.storage.local.get(["proxyConfig", "proxyServers", "proxyRules", "proxyLis
     persist.proxyConfig = proxyConfig;
   }
   if (res.extensionEnabled !== extensionEnabled) persist.extensionEnabled = extensionEnabled;
+  if (res.proxyRules) proxyRules = res.proxyRules;
+  if (res.directRules) directRules = res.directRules;
+  if (res.proxyLists) proxyLists = (res.proxyLists || []).map(stripLegacyPac);
+  if (proxyLists.some(l => l.type === "block")) {
+    proxyLists = proxyLists.map(l => Object.assign({}, l, { type: "proxy" }));
+    persist.proxyLists = proxyLists;
+  }
   const finish = () => {
-    if (res.proxyRules) proxyRules = res.proxyRules;
-    if (res.proxyLists) proxyLists = (res.proxyLists || []).map(stripLegacyPac);
     applyProxy();
     if (proxyLists.some(isStalePac)) updateAllLists();
   };
