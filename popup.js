@@ -241,8 +241,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const SVG_LIST = '<svg class="mark-list" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4.5 8.4l7.5-3.4 7.5 3.4-7.5 3.4-7.5-3.4z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M4.5 12.4l7.5 3.4 7.5-3.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 16.4l7.5 3.4 7.5-3.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const STATUS = {
     none: { title: "Правило не применяется", tone: "none", html: SVG_X },
-    proxyFull: { title: "Проксируется правилом", tone: "proxy", html: SVG_CHECK },
-    directFull: { title: "Идёт напрямую правилом", tone: "direct", html: SVG_CHECK },
+    proxyFull: { title: "Проксируется", tone: "proxy", html: SVG_CHECK },
+    directFull: { title: "Идёт напрямую", tone: "direct", html: SVG_CHECK },
     proxyApex: { title: "Проксируется правилом", tone: "proxy", html: SVG_DOT },
     directApex: { title: "Идёт напрямую правилом", tone: "direct", html: SVG_DOT },
     listFull: { title: "Проксируется списком", tone: "proxy", html: SVG_CHECK + SVG_LIST },
@@ -302,14 +302,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     const proxy = overlay && Array.isArray(overlay.proxy) ? overlay.proxy : currentRules;
     const direct = overlay && Array.isArray(overlay.direct) ? overlay.direct : currentDirect;
     const st = statusForHost(host, covers, overlay);
-    if (st === STATUS.proxyFull) {
-      const rule = fullRuleIn(proxy, host);
-      return { text: rule ? `Проксируется правилом ${rule}` : "Проксируется правилом", kind: "proxy" };
-    }
-    if (st === STATUS.directFull) {
-      const rule = fullRuleIn(direct, host);
-      return { text: rule ? `Идёт напрямую правилом ${rule}` : "Идёт напрямую правилом", kind: "direct" };
-    }
+    if (st === STATUS.proxyFull) return { text: "Проксируется", kind: "proxy" };
+    if (st === STATUS.directFull) return { text: "Идёт напрямую", kind: "direct" };
     if (st === STATUS.proxyApex) {
       const p = coveringParent(host, proxy, direct);
       return { text: p.rule ? `Проксируется правилом ${p.rule}` : "Проксируется правилом", kind: "proxy" };
