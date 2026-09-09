@@ -6,6 +6,7 @@ let proxyLists = [];
 let pE = {}, pS = {}, bE = {}, bS = {};
 let pIp = {}, bIp = {}, pCidr = [], bCidr = [];
 let pPac = [], bPac = [];
+const ALL_WEB_URLS = ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"];
 const tabHosts = {};
 const tabProxied = {};
 
@@ -331,7 +332,7 @@ chrome.webRequest.onAuthRequired.addListener(
       callbackFn({ authCredentials: { username: proxyConfig.username, password: proxyConfig.password } });
     } else callbackFn({});
   },
-  { urls: ["<all_urls>"] },
+  { urls: ALL_WEB_URLS },
   ["asyncBlocking"]
 );
 
@@ -345,7 +346,7 @@ chrome.webRequest.onBeforeRequest.addListener(
       updateBadge(details.tabId);
     } catch (e) {}
   },
-  { urls: ["<all_urls>"] }
+  { urls: ALL_WEB_URLS }
 );
 
 chrome.tabs.onRemoved.addListener((tabId) => {

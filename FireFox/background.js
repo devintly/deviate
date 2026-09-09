@@ -5,6 +5,7 @@ let proxyLists = [];
 let pE = {}, pS = {}, bE = {}, bS = {};
 let pIp = {}, bIp = {}, pCidr = [], bCidr = [];
 let pPac = [], bPac = [];
+const ALL_WEB_URLS = ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"];
 const tabHosts = {};
 const tabProxied = {};
 
@@ -196,7 +197,7 @@ async function refreshActiveBadge() {
   } catch (e) {}
 }
 
-browser.proxy.onRequest.addListener(onProxyRequest, { urls: ["<all_urls>"] });
+browser.proxy.onRequest.addListener(onProxyRequest, { urls: ALL_WEB_URLS });
 
 browser.webRequest.onAuthRequired.addListener(
   function (details) {
@@ -205,7 +206,7 @@ browser.webRequest.onAuthRequired.addListener(
     }
     return {};
   },
-  { urls: ["<all_urls>"] },
+  { urls: ALL_WEB_URLS },
   ["blocking"]
 );
 
@@ -219,7 +220,7 @@ browser.webRequest.onBeforeRequest.addListener(
       updateBadge(details.tabId);
     } catch (e) {}
   },
-  { urls: ["<all_urls>"] }
+  { urls: ALL_WEB_URLS }
 );
 
 browser.tabs.onRemoved.addListener((tabId) => {
