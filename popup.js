@@ -439,15 +439,26 @@ document.addEventListener("DOMContentLoaded", async () => {
       refreshDomainLine(line);
       parent.appendChild(line);
     }
+    const groups = new Map();
     uniq.forEach(host => {
       const apex = apexDomain(host) || host;
-      const hostRule = toGuiRule(host);
-      const apexRule = wildcardRule(apex);
+      if (!groups.has(apex)) groups.set(apex, []);
+      const list = groups.get(apex);
+      if (list.indexOf(host) < 0) list.push(host);
+    });
+    Array.from(groups.keys()).sort().forEach(apex => {
+      const hosts = groups.get(apex).slice().sort();
       const item = document.createElement("div");
       item.className = "domain-item";
-      const same = hostOfRule(hostRule) === hostOfRule(apexRule);
-      appendLine(item, hostRule, same ? "apex" : "host", apex, true);
-      if (!same) appendLine(item, apexRule, "apex", apex, false);
+      if (isIpHost(apex)) {
+        appendLine(item, toGuiRule(apex), "apex", apex, true);
+      } else {
+        appendLine(item, wildcardRule(apex), "apex", apex, true);
+        hosts.forEach(host => {
+          if (host === apex) return;
+          appendLine(item, toGuiRule(host), "host", apex, false);
+        });
+      }
       els.domainsList.appendChild(item);
     });
     refreshAllDomainLines();
