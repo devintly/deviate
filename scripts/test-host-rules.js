@@ -4,14 +4,26 @@ function isIpHost(h) {
   h = String(h || "").replace(/^\*\./, "");
   return /^(?:\d{1,3}\.){3}\d{1,3}$/.test(h) || h.indexOf(":") >= 0;
 }
+function isAcceptableHost(h) {
+  h = String(h || "");
+  if (!h || /\s/.test(h)) return false;
+  if (isIpHost(h)) return true;
+  return h.indexOf(".") >= 0 && h.indexOf("..") < 0;
+}
 function normalize(v) {
-  let s = String(v || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  const trimmed = String(v || "").trim();
+  if (!trimmed || /\s/.test(trimmed)) return "";
+  let s = trimmed.toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  if (/\s/.test(s)) return "";
   const wild = s.startsWith("*.");
   if (wild) s = s.slice(2);
   s = s.replace(/^\.+|\.+$/g, "");
-  if (!s) return "";
+  if (!s || !isAcceptableHost(s)) return "";
   if (isIpHost(s)) return s;
   return wild ? "*." + s : s;
+}
+function parseRules(text) {
+  return [...new Set(String(text || "").split("\n").map(normalize).filter(Boolean))];
 }
 function addHostRules(rules) {
   const exact = {}, suffix = {}, ipMap = {};
@@ -67,6 +79,14 @@ assert(ip.ipMap["8.8.8.8"] && ip.ipMap["1.2.3.4"], "ips indexed");
 assert(normalize("*.1.2.3.4") === "1.2.3.4", "star stripped from ip");
 assert(normalize("Example.COM") === "example.com", "plain domain kept exact");
 assert(normalize("*.Example.COM") === "*.example.com", "wildcard kept");
+assert(normalize("nodot") === "", "hostname without a dot is rejected");
+assert(normalize("localhost") === "", "localhost without a dot is rejected");
+assert(normalize("foo bar.com") === "", "spaces are rejected");
+assert(normalize(" example.com ") === "example.com", "edge spaces are trimmed");
+assert(normalize("example..com") === "", "empty label is rejected");
+assert(normalize("*.ok.org") === "*.ok.org", "wildcard with a dot kept");
+assert(normalize("https://cdn.example.com/path") === "cdn.example.com", "url still normalizes");
+assert(parseRules("example.com\nnodot\nfoo bar.com\n*.ok.org\n\nexample.com").join(",") === "example.com,*.ok.org", "editor drops bad lines");
 
 function addListTargets(domains) {
   const exact = {}, suffix = {};

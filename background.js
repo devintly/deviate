@@ -49,12 +49,22 @@ const ALL_WEB_URLS = ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"];
 const tabHosts = {};
 const tabProxied = {};
 
+function isAcceptableHost(h) {
+  h = String(h || "");
+  if (!h || /\s/.test(h)) return false;
+  if (PacParse.IPV4_RE.test(h) || h.indexOf(":") >= 0) return true;
+  return h.indexOf(".") >= 0 && h.indexOf("..") < 0;
+}
+
 function normalizeRule(rule) {
-  let s = String(rule || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  const trimmed = String(rule || "").trim();
+  if (!trimmed || /\s/.test(trimmed)) return "";
+  let s = trimmed.toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  if (/\s/.test(s)) return "";
   const wild = s.startsWith("*.");
   if (wild) s = s.slice(2);
   s = s.replace(/^\.+|\.+$/g, "");
-  if (!s) return "";
+  if (!s || !isAcceptableHost(s)) return "";
   if (PacParse.IPV4_RE.test(s) || s.indexOf(":") >= 0) return s;
   return wild ? "*." + s : s;
 }
