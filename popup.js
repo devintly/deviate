@@ -363,7 +363,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   const STATUS_ICONS = { check: iconCheck, x: iconX, dot: iconDot, list: iconList };
   const STATUS = {
-    none: { title: "Правило не применяется", tone: "none", icons: ["x"] },
+    none: { title: "Нет правил", tone: "none", icons: ["x"] },
     proxyFull: { title: "Проксируется", tone: "proxy", icons: ["check"] },
     directFull: { title: "Идёт напрямую", tone: "direct", icons: ["check"] },
     proxyApex: { title: "Проксируется правилом", tone: "proxy", icons: ["dot"] },
@@ -457,7 +457,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (rule) return { text: `Проксируется правилом ${rule}`, kind: "proxy" };
       return { text: "Проксируется списком", kind: "proxy" };
     }
-    if (st === STATUS.none) return { text: "Правило не применяется", kind: "none" };
+    if (st === STATUS.none) return { text: "Нет правил", kind: "none" };
     return { text: "", kind: "" };
   }
   function paintStatusIcon() {
