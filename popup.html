@@ -6,7 +6,7 @@
   <script src="platform.js"></script>
   <style>
     * { box-sizing: border-box; }
-    html, body { margin: 0; width: 440px; height: 550px; overflow: hidden; background: #1e1f22; color: #f2f3f5; font-family: Inter, Arial, sans-serif; }
+    html, body { margin: 0; width: 440px; height: 650px; overflow: hidden; background: #1e1f22; color: #f2f3f5; font-family: Inter, Arial, sans-serif; }
     .wrap { height: 100%; padding: 14px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
     .header { display: flex; align-items: center; justify-content: center; gap: 0px; margin-bottom: 14px; font-size: 20px; font-weight: 700; color: #ffffff; flex-shrink: 0; position: relative; }
     .header img { width: 28px; height: 28px; border-radius: 0; object-fit: cover; transform: translateY(-2px); }
@@ -235,7 +235,7 @@
         margin-right: auto;
         overflow: auto;
       }
-      html:not(.android) .wrap { min-height: 550px; overflow: auto; }
+      html:not(.android) .wrap { min-height: 650px; overflow: auto; }
     }
   </style>
 </head>
@@ -284,13 +284,15 @@
     <div id="panelProxy" class="panel">
       <div class="card">
         <div id="proxyMain">
-          <input id="proxySearch" class="search-box" type="text" placeholder="Поиск по IP или домену" autocomplete="off" spellcheck="false">
+          <input id="proxySearch" class="search-box" type="text" placeholder="Поиск по названию, IP или домену" autocomplete="off" spellcheck="false">
           <div id="proxyEmpty" class="lists-empty">Прокси пока нет</div>
           <div id="proxyContainer" class="lists-wrap"></div>
           <button id="showAddProxyBtn" class="primary lists-add" type="button">Добавить прокси</button>
           <div id="proxyStatus" class="hint"></div>
         </div>
         <div id="proxyForm" style="display:none;">
+          <div class="label">Название (необязательно)</div>
+          <input id="proxyName" type="text" placeholder="Если пусто — будет адрес">
           <div class="label">Тип прокси</div>
           <select id="proxyType">
             <option value="socks">SOCKS5</option>

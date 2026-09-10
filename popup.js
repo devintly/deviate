@@ -32,6 +32,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     domainsEmpty: document.getElementById("domainsEmpty"), saveDomains: document.getElementById("saveDomainsBtn"),
     cancelDomains: document.getElementById("cancelDomainsBtn"),
     rulesStatus: document.getElementById("rulesStatus"), openList: document.getElementById("openListBtn"),
+    pName: document.getElementById("proxyName"),
     pType: document.getElementById("proxyType"), pHost: document.getElementById("proxyHost"),
     pPort: document.getElementById("proxyPort"), pUser: document.getElementById("proxyUser"),
     pPass: document.getElementById("proxyPass"), saveProxy: document.getElementById("saveProxyBtn"),
@@ -784,7 +785,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function proxyKey(p) {
-    return `${(p.type || "socks").toLowerCase()}|${String(p.host || "").trim().toLowerCase()}|${Number(p.port)}`;
+    const host = String(p.host || "").trim().toLowerCase();
+    const port = Number(p.port) || 0;
+    const user = String(p.username || "");
+    const pass = String(p.password || "");
+    return `${host}|${port}|${user}|${pass}`;
+  }
+
+  function proxyAddress(p) {
+    const host = String((p && p.host) || "").trim();
+    const port = Number(p && p.port);
+    if (!host) return "";
+    return port > 0 ? `${host}:${port}` : host;
   }
 
   function configFromServers(list) {
@@ -868,20 +880,30 @@ document.addEventListener("DOMContentLoaded", async () => {
     currentProxies.forEach(p => {
       const card = document.createElement("div");
       card.className = "list-card";
-      card.dataset.search = p.host || "";
+      const name = String(p.name || "").trim();
+      const addr = proxyAddress(p);
+      card.dataset.search = [name, addr, p.host || ""].filter(Boolean).join(" ");
       const body = document.createElement("div");
       body.className = "list-card-body";
-      const title = document.createElement("div");
-      title.className = "list-card-title";
-      title.textContent = `${p.host || ""}:${p.port || ""}`;
-      title.title = title.textContent;
+      if (name) {
+        const title = document.createElement("div");
+        title.className = "list-card-title";
+        title.textContent = name;
+        title.title = name;
+        body.appendChild(title);
+      }
+      const addrLine = document.createElement("div");
+      addrLine.className = name ? "list-card-url" : "list-card-title";
+      addrLine.textContent = addr;
+      addrLine.title = addr;
       const meta = document.createElement("div");
       meta.className = "list-card-meta";
       const bits = [proxyTypeLabel(p.type)];
       if (p.username) bits.push(p.username);
       meta.textContent = bits.join(" · ");
-      body.appendChild(title);
+      if (!name) body.appendChild(addrLine);
       body.appendChild(meta);
+      if (name) body.appendChild(addrLine);
       const side = document.createElement("div");
       side.className = "list-card-side";
       const tog = document.createElement("label");
@@ -921,6 +943,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function resetProxyForm() {
+    els.pName.value = "";
     els.pType.value = "socks";
     els.pHost.value = "";
     els.pPort.value = "";
@@ -935,6 +958,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     els.pFormStatus.textContent = "";
     if (item) {
       editingProxyId = item.id;
+      els.pName.value = item.name || "";
       els.pType.value = item.type === "http" || item.type === "https" ? item.type : "socks";
       els.pHost.value = item.host || "";
       els.pPort.value = item.port || "";
@@ -952,6 +976,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function collectProxyForm() {
     return {
+      name: els.pName.value.trim(),
       type: els.pType.value,
       host: els.pHost.value.trim(),
       port: Number(els.pPort.value),

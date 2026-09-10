@@ -48,4 +48,19 @@ assert(http.type === "http", "http type");
 assert(http.username == null && http.password == null, "http must not set socks username fields");
 assert(http.proxyAuthorizationHeader === "Basic " + btoa("user:secret"), "http basic header");
 
+function proxyKey(p) {
+  const host = String(p.host || "").trim().toLowerCase();
+  const port = Number(p.port) || 0;
+  const user = String(p.username || "");
+  const pass = String(p.password || "");
+  return `${host}|${port}|${user}|${pass}`;
+}
+
+const a = { host: "127.0.0.1", port: 2080, username: "u1", password: "p1" };
+const b = { host: "127.0.0.1", port: 2080, username: "u2", password: "p2" };
+const c = { host: "127.0.0.1", port: 2080, username: "u1", password: "p1", name: "Домашний", type: "http" };
+assert(proxyKey(a) !== proxyKey(b), "same host/port with different login must not be a duplicate");
+assert(proxyKey(a) === proxyKey(c), "name and type must not affect duplicate key");
+assert(proxyKey({ host: "127.0.0.1", port: 2080 }) !== proxyKey({ host: "127.0.0.1", port: 2080, username: "u", password: "p" }), "empty auth is not the same as filled auth");
+
 console.log("test-proxy-info: ok");
