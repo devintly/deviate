@@ -6,8 +6,8 @@
   <script src="platform.js"></script>
   <style>
     * { box-sizing: border-box; }
-    html, body { margin: 0; width: 440px; height: 650px; overflow: hidden; background: #1e1f22; color: #f2f3f5; font-family: Inter, Arial, sans-serif; }
-    .wrap { height: 100%; padding: 14px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    html, body { margin: 0; width: 440px; height: 350px; overflow: hidden; background: #1e1f22; color: #f2f3f5; font-family: Inter, Arial, sans-serif; }
+    .wrap { height: 100%; padding: 14px; display: flex; flex-direction: column; min-height: 0; overflow-x: hidden; overflow-y: auto; }
     .header { display: flex; align-items: center; justify-content: center; gap: 0px; margin-bottom: 14px; font-size: 20px; font-weight: 700; color: #ffffff; flex-shrink: 0; position: relative; }
     .header img { width: 28px; height: 28px; border-radius: 0; object-fit: cover; transform: translateY(-2px); }
     .power-btn { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 32px; min-width: 32px; min-height: 32px; padding: 6px; flex: none; background: #2b2d31; color: #949ba4; }
@@ -69,6 +69,11 @@
     .form-actions .busy { opacity: 0.6; }
     #listsMain, #proxyMain, #listsForm, #proxyForm { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
     #listsForm, #proxyForm { overflow-x: hidden; overflow-y: auto; }
+    #proxyForm .label { margin-bottom: 4px; }
+    #proxyForm input[type="text"],
+    #proxyForm input[type="password"],
+    #proxyForm input[type="number"],
+    #proxyForm select { margin-bottom: 8px; }
     .list-card { display: flex; align-items: stretch; gap: 8px; background: #1e1f22; border-radius: 10px; padding: 8px 8px 8px 10px; margin-bottom: 8px; }
     .list-card:last-child { margin-bottom: 0; }
     .list-card-body { flex: 1; min-width: 0; }
@@ -235,7 +240,7 @@
         margin-right: auto;
         overflow: auto;
       }
-      html:not(.android) .wrap { min-height: 650px; overflow: auto; }
+      html:not(.android) .wrap { min-height: 350px; overflow: auto; }
     }
   </style>
 </head>
