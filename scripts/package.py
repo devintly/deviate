@@ -19,27 +19,31 @@ FILES = (
     "list.js",
     "platform.js",
     "pac-parse.js",
-    "icon.png",
-    "icon-off.png",
     "LICENSE",
 )
 
 
+def collect_files() -> list[Path]:
+    items = [ROOT / name for name in FILES]
+    icons = ROOT / "icons"
+    if icons.is_dir():
+        items.extend(sorted(p for p in icons.iterdir() if p.is_file() and p.name not in SKIP_NAMES))
+    return items
+
+
 def pack_firefox(dest: Path) -> int:
-    missing = [name for name in FILES if not (ROOT / name).is_file()]
+    files = collect_files()
+    missing = [str(p.relative_to(ROOT)) for p in files if not p.is_file()]
     if missing:
         raise SystemExit("Нет файлов: " + ", ".join(missing))
     dest.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(dest, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for name in FILES:
-            path = ROOT / name
-            if path.name in SKIP_NAMES:
-                continue
-            zf.write(path, name)
+        for path in files:
+            zf.write(path, path.relative_to(ROOT).as_posix())
     with zipfile.ZipFile(dest) as zf:
         if "manifest.json" not in zf.namelist():
             raise SystemExit(f"{dest.name}: manifest.json должен быть в корне архива")
-    return len(FILES)
+    return len(files)
 
 
 def main() -> None:

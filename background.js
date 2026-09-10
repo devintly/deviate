@@ -415,9 +415,9 @@ function toolbarIconOn() {
 }
 
 async function syncToolbarIcon() {
-  const file = toolbarIconOn() ? "icon.png" : "icon-off.png";
+  const file = toolbarIconOn() ? "icons/icon_128.png" : "icons/icon_off_128.png";
   try {
-    await browser.action.setIcon({ path: { 48: file, 96: file, 128: file } });
+    await browser.action.setIcon({ path: file });
   } catch (e) {}
 }
 
