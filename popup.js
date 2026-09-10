@@ -4,17 +4,44 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (plat && plat.os === "android") document.documentElement.classList.add("android");
   } catch (_) {}
 
-  async function queryActiveTab() {
+  function ownPageBase() {
+    try { return browser.runtime.getURL(""); } catch (_) { return ""; }
+  }
+  function isOwnPage(url) {
+    const s = String(url || "");
+    if (!s) return false;
+    const base = ownPageBase();
+    return !!(base && s.indexOf(base) === 0);
+  }
+  function isWebTab(tab) {
+    if (!tab || isOwnPage(tab.url)) return false;
     try {
-      const found = await browser.tabs.query({ active: true, currentWindow: true });
-      if (found && found[0]) return found[0];
+      const p = new URL(tab.url).protocol;
+      return p === "http:" || p === "https:";
+    } catch (_) {
+      return false;
+    }
+  }
+  async function queryActiveTab() {
+    async function firstWeb(query) {
+      const found = await browser.tabs.query(query);
+      return (found || []).find(isWebTab) || null;
+    }
+    try {
+      const tab = await firstWeb({ active: true, currentWindow: true });
+      if (tab) return tab;
     } catch (_) {}
     try {
-      const found = await browser.tabs.query({ active: true });
-      return (found && found[0]) || null;
-    } catch (_) {
-      return null;
-    }
+      const tab = await firstWeb({ active: true });
+      if (tab) return tab;
+    } catch (_) {}
+    try {
+      const list = await browser.tabs.query({ currentWindow: true });
+      const web = (list || []).filter(isWebTab);
+      web.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+      if (web[0]) return web[0];
+    } catch (_) {}
+    return null;
   }
 
   const tabs = document.querySelectorAll(".tab");
@@ -537,7 +564,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function checkAutoReload(rule) {
-    if (!activeTab || !activeTab.url || activeTab.id == null) return;
+    if (!activeTab || activeTab.id == null || !isWebTab(activeTab)) return;
     try {
       const url = new URL(activeTab.url);
       if (matches(url.hostname, rule)) await browser.tabs.reload(activeTab.id);
@@ -550,7 +577,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function fetchTabDomains() {
     const set = new Set();
-    if (activeTab && activeTab.url) {
+    if (isWebTab(activeTab)) {
       try {
         const host = new URL(activeTab.url).hostname;
         if (host) set.add(host.toLowerCase());
@@ -733,7 +760,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function reloadActiveTab() {
-    if (activeTab && activeTab.id != null) {
+    if (activeTab && activeTab.id != null && isWebTab(activeTab)) {
       try { await browser.tabs.reload(activeTab.id); } catch (_) {}
     }
   }
@@ -1126,7 +1153,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     renderLists();
     try {
       const tab = await queryActiveTab();
-      if (tab && tab.url) {
+      if (tab && isWebTab(tab)) {
         activeTab = tab;
         const host = new URL(activeTab.url).hostname;
         if (host) {
