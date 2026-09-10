@@ -70,63 +70,6 @@ function normalizeRule(rule) {
   return wild ? "*." + s : s;
 }
 
-function isPacUrl(url) {
-  try { return /\.(pac|dat)$/i.test(new URL(url).pathname); }
-  catch (e) { return /\.pac(\?|#|$)/i.test(String(url || "")); }
-}
-
-function parseList(text) {
-  const domains = new Set();
-  const lines = String(text || "").split("\n");
-  for (let line of lines) {
-    line = line.trim().toLowerCase();
-    if (!line || line.startsWith("!") || line.startsWith("#")) continue;
-    const matchHosts = line.match(/^(?:0\.0\.0\.0|127\.0\.0\.1)\s+([^\s]+)/);
-    if (matchHosts) { domains.add(matchHosts[1]); continue; }
-    if (line.startsWith("||")) {
-      let endIdx = line.indexOf("^");
-      if (endIdx === -1) endIdx = line.indexOf("/");
-      if (endIdx === -1) endIdx = line.indexOf(":");
-      if (endIdx === -1) endIdx = line.length;
-      const domain = line.substring(2, endIdx).split("$")[0];
-      if (domain) domains.add(domain);
-      continue;
-    }
-    if (/^([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,}$/i.test(line)) domains.add(line);
-  }
-  return Array.from(domains);
-}
-
-function ingestRemote(url, text) {
-  if (PacParse.isHtmlDocument(text)) {
-    throw new Error("Сервер отдал HTML-страницу (часто IPFS-шлюз), а не PAC. Не сохраняйте файл через «Сохранить как» — добавьте URL списка в расширение, оно скачает PAC само.");
-  }
-  if (PacParse.isPacText(text)) {
-    const lists = PacParse.parsePacToLists(text);
-    return {
-      id: Date.now(),
-      url,
-      type: "proxy",
-      format: "pac",
-      packed: lists.packed,
-      patterns: lists.patterns,
-      threePart: lists.threePart,
-      extra: lists.extra,
-      domains: lists.extra,
-      ips: lists.ips,
-      cidrs: lists.cidrs,
-      domainCount: lists.domainCount,
-      ipCount: lists.ipCount
-    };
-  }
-  const domains = parseList(text);
-  if (isPacUrl(url) && domains.length === 0) {
-    const preview = String(text || "").replace(/\s+/g, " ").trim().slice(0, 180);
-    throw new Error(preview ? `Ответ не похож на PAC-файл: ${preview}` : "Пустой ответ вместо PAC-файла");
-  }
-  return { id: Date.now(), url, type: "proxy", format: "txt", domains, ips: [], cidrs: [], domainCount: domains.length, ipCount: 0 };
-}
-
 function addListTargets(list, exact, suffix, ipMap, cidrs) {
   (list.domains || []).forEach(d => {
     d = normalizeRule(d);
@@ -174,19 +117,21 @@ function addHostRules(rules, exact, suffix, ipMap) {
 }
 
 function rebuildMaps() {
-  pE = {}; pS = {}; dE = {}; dS = {};
-  pIp = {}; dIp = {}; pCidr = [];
-  pPac = [];
-  addHostRules(proxyRules, pE, pS, pIp);
-  addHostRules(directRules, dE, dS, dIp);
+  const nextPE = {}, nextPS = {}, nextDE = {}, nextDS = {};
+  const nextPIp = {}, nextDIp = {}, nextPCidr = [];
+  const nextPPac = [];
+  addHostRules(proxyRules, nextPE, nextPS, nextPIp);
+  addHostRules(directRules, nextDE, nextDS, nextDIp);
   proxyLists.forEach(list => {
     if (list.format === "pac" && list.packed) {
-      pPac.push(PacParse.compilePacList(list));
-      addListTargets({ ips: list.ips, cidrs: list.cidrs, domains: list.extra || [] }, pE, pS, pIp, pCidr);
+      nextPPac.push(PacParse.compilePacList(list));
+      addListTargets({ ips: list.ips, cidrs: list.cidrs, domains: list.extra || [] }, nextPE, nextPS, nextPIp, nextPCidr);
       return;
     }
-    addListTargets(list, pE, pS, pIp, pCidr);
+    addListTargets(list, nextPE, nextPS, nextPIp, nextPCidr);
   });
+  pE = nextPE; pS = nextPS; dE = nextDE; dS = nextDS;
+  pIp = nextPIp; dIp = nextDIp; pCidr = nextPCidr; pPac = nextPPac;
   cacheProxy();
   recountTabProxied();
 }
@@ -307,9 +252,10 @@ function findListByUrl(url, exceptId) {
   return proxyLists.find(l => canonListUrl(l.url) === c && (exceptId == null || l.id !== exceptId));
 }
 
-function decideProxySync(host) {
-  if (fetchDirectHosts[host]) return { type: "direct" };
-  if (fetchProxyHosts[host]) return ffProxy;
+function decideProxySync(host, tabId) {
+  const route = ListUpdate.fetchRouteOverride(host, tabId, fetchDirectHosts, fetchProxyHosts);
+  if (route === "direct") return { type: "direct" };
+  if (route === "proxy") return ffProxy;
   if (!extensionEnabled) return { type: "direct" };
   if (isDirectHost(host)) return { type: "direct" };
   if (isProxiedHost(host)) return ffProxy;
@@ -337,7 +283,7 @@ function onProxyRequest(requestInfo) {
   try { host = new URL(requestInfo.url).hostname.toLowerCase(); } catch (e) { return { type: "direct" }; }
   if (!host) return { type: "direct" };
   const tabId = requestInfo.tabId;
-  const sync = decideProxySync(host);
+  const sync = decideProxySync(host, tabId);
   if (sync) {
     rememberTabHost(tabId, host, sync.type !== "direct");
     scheduleBadge(tabId);
@@ -349,7 +295,7 @@ function onProxyRequest(requestInfo) {
   }
   return resolveDns(host).then(addrs => {
     for (let i = 0; i < addrs.length; i++) {
-      const hit = decideProxySync(String(addrs[i] || "").replace(/^\[|\]$/g, ""));
+      const hit = decideProxySync(String(addrs[i] || "").replace(/^\[|\]$/g, ""), tabId);
       if (hit) {
         rememberTabHost(tabId, host, hit.type !== "direct");
         scheduleBadge(tabId);
@@ -528,12 +474,66 @@ async function withFetchRoute(url, viaProxy, fn) {
   }
 }
 
+let listPersistSkipRebuild = 0;
+
+async function persistProxyLists(opts) {
+  if (opts && opts.skipRebuild) listPersistSkipRebuild++;
+  try {
+    await browser.storage.local.set({ proxyLists });
+  } catch (e) {
+    if (opts && opts.skipRebuild) listPersistSkipRebuild = Math.max(0, listPersistSkipRebuild - 1);
+    throw e;
+  }
+}
+
 async function persistListUpdateError(existingId, err) {
   if (existingId == null) return;
   const current = proxyLists.find(x => x.id === existingId);
   if (!current) return;
   markListUpdateError(current, err);
-  await browser.storage.local.set({ proxyLists });
+  await persistProxyLists({ skipRebuild: true });
+}
+
+function ingestRemoteSync(url, text) {
+  return ListIngest.ingestRemote(url, text);
+}
+
+function ingestRemoteAsync(url, text) {
+  return new Promise((resolve, reject) => {
+    let worker;
+    try {
+      worker = new Worker(browser.runtime.getURL("list-ingest-worker.js"));
+    } catch (e) {
+      try { resolve(ingestRemoteSync(url, text)); }
+      catch (err) { reject(err); }
+      return;
+    }
+    const timer = setTimeout(() => {
+      try { worker.terminate(); } catch (e) {}
+      reject(new Error("Разбор списка превысил время ожидания"));
+    }, 60000);
+    const finish = fn => {
+      clearTimeout(timer);
+      try { worker.terminate(); } catch (e) {}
+      fn();
+    };
+    worker.onmessage = e => {
+      const data = e.data || {};
+      if (data.ok) finish(() => resolve(data.item));
+      else finish(() => reject(new Error(data.error || "Ошибка разбора списка")));
+    };
+    worker.onerror = e => {
+      finish(() => reject(new Error((e && e.message) || "Ошибка разбора списка")));
+    };
+    try {
+      worker.postMessage({ url, text });
+    } catch (e) {
+      finish(() => {
+        try { resolve(ingestRemoteSync(url, text)); }
+        catch (err) { reject(err); }
+      });
+    }
+  });
 }
 
 async function fetchAndStoreList(url, existingId, msg) {
@@ -543,35 +543,21 @@ async function fetchAndStoreList(url, existingId, msg) {
   const existing = existingId != null ? proxyLists.find(x => x.id === existingId) : null;
   const meta = listMeta(msg || {}, existing);
   try {
-    const item = await withFetchRoute(url, meta.viaProxy, async () => {
+    const text = await withFetchRoute(url, meta.viaProxy, async () => {
       const r = await fetch(url, {
         cache: "no-store",
         headers: { Accept: "application/x-ns-proxy-autoconfig, text/plain, application/javascript, */*" },
         signal: AbortSignal.timeout(45000)
       });
-      const text = await r.text();
-      if (!r.ok) throw new Error(`HTTP ${r.status}: ${text.replace(/\s+/g, " ").trim().slice(0, 160)}`);
-      return ingestRemote(url, text);
+      const body = await r.text();
+      if (!r.ok) throw new Error(`HTTP ${r.status}: ${body.replace(/\s+/g, " ").trim().slice(0, 160)}`);
+      return body;
     });
-    delete item.pacScript;
-    delete item.pacIndex;
-    item.name = meta.name;
-    item.intervalHours = meta.intervalHours;
-    item.viaProxy = meta.viaProxy;
-    item.updatedAt = Date.now();
-    item.updateError = "";
-    item.updateFailCount = 0;
-    item.lastAttemptAt = item.updatedAt;
-    if (existingId != null) {
-      item.id = existingId;
-      const idx = proxyLists.findIndex(x => x.id === existingId);
-      if (idx >= 0) proxyLists[idx] = Object.assign({}, proxyLists[idx], item, { url, type: "proxy" });
-      else proxyLists.push(item);
-    } else {
-      proxyLists.push(item);
-    }
-    await browser.storage.local.set({ proxyLists });
-    return item;
+    const item = await ingestRemoteAsync(url, text);
+    const stored = ListUpdate.commitFetchedList(proxyLists, item, meta, url, existingId, Date.now());
+    rebuildMaps();
+    await persistProxyLists({ skipRebuild: true });
+    return stored;
   } catch (e) {
     await persistListUpdateError(existingId, e);
     throw e;
@@ -616,10 +602,7 @@ async function updateListedLists(all) {
       failed++;
     }
   }
-  if (updated || all) {
-    rebuildMaps();
-    await refreshActiveBadge();
-  }
+  if (updated || all) await refreshActiveBadge();
   return { updated, failed };
 }
 
@@ -654,7 +637,6 @@ async function scheduleListUpdates() {
 browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === "fetchList") {
     fetchAndStoreList(msg.url, msg.id, msg)
-      .then(() => rebuildMaps())
       .then(() => sendResponse({ success: true }))
       .catch(e => sendResponse({ success: false, error: String(e.message || e) }));
     return true;
@@ -673,7 +655,6 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return true;
     }
     fetchAndStoreList(list.url, list.id, list)
-      .then(() => rebuildMaps())
       .then(() => sendResponse({ success: true }))
       .catch(e => sendResponse({ success: false, error: String(e.message || e) }));
     return true;
@@ -725,7 +706,8 @@ browser.storage.onChanged.addListener(async (changes) => {
   if (changes.directRules) { directRules = changes.directRules.newValue || []; need = true; }
   if (changes.proxyLists) {
     proxyLists = changes.proxyLists.newValue || [];
-    need = true;
+    if (listPersistSkipRebuild > 0) listPersistSkipRebuild--;
+    else need = true;
     scheduleListUpdates();
   }
   if (changes.extensionEnabled) {

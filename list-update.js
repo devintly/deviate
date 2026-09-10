@@ -84,6 +84,42 @@
     return soonest < now + MIN_ALARM_MS ? now + MIN_ALARM_MS : soonest;
   }
 
+  function fetchRouteOverride(host, tabId, directHosts, proxyHosts) {
+    if (tabId >= 0) return "";
+    host = String(host || "").toLowerCase();
+    if (!host) return "";
+    if (directHosts && directHosts[host]) return "direct";
+    if (proxyHosts && proxyHosts[host]) return "proxy";
+    return "";
+  }
+
+  function commitFetchedList(lists, item, meta, url, existingId, now) {
+    var next = Object.assign({}, item);
+    delete next.pacScript;
+    delete next.pacIndex;
+    next.name = meta && meta.name != null ? String(meta.name) : (next.name || "");
+    next.intervalHours = meta ? meta.intervalHours : next.intervalHours;
+    next.viaProxy = !!(meta && meta.viaProxy);
+    next.updatedAt = Number(now) || 0;
+    next.updateError = "";
+    next.updateFailCount = 0;
+    next.lastAttemptAt = next.updatedAt;
+    next.url = url;
+    next.type = "proxy";
+    if (existingId != null) {
+      next.id = existingId;
+      var idx = -1;
+      for (var i = 0; i < lists.length; i++) {
+        if (lists[i] && lists[i].id === existingId) { idx = i; break; }
+      }
+      if (idx >= 0) lists[idx] = next;
+      else lists.push(next);
+    } else {
+      lists.push(next);
+    }
+    return next;
+  }
+
   var api = {
     RETRY_MS: RETRY_MS,
     RETRY_LIMIT: RETRY_LIMIT,
@@ -99,7 +135,9 @@
     isDue: isDue,
     nextCheckAt: nextCheckAt,
     soonestCheckAt: soonestCheckAt,
-    alarmWhen: alarmWhen
+    alarmWhen: alarmWhen,
+    fetchRouteOverride: fetchRouteOverride,
+    commitFetchedList: commitFetchedList
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = api;

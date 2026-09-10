@@ -14,6 +14,8 @@ FILES = (
     "manifest.json",
     "background.js",
     "list-update.js",
+    "list-ingest.js",
+    "list-ingest-worker.js",
     "popup.html",
     "popup.js",
     "list.html",

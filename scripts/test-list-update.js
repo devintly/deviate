@@ -75,4 +75,31 @@ assert(api.clipError(new Error("x".repeat(200))).length === 180, "error clipped"
 assert(api.clipError({}) === "Ошибка обновления", "empty error fallback");
 assert(api.clipError("HTTP 502") === "HTTP 502", "string error kept");
 
+assert(api.fetchRouteOverride("cdn.example", 3, { "cdn.example": 1 }, {}) === "", "tab traffic is not diverted");
+assert(api.fetchRouteOverride("cdn.example", -1, { "cdn.example": 1 }, {}) === "direct", "extension fetch can go direct");
+assert(api.fetchRouteOverride("cdn.example", -1, {}, { "cdn.example": 1 }) === "proxy", "extension fetch can go via proxy");
+assert(api.fetchRouteOverride("other.test", -1, { "cdn.example": 1 }, {}) === "", "other hosts stay on normal rules");
+
+const lists = [{
+  id: 7,
+  url: "https://example/list.pac",
+  format: "pac",
+  packed: { leftover: 1 },
+  domains: ["old.example"],
+  name: "old"
+}];
+const stored = api.commitFetchedList(lists, {
+  format: "txt",
+  domains: ["new.example"],
+  ips: [],
+  cidrs: [],
+  domainCount: 1,
+  ipCount: 0
+}, { name: "list", intervalHours: 12, viaProxy: false }, "https://example/list.txt", 7, now);
+assert(lists[0] === stored, "old list object is replaced");
+assert(stored.packed == null, "old packed data is not kept");
+assert(stored.domains[0] === "new.example", "new domains are used");
+assert(stored.url === "https://example/list.txt", "url updated");
+assert(stored.id === 7, "id kept");
+
 console.log("test-list-update: ok");
