@@ -23,23 +23,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
   async function queryActiveTab() {
-    async function firstWeb(query) {
+    async function activeWeb(query) {
       const found = await browser.tabs.query(query);
-      return (found || []).find(isWebTab) || null;
+      const tab = (found && found[0]) || null;
+      return isWebTab(tab) ? tab : null;
     }
     try {
-      const tab = await firstWeb({ active: true, currentWindow: true });
+      const tab = await activeWeb({ active: true, currentWindow: true });
       if (tab) return tab;
     } catch (_) {}
     try {
-      const tab = await firstWeb({ active: true });
-      if (tab) return tab;
-    } catch (_) {}
-    try {
-      const list = await browser.tabs.query({ currentWindow: true });
-      const web = (list || []).filter(isWebTab);
-      web.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
-      if (web[0]) return web[0];
+      return await activeWeb({ active: true });
     } catch (_) {}
     return null;
   }
@@ -48,7 +42,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   const panels = document.querySelectorAll(".panel");
   const els = {
     domainInput: document.getElementById("domainInput"), statusIcon: document.getElementById("statusIcon"),
-    statusCaption: document.getElementById("statusCaption"),
     toggleRule: document.getElementById("toggleRuleBtn"), viewDomains: document.getElementById("viewDomainsBtn"),
     domainActionRow: document.getElementById("domainActionRow"), domainMode: document.getElementById("domainModeSwitch"),
     domainDirect: document.getElementById("domainDirect"),
@@ -430,7 +423,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function paintHostStatus(el, host, covers, overlay) {
     const st = statusForHost(host, covers, overlay);
     const cap = statusCaptionFor(host, covers, overlay);
-    paintStatusEl(el, st, cap.text);
+    paintStatusEl(el, st, cap.text || st.title);
   }
   function coverInfoOf(host, covers) {
     return coverOf(host, covers) || (lastCover.host === host ? lastCover : null);
@@ -467,21 +460,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (st === STATUS.none) return { text: "Правило не применяется", kind: "none" };
     return { text: "", kind: "" };
   }
-  function paintStatusCaption() {
-    if (!els.statusCaption) return;
-    const host = hostOfRule(els.domainInput.value);
-    const cap = statusCaptionFor(host, null, null);
-    els.statusCaption.textContent = cap.text;
-    els.statusCaption.className = "status-caption" + (cap.kind ? " " + cap.kind : "");
-    if (els.statusIcon && cap.text) {
-      els.statusIcon.title = cap.text;
-      els.statusIcon.setAttribute("aria-label", cap.text);
-    }
-  }
   function paintStatusIcon() {
     const host = hostOfRule(els.domainInput.value);
     paintHostStatus(els.statusIcon, host, null, null);
-    paintStatusCaption();
   }
   function syncOpenDomainLine(rule) {
     if (!domainsPanelOpen) return;
@@ -1333,6 +1314,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     const url = browser.runtime.getURL("list.html");
     browser.tabs.create({ url }).finally(() => {
       try { window.close(); } catch (_) {}
+    });
+  });
+  document.querySelectorAll(".footer a[href]").forEach(a => {
+    a.addEventListener("click", (e) => {
+      e.preventDefault();
+      const url = a.href;
+      if (!url) return;
+      browser.tabs.create({ url }).catch(() => {}).finally(() => {
+        try { window.close(); } catch (_) {}
+      });
     });
   });
   els.domainInput.addEventListener("input", () => {
