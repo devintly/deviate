@@ -440,8 +440,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     const proxy = overlay && Array.isArray(overlay.proxy) ? overlay.proxy : currentRules;
     const direct = overlay && Array.isArray(overlay.direct) ? overlay.direct : currentDirect;
     const st = statusForHost(host, covers, overlay);
-    if (st === STATUS.proxyFull) return { text: "Проксируется", kind: "proxy" };
-    if (st === STATUS.directFull) return { text: "Идёт напрямую", kind: "direct" };
+    if (st === STATUS.proxyFull) return { text: "", kind: "proxy" };
+    if (st === STATUS.directFull) return { text: "", kind: "direct" };
     if (st === STATUS.proxyApex) {
       const p = coveringParent(host, proxy, direct);
       return { text: p.rule ? `Проксируется правилом ${p.rule}` : "Проксируется правилом", kind: "proxy" };

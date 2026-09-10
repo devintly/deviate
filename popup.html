@@ -8,16 +8,14 @@
     * { box-sizing: border-box; }
     html, body { margin: 0; width: 440px; height: 350px; overflow: hidden; background: #1e1f22; color: #f2f3f5; font-family: Inter, Arial, sans-serif; }
     .wrap { height: 100%; padding: 14px; display: flex; flex-direction: column; min-height: 0; overflow-x: hidden; overflow-y: auto; }
-    .header { display: flex; align-items: center; justify-content: center; gap: 0px; margin-bottom: 14px; font-size: 20px; font-weight: 700; color: #ffffff; flex-shrink: 0; position: relative; }
-    .header img { width: 28px; height: 28px; border-radius: 0; object-fit: cover; transform: translateY(-2px); }
-    .power-btn { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 32px; min-width: 32px; min-height: 32px; padding: 6px; flex: none; background: #2b2d31; color: #949ba4; }
+    .power-btn { width: 36px; min-width: 36px; min-height: 0; padding: 6px; flex: none; align-self: stretch; background: #2b2d31; color: #949ba4; border-radius: 10px; }
     .power-btn:hover { background: #35373c; }
     .power-btn.on { color: #57f287; background: rgba(87, 242, 135, 0.16); }
     .power-btn.on:hover { background: rgba(87, 242, 135, 0.26); }
     .power-btn.off { color: #949ba4; }
     .power-btn svg { width: 18px; height: 18px; display: block; }
-    .tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-shrink: 0; }
-    .tab { flex: 1; border: 0; border-radius: 10px; background: #2b2d31; color: #b5bac1; padding: 8px 0; font-size: 12px; font-weight: 600; cursor: pointer; text-align: center; transition: 0.15s; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-shrink: 0; align-items: stretch; }
+    .tab { flex: 1; border: 0; border-radius: 10px; background: #2b2d31; color: #b5bac1; padding: 8px 0; font-size: 12px; font-weight: 600; cursor: pointer; text-align: center; transition: 0.15s; display: flex; align-items: center; justify-content: center; }
     .tab.active { background: #017df1; color: #ffffff; }
     .panel { display: none; flex: 1; min-height: 0; min-width: 0; }
     .panel.active { display: flex; flex-direction: column; }
@@ -156,12 +154,19 @@
     .status-caption.proxy { color: #57f287; }
     .status-caption.direct { color: #ffb020; }
     .status-caption.none { color: #da373c; }
-    .status-caption:empty { visibility: hidden; }
+    .status-caption:empty { display: none; margin: 0; min-height: 0; }
     #panelRules .card #openListBtn { margin-top: auto; }
-    .domain-mode { display: none; align-items: center; justify-content: space-between; gap: 6px; flex: 1; min-width: 0; min-height: 32px; margin: 0; padding: 0 8px; background: #1e1f22; border-radius: 8px; font-size: 10px; font-weight: 700; color: #b5bac1; cursor: pointer; }
+    .domain-mode { display: none; align-items: center; justify-content: center; gap: 6px; flex: 1; min-width: 0; min-height: 32px; margin: 0; padding: 0 6px; background: #1e1f22; border-radius: 8px; font-size: 10px; font-weight: 700; color: #b5bac1; cursor: pointer; }
     .domain-mode.show { display: flex; }
     .domain-mode .domain-mode-off,
-    .domain-mode .domain-mode-on { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .domain-mode .domain-mode-on {
+      flex: 1;
+      min-width: 0;
+      text-align: center;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .domain-mode .domain-mode-off { color: #57f287; }
     .domain-mode .domain-mode-on { color: #b5bac1; }
     .domain-mode.on .domain-mode-off { color: #b5bac1; }
@@ -246,14 +251,10 @@
 </head>
 <body>
   <div class="wrap">
-    <div class="header">
-      <img src="icon.png" alt="DeviateProxy">
-      <span>eviateProxy</span>
+    <div class="tabs">
       <button id="powerBtn" class="power-btn off" type="button" title="Включить расширение" aria-label="Включить расширение" aria-pressed="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v8"/><path d="M7.4 6.4a7 7 0 1 0 9.2 0"/></svg>
       </button>
-    </div>
-    <div class="tabs">
       <div id="tabRules" class="tab active">Правила</div>
       <div id="tabProxy" class="tab">Прокси</div>
       <div id="tabLists" class="tab">Списки</div>
