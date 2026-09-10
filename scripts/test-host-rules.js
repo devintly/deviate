@@ -6,8 +6,9 @@ function isIpHost(h) {
 }
 function isAcceptableHost(h) {
   h = String(h || "");
-  if (!h || /\s/.test(h)) return false;
+  if (!h || /\s/.test(h) || /[^\x00-\x7F]/.test(h)) return false;
   if (isIpHost(h)) return true;
+  if (!/^[a-z0-9.:\[\]-]+$/i.test(h)) return false;
   return h.indexOf(".") >= 0 && h.indexOf("..") < 0;
 }
 function normalize(v) {
@@ -87,6 +88,8 @@ assert(normalize("example..com") === "", "empty label is rejected");
 assert(normalize("*.ok.org") === "*.ok.org", "wildcard with a dot kept");
 assert(normalize("https://cdn.example.com/path") === "cdn.example.com", "url still normalizes");
 assert(parseRules("example.com\nnodot\nfoo bar.com\n*.ok.org\n\nexample.com").join(",") === "example.com,*.ok.org", "editor drops bad lines");
+assert(normalize("пример.com") === "", "cyrillic domain is rejected");
+assert(normalize("xn--e1afmkfd.com") === "xn--e1afmkfd.com", "punycode kept");
 
 function addListTargets(domains) {
   const exact = {}, suffix = {};
