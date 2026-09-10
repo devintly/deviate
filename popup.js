@@ -235,18 +235,102 @@ document.addEventListener("DOMContentLoaded", async () => {
     refreshScopeUI();
     refreshIcon();
   }
-  const SVG_CHECK = '<svg class="mark-main" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4.5 12.5l5.2 5.3L19.5 6.8" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  const SVG_X = '<svg class="mark-main" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/></svg>';
-  const SVG_DOT = '<svg class="mark-main" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.4" fill="currentColor"/></svg>';
-  const SVG_LIST = '<svg class="mark-list" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4.5 8.4l7.5-3.4 7.5 3.4-7.5 3.4-7.5-3.4z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M4.5 12.4l7.5 3.4 7.5-3.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 16.4l7.5 3.4 7.5-3.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  function svgNode(name, attrs) {
+    const el = document.createElementNS(SVG_NS, name);
+    Object.keys(attrs).forEach(k => el.setAttribute(k, attrs[k]));
+    return el;
+  }
+  function svgIcon(attrs, children) {
+    const svg = svgNode("svg", Object.assign({
+      viewBox: "0 0 24 24",
+      fill: "none",
+      "aria-hidden": "true"
+    }, attrs));
+    children.forEach(child => svg.appendChild(child));
+    return svg;
+  }
+  function iconCheck() {
+    return svgIcon({ class: "mark-main" }, [
+      svgNode("path", {
+        d: "M4.5 12.5l5.2 5.3L19.5 6.8",
+        stroke: "currentColor",
+        "stroke-width": "2.8",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round"
+      })
+    ]);
+  }
+  function iconX() {
+    return svgIcon({ class: "mark-main" }, [
+      svgNode("path", {
+        d: "M6 6l12 12M18 6L6 18",
+        stroke: "currentColor",
+        "stroke-width": "2.8",
+        "stroke-linecap": "round"
+      })
+    ]);
+  }
+  function iconDot() {
+    return svgIcon({ class: "mark-main" }, [
+      svgNode("circle", { cx: "12", cy: "12", r: "6.4", fill: "currentColor" })
+    ]);
+  }
+  function iconList() {
+    return svgIcon({ class: "mark-list" }, [
+      svgNode("path", {
+        d: "M4.5 8.4l7.5-3.4 7.5 3.4-7.5 3.4-7.5-3.4z",
+        stroke: "currentColor",
+        "stroke-width": "2",
+        "stroke-linejoin": "round"
+      }),
+      svgNode("path", {
+        d: "M4.5 12.4l7.5 3.4 7.5-3.4",
+        stroke: "currentColor",
+        "stroke-width": "2",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round"
+      }),
+      svgNode("path", {
+        d: "M4.5 16.4l7.5 3.4 7.5-3.4",
+        stroke: "currentColor",
+        "stroke-width": "2",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round"
+      })
+    ]);
+  }
+  function iconRefresh() {
+    return svgIcon({
+      stroke: "currentColor",
+      "stroke-width": "2.2",
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round"
+    }, [
+      svgNode("path", { d: "M21 12a9 9 0 1 1-2.6-6.4" }),
+      svgNode("polyline", { points: "21 3 21 9 15 9" })
+    ]);
+  }
+  function iconEdit() {
+    return svgIcon({
+      stroke: "currentColor",
+      "stroke-width": "2.2",
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round"
+    }, [
+      svgNode("path", { d: "M12 20h9" }),
+      svgNode("path", { d: "M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" })
+    ]);
+  }
+  const STATUS_ICONS = { check: iconCheck, x: iconX, dot: iconDot, list: iconList };
   const STATUS = {
-    none: { title: "Правило не применяется", tone: "none", html: SVG_X },
-    proxyFull: { title: "Проксируется", tone: "proxy", html: SVG_CHECK },
-    directFull: { title: "Идёт напрямую", tone: "direct", html: SVG_CHECK },
-    proxyApex: { title: "Проксируется правилом", tone: "proxy", html: SVG_DOT },
-    directApex: { title: "Идёт напрямую правилом", tone: "direct", html: SVG_DOT },
-    listFull: { title: "Проксируется списком", tone: "proxy", html: SVG_CHECK + SVG_LIST },
-    listApex: { title: "Проксируется списком по правилу", tone: "proxy", html: SVG_DOT + SVG_LIST }
+    none: { title: "Правило не применяется", tone: "none", icons: ["x"] },
+    proxyFull: { title: "Проксируется", tone: "proxy", icons: ["check"] },
+    directFull: { title: "Идёт напрямую", tone: "direct", icons: ["check"] },
+    proxyApex: { title: "Проксируется правилом", tone: "proxy", icons: ["dot"] },
+    directApex: { title: "Идёт напрямую правилом", tone: "direct", icons: ["dot"] },
+    listFull: { title: "Проксируется списком", tone: "proxy", icons: ["check", "list"] },
+    listApex: { title: "Проксируется списком по правилу", tone: "proxy", icons: ["dot", "list"] }
   };
   function coverOf(host, covers) {
     if (!host || !covers) return null;
@@ -284,7 +368,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   function paintStatusEl(el, st, title) {
     if (!el || !st) return;
-    el.innerHTML = `<span class="status-mark ${st.tone}">${st.html}</span>`;
+    el.replaceChildren();
+    const mark = document.createElement("span");
+    mark.classList.add("status-mark");
+    if (st.tone) mark.classList.add(st.tone);
+    (st.icons || []).forEach(name => {
+      const make = STATUS_ICONS[name];
+      if (make) mark.appendChild(make());
+    });
+    el.appendChild(mark);
     const label = title || st.title;
     el.title = label;
     el.setAttribute("aria-label", label);
@@ -641,9 +733,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     renderDomainsList(domains, domainCovers);
   }
 
-  const ICON_REFRESH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><polyline points="21 3 21 9 15 9"/></svg>';
-  const ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
-
   function pluralRu(n, one, few, many) {
     n = Math.abs(Number(n)) || 0;
     const n10 = n % 10;
@@ -660,12 +749,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
-  function listIconButton(label, svg) {
+  function listIconButton(label, makeIcon) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.title = label;
     btn.setAttribute("aria-label", label);
-    btn.innerHTML = svg;
+    btn.appendChild(makeIcon());
     return btn;
   }
 
@@ -794,7 +883,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         await persistProxies(currentProxies.map(item => Object.assign({}, item, { enabled: item.id === p.id })));
         flash(els.pStatus, "Активный прокси выбран");
       });
-      const editBtn = listIconButton("Редактировать", ICON_EDIT);
+      const editBtn = listIconButton("Редактировать", iconEdit);
       editBtn.addEventListener("click", () => openProxyForm(p));
       side.appendChild(tog);
       side.appendChild(editBtn);
@@ -887,9 +976,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       body.appendChild(updated);
       const actions = document.createElement("div");
       actions.className = "list-card-actions";
-      const refreshBtn = listIconButton("Обновить", ICON_REFRESH);
+      const refreshBtn = listIconButton("Обновить", iconRefresh);
       refreshBtn.addEventListener("click", () => refreshOneList(l.id, refreshBtn));
-      const editBtn = listIconButton("Редактировать", ICON_EDIT);
+      const editBtn = listIconButton("Редактировать", iconEdit);
       editBtn.addEventListener("click", () => openListForm(l));
       actions.appendChild(refreshBtn);
       actions.appendChild(editBtn);
