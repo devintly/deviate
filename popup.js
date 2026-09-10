@@ -993,7 +993,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       const body = document.createElement("div");
       body.className = "list-card-body";
       const name = String(l.name || "").trim();
-      card.dataset.search = name || String(l.url || "");
+      const url = String(l.url || "");
+      card.dataset.search = [name, url].filter(Boolean).join(" ");
       if (name) {
         const title = document.createElement("div");
         title.className = "list-card-title";
@@ -1001,22 +1002,23 @@ document.addEventListener("DOMContentLoaded", async () => {
         title.title = name;
         body.appendChild(title);
       }
+      const urlLine = document.createElement("div");
+      urlLine.className = name ? "list-card-url" : "list-card-title";
+      urlLine.textContent = url;
+      urlLine.title = url;
       const meta = document.createElement("div");
       meta.className = "list-card-meta";
       const fmt = l.format === "pac" ? "PAC" : "txt";
       const domains = l.domainCount || (l.domains || []).length || 0;
       const ips = l.ipCount || (l.ips || []).length || 0;
       meta.textContent = `${fmt} · ${domains} ${pluralRu(domains, "домен", "домена", "доменов")} / ${ips} IP`;
-      const urlLine = document.createElement("div");
-      urlLine.className = "list-card-url";
-      urlLine.textContent = l.url || "";
-      urlLine.title = l.url || "";
       const updated = document.createElement("div");
       updated.className = "list-card-updated";
       const when = formatListUpdated(l.updatedAt);
       updated.textContent = `Обновлён: ${when}`;
+      if (!name) body.appendChild(urlLine);
       body.appendChild(meta);
-      body.appendChild(urlLine);
+      if (name) body.appendChild(urlLine);
       body.appendChild(updated);
       const actions = document.createElement("div");
       actions.className = "list-card-actions";
