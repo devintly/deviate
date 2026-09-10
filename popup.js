@@ -1049,6 +1049,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       body.appendChild(meta);
       if (name) body.appendChild(urlLine);
       body.appendChild(updated);
+      if (l.updateError) {
+        const err = document.createElement("div");
+        err.className = "list-card-error";
+        err.textContent = l.updateError;
+        err.title = l.updateError;
+        body.appendChild(err);
+      }
       const actions = document.createElement("div");
       actions.className = "list-card-actions";
       const refreshBtn = listIconButton("Обновить", iconRefresh);
@@ -1326,7 +1333,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     els.refreshLists.classList.add("busy");
     try {
       const res = await sendListMessage({ action: "refreshLists" });
-      if (res && res.success) flash(els.lStatus, `Обновлено: ${res.updated || 0}`);
+      if (res && res.success) {
+        const failed = Number(res.failed) || 0;
+        if (failed) flash(els.lStatus, `Обновлено: ${res.updated || 0}, ошибок: ${failed}`, "#ff6b6b");
+        else flash(els.lStatus, `Обновлено: ${res.updated || 0}`);
+      }
       else flash(els.lStatus, (res && res.error) ? String(res.error).slice(0, 180) : "Ошибка обновления", "#ff6b6b");
     } catch (e) {
       flash(els.lStatus, String(e.message || e).slice(0, 180), "#ff6b6b");

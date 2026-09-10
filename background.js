@@ -528,38 +528,53 @@ async function withFetchRoute(url, viaProxy, fn) {
   }
 }
 
+async function persistListUpdateError(existingId, err) {
+  if (existingId == null) return;
+  const current = proxyLists.find(x => x.id === existingId);
+  if (!current) return;
+  markListUpdateError(current, err);
+  await browser.storage.local.set({ proxyLists });
+}
+
 async function fetchAndStoreList(url, existingId, msg) {
   url = String(url || "").trim();
   if (!url.startsWith("http")) throw new Error("Введите корректный URL");
   if (findListByUrl(url, existingId)) throw new Error("Список добавить нельзя, он уже существует");
   const existing = existingId != null ? proxyLists.find(x => x.id === existingId) : null;
   const meta = listMeta(msg || {}, existing);
-  const item = await withFetchRoute(url, meta.viaProxy, async () => {
-    const r = await fetch(url, {
-      cache: "no-store",
-      headers: { Accept: "application/x-ns-proxy-autoconfig, text/plain, application/javascript, */*" },
-      signal: AbortSignal.timeout(45000)
+  try {
+    const item = await withFetchRoute(url, meta.viaProxy, async () => {
+      const r = await fetch(url, {
+        cache: "no-store",
+        headers: { Accept: "application/x-ns-proxy-autoconfig, text/plain, application/javascript, */*" },
+        signal: AbortSignal.timeout(45000)
+      });
+      const text = await r.text();
+      if (!r.ok) throw new Error(`HTTP ${r.status}: ${text.replace(/\s+/g, " ").trim().slice(0, 160)}`);
+      return ingestRemote(url, text);
     });
-    const text = await r.text();
-    if (!r.ok) throw new Error(`HTTP ${r.status}: ${text.replace(/\s+/g, " ").trim().slice(0, 160)}`);
-    return ingestRemote(url, text);
-  });
-  delete item.pacScript;
-  delete item.pacIndex;
-  item.name = meta.name;
-  item.intervalHours = meta.intervalHours;
-  item.viaProxy = meta.viaProxy;
-  item.updatedAt = Date.now();
-  if (existingId != null) {
-    item.id = existingId;
-    const idx = proxyLists.findIndex(x => x.id === existingId);
-    if (idx >= 0) proxyLists[idx] = Object.assign({}, proxyLists[idx], item, { url, type: "proxy" });
-    else proxyLists.push(item);
-  } else {
-    proxyLists.push(item);
+    delete item.pacScript;
+    delete item.pacIndex;
+    item.name = meta.name;
+    item.intervalHours = meta.intervalHours;
+    item.viaProxy = meta.viaProxy;
+    item.updatedAt = Date.now();
+    item.updateError = "";
+    item.lastAttemptAt = item.updatedAt;
+    if (existingId != null) {
+      item.id = existingId;
+      const idx = proxyLists.findIndex(x => x.id === existingId);
+      if (idx >= 0) proxyLists[idx] = Object.assign({}, proxyLists[idx], item, { url, type: "proxy" });
+      else proxyLists.push(item);
+    } else {
+      proxyLists.push(item);
+    }
+    await browser.storage.local.set({ proxyLists });
+    return item;
+  } catch (e) {
+    await persistListUpdateError(existingId, e);
+    throw e;
   }
-  await browser.storage.local.set({ proxyLists });
-  return item;
 }
 
 async function saveListMeta(msg) {
@@ -577,39 +592,64 @@ async function saveListMeta(msg) {
   await browser.storage.local.set({ proxyLists });
 }
 
-async function updateAllLists() {
-  if (!proxyLists.length) return { updated: 0 };
-  let updated = 0;
-  for (const list of proxyLists) {
-    if (!list.url) continue;
-    try {
-      await fetchAndStoreList(list.url, list.id, list);
-      updated++;
-    } catch (e) {}
-  }
-  rebuildMaps();
-  await refreshActiveBadge();
-  return { updated };
+let listUpdateBusy = false;
+
+function markListUpdateError(list, err) {
+  if (!list) return;
+  list.updateError = ListUpdate.clipError(err);
+  list.lastAttemptAt = Date.now();
 }
 
-async function updateDueLists() {
-  if (!proxyLists.length) return { updated: 0 };
+async function updateListedLists(all) {
+  if (!proxyLists.length) return { updated: 0, failed: 0 };
   const now = Date.now();
+  const ids = proxyLists.filter(list => list.url && (all || ListUpdate.isDue(list, now))).map(list => list.id);
   let updated = 0;
-  for (const list of proxyLists) {
-    if (!list.url) continue;
-    const hours = Number(list.intervalHours) > 0 ? Number(list.intervalHours) : 12;
-    if (now - (Number(list.updatedAt) || 0) < hours * 3600000) continue;
+  let failed = 0;
+  for (const id of ids) {
+    const list = proxyLists.find(x => x.id === id);
+    if (!list || !list.url) continue;
+    if (!all && !ListUpdate.isDue(list, Date.now())) continue;
     try {
       await fetchAndStoreList(list.url, list.id, list);
       updated++;
-    } catch (e) {}
+    } catch (e) {
+      failed++;
+    }
   }
-  if (updated) {
+  if (updated || all) {
     rebuildMaps();
     await refreshActiveBadge();
   }
-  return { updated };
+  return { updated, failed };
+}
+
+async function withListUpdateLock(fn) {
+  if (listUpdateBusy) return { updated: 0, failed: 0, skipped: true };
+  listUpdateBusy = true;
+  try { return await fn(); }
+  finally { listUpdateBusy = false; }
+}
+
+async function updateAllLists() {
+  return withListUpdateLock(() => updateListedLists(true));
+}
+
+async function updateDueLists() {
+  return withListUpdateLock(() => updateListedLists(false));
+}
+
+async function scheduleListUpdates() {
+  try {
+    const when = ListUpdate.alarmWhen(proxyLists, Date.now());
+    if (!when) {
+      await browser.alarms.clear("updateLists");
+      return;
+    }
+    const existing = await browser.alarms.get("updateLists");
+    if (existing && !existing.periodInMinutes && Math.abs(existing.scheduledTime - when) < 15000) return;
+    await browser.alarms.create("updateLists", { when });
+  } catch (e) {}
 }
 
 browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -641,7 +681,7 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.action === "refreshLists") {
     updateAllLists()
-      .then(res => sendResponse({ success: true, updated: res.updated }))
+      .then(res => sendResponse({ success: true, updated: res.updated, failed: res.failed }))
       .catch(e => sendResponse({ success: false, error: String(e.message || e) }));
     return true;
   }
@@ -668,9 +708,9 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-browser.alarms.create("updateLists", { periodInMinutes: 30 });
 browser.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === "updateLists") updateDueLists();
+  if (alarm.name !== "updateLists") return;
+  updateDueLists().finally(scheduleListUpdates);
 });
 
 browser.storage.onChanged.addListener(async (changes) => {
@@ -684,7 +724,11 @@ browser.storage.onChanged.addListener(async (changes) => {
   }
   if (changes.proxyRules) { proxyRules = changes.proxyRules.newValue || []; need = true; }
   if (changes.directRules) { directRules = changes.directRules.newValue || []; need = true; }
-  if (changes.proxyLists) { proxyLists = changes.proxyLists.newValue || []; need = true; }
+  if (changes.proxyLists) {
+    proxyLists = changes.proxyLists.newValue || [];
+    need = true;
+    scheduleListUpdates();
+  }
   if (changes.extensionEnabled) {
     extensionEnabled = !!changes.extensionEnabled.newValue && !!(proxyConfig && proxyConfig.host);
     need = true;
@@ -737,5 +781,7 @@ browser.storage.local.get(["proxyConfig", "proxyServers", "proxyRules", "directR
   rebuildMaps();
   await syncToolbarIcon();
   await refreshActiveBadge();
-  if (stale) updateAllLists();
+  if (stale) await updateAllLists();
+  else await updateDueLists();
+  await scheduleListUpdates();
 });

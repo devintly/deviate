@@ -39,7 +39,7 @@
     "256": "icons/icon_256.png"
   },
   "background": {
-    "scripts": ["pac-parse.js", "background.js"]
+    "scripts": ["pac-parse.js", "list-update.js", "background.js"]
   },
   "action": {
     "default_popup": "popup.html",

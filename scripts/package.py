@@ -13,6 +13,7 @@ SKIP_NAMES = {".DS_Store", "Thumbs.db"}
 FILES = (
     "manifest.json",
     "background.js",
+    "list-update.js",
     "popup.html",
     "popup.js",
     "list.html",
