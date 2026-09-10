@@ -156,13 +156,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (hasIn(list, h)) return true;
     return !isIpHost(h) && hasIn(list, "*." + h);
   }
-  function fullRuleIn(list, host) {
-    const h = hostOfRule(host);
-    if (!h || !list) return "";
-    if (!isIpHost(h) && hasIn(list, "*." + h)) return "*." + h;
-    if (hasIn(list, h)) return h;
-    return "";
-  }
   function hasUserRule(rule) { return hasIn(currentRules, rule) || hasIn(currentDirect, rule); }
   function isDirectRule(rule) { return hasIn(currentDirect, rule); }
   function existingUserRule(host) {
