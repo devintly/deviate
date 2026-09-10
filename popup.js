@@ -100,12 +100,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     h = String(h || "").replace(/^\*\./, "");
     return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(h) || h.indexOf(":") >= 0;
   }
+  function isAcceptableHost(h) {
+    h = String(h || "");
+    if (!h || /\s/.test(h)) return false;
+    if (isIpHost(h)) return true;
+    return h.indexOf(".") >= 0 && h.indexOf("..") < 0;
+  }
   function normalize(v) {
-    let s = String(v || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+    const trimmed = String(v || "").trim();
+    if (!trimmed || /\s/.test(trimmed)) return "";
+    let s = trimmed.toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+    if (/\s/.test(s)) return "";
     const wild = s.startsWith("*.");
     if (wild) s = s.slice(2);
     s = s.replace(/^\.+|\.+$/g, "");
-    if (!s) return "";
+    if (!s || !isAcceptableHost(s)) return "";
     if (isIpHost(s)) return s;
     return wild ? "*." + s : s;
   }
@@ -491,7 +500,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     refreshListCover();
   }
   function refreshToggleBtn() {
-    const rule = toGuiRule(els.domainInput.value);
+    const raw = els.domainInput.value;
+    const trimmed = raw.trim();
+    const rule = toGuiRule(raw);
     const existing = existingUserRule(rule);
     const inList = !!existing;
     const direct = inList && isDirectRule(existing);
@@ -502,6 +513,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     els.domainMode.classList.toggle("show", inList);
     els.domainMode.classList.toggle("on", direct);
     els.domainDirect.checked = direct;
+    const hintSpace = "Уберите пробелы";
+    const hintDot = "Нужна точка в домене";
+    const cur = els.rulesStatus.textContent;
+    if (trimmed && !rule) {
+      els.rulesStatus.style.color = "#ff6b6b";
+      els.rulesStatus.textContent = /\s/.test(trimmed) ? hintSpace : hintDot;
+    } else if (cur === hintSpace || cur === hintDot) {
+      els.rulesStatus.textContent = "";
+    }
   }
   function flash(el, t, c = "#57f287") {
     el.style.color = c; el.textContent = t;
@@ -1181,8 +1201,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   els.toggleRule.addEventListener("click", async () => {
-    const rule = toGuiRule(els.domainInput.value);
-    if (!rule) return flash(els.rulesStatus, "Пустое правило", "#ff6b6b");
+    const raw = els.domainInput.value;
+    const trimmed = raw.trim();
+    const rule = toGuiRule(raw);
+    if (!rule) {
+      const msg = !trimmed ? "Пустое правило" : /\s/.test(trimmed) ? "Уберите пробелы" : "Нужна точка в домене";
+      return flash(els.rulesStatus, msg, "#ff6b6b");
+    }
     const existing = existingUserRule(rule);
     els.domainInput.value = existing || rule;
     if (existing) {
