@@ -27,11 +27,9 @@
     .form-col-type { flex: 0 0 104px; width: 104px; }
     .form-col-interval { flex: 0 0 128px; width: 128px; }
     .form-col-interval .label { white-space: nowrap; }
-    .form-col-interval input { margin-bottom: 0; }
+    .form-col-switch { display: flex; flex-direction: column; align-items: flex-start; }
+    .switch-field { display: flex; align-items: center; height: 36px; margin: 0 0 12px; cursor: pointer; }
     .form-pair { align-items: flex-end; }
-    #listsForm .form-pair { align-items: center; margin-bottom: 12px; }
-    .form-pair .switch-row { flex: 1 1 0; min-width: 0; margin: 0; justify-content: center; gap: 10px; }
-    .form-pair .switch-row > span:first-child { white-space: nowrap; }
     #panelRules .row { margin-bottom: 12px; }
 
     input[type="text"], input[type="password"], input[type="number"], select { width: 100%; box-sizing: border-box; border: 0; outline: 0; background: #1e1f22; color: #f2f3f5; padding: 10px 12px; border-radius: 10px; font-size: 13px; margin: 0 0 12px; height: 36px; }
@@ -180,7 +178,7 @@
     .domain-mode .switch { width: 36px; height: 20px; flex-shrink: 0; }
     .domain-mode .switch-ui::after { width: 14px; height: 14px; left: 3px; top: 3px; }
     .domain-mode .switch input:checked + .switch-ui::after { left: 19px; }
-    .row.has-rule #toggleRuleBtn { flex: 1 1 104px; min-width: 96px; max-width: 140px; }
+    .row.has-rule #toggleRuleBtn { flex: 0 1 auto; min-width: 0; max-width: 80px; padding-left: 8px; padding-right: 8px; }
     .row.has-rule #domainModeSwitch { flex: 1 1 0; min-width: 0; }
 
     html.android, html.android body {
@@ -373,9 +371,11 @@
               <div class="label">Обновление (часы)</div>
               <input id="listInterval" type="number" min="1" max="168" value="12" placeholder="12">
             </div>
-            <label class="switch-row form-col">
-              <span>Скачивать через прокси<span class="switch-hint">Выкл — напрямую</span></span>
-              <span class="switch"><input id="listViaProxy" type="checkbox"><span class="switch-ui"></span></span>
+            <label class="form-col form-col-switch">
+              <span class="label">Скачивать через прокси</span>
+              <span class="switch-field">
+                <span class="switch"><input id="listViaProxy" type="checkbox"><span class="switch-ui"></span></span>
+              </span>
             </label>
           </div>
           <div class="form-actions">
