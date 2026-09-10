@@ -51,8 +51,9 @@ const tabProxied = {};
 
 function isAcceptableHost(h) {
   h = String(h || "");
-  if (!h || /\s/.test(h)) return false;
+  if (!h || /\s/.test(h) || /[^\x00-\x7F]/.test(h)) return false;
   if (PacParse.IPV4_RE.test(h) || h.indexOf(":") >= 0) return true;
+  if (!/^[a-z0-9.:\[\]-]+$/i.test(h)) return false;
   return h.indexOf(".") >= 0 && h.indexOf("..") < 0;
 }
 

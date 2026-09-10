@@ -100,10 +100,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     h = String(h || "").replace(/^\*\./, "");
     return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(h) || h.indexOf(":") >= 0;
   }
+  function hasNonLatin(s) {
+    return /[^\x00-\x7F]/.test(String(s || ""));
+  }
+  function stripNonLatin(s) {
+    return String(s || "").replace(/[^\x00-\x7F]/g, "");
+  }
   function isAcceptableHost(h) {
     h = String(h || "");
-    if (!h || /\s/.test(h)) return false;
+    if (!h || /\s/.test(h) || hasNonLatin(h)) return false;
     if (isIpHost(h)) return true;
+    if (!/^[a-z0-9.:\[\]-]+$/i.test(h)) return false;
     return h.indexOf(".") >= 0 && h.indexOf("..") < 0;
   }
   function normalize(v) {
@@ -514,12 +521,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     els.domainMode.classList.toggle("on", direct);
     els.domainDirect.checked = direct;
     const hintSpace = "Уберите пробелы";
+    const hintLatin = "Только латиница";
     const hintDot = "Нужна точка в домене";
     const cur = els.rulesStatus.textContent;
     if (trimmed && !rule) {
       els.rulesStatus.style.color = "#ff6b6b";
-      els.rulesStatus.textContent = /\s/.test(trimmed) ? hintSpace : hintDot;
-    } else if (cur === hintSpace || cur === hintDot) {
+      els.rulesStatus.textContent = /\s/.test(trimmed) ? hintSpace : hasNonLatin(trimmed) ? hintLatin : hintDot;
+    } else if (cur === hintSpace || cur === hintLatin || cur === hintDot) {
       els.rulesStatus.textContent = "";
     }
   }
@@ -1205,7 +1213,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const trimmed = raw.trim();
     const rule = toGuiRule(raw);
     if (!rule) {
-      const msg = !trimmed ? "Пустое правило" : /\s/.test(trimmed) ? "Уберите пробелы" : "Нужна точка в домене";
+      const msg = !trimmed ? "Пустое правило" : /\s/.test(trimmed) ? "Уберите пробелы" : hasNonLatin(trimmed) ? "Только латиница" : "Нужна точка в домене";
       return flash(els.rulesStatus, msg, "#ff6b6b");
     }
     const existing = existingUserRule(rule);
@@ -1352,6 +1360,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   });
   els.domainInput.addEventListener("input", () => {
+    const blockedLatin = hasNonLatin(els.domainInput.value);
+    if (blockedLatin) els.domainInput.value = stripNonLatin(els.domainInput.value);
     const h = hostOfRule(els.domainInput.value);
     if (h) {
       pageHost = h;
@@ -1360,6 +1370,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     refreshScopeUI();
     refreshIcon();
+    if (blockedLatin) {
+      els.rulesStatus.style.color = "#ff6b6b";
+      els.rulesStatus.textContent = "Только латиница";
+    }
   });
 
   els.powerBtn.addEventListener("click", async () => {
