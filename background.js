@@ -321,6 +321,7 @@ function resolveDns(host) {
 }
 
 function onProxyRequest(requestInfo) {
+  if (isOwnPage(requestInfo && requestInfo.url)) return { type: "direct" };
   let host = "";
   try { host = new URL(requestInfo.url).hostname.toLowerCase(); } catch (e) { return { type: "direct" }; }
   if (!host) return { type: "direct" };
@@ -360,8 +361,19 @@ function rememberTabHost(tabId, host, proxied) {
   scheduleBadge(tabId);
 }
 
+function isOwnPage(url) {
+  const s = String(url || "");
+  if (!s) return false;
+  try {
+    const base = browser.runtime.getURL("");
+    return !!(base && s.indexOf(base) === 0);
+  } catch (e) {
+    return false;
+  }
+}
+
 function seedTabUrl(tabId, url) {
-  if (tabId == null || tabId < 0 || !url) return;
+  if (tabId == null || tabId < 0 || !url || isOwnPage(url)) return;
   let host = "";
   try {
     const parsed = new URL(url);
