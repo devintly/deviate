@@ -17,6 +17,7 @@ FILES = (
     "popup.js",
     "list.html",
     "list.js",
+    "platform.js",
     "pac-parse.js",
     "icon.png",
     "icon-off.png",

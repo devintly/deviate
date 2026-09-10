@@ -1,4 +1,22 @@
 document.addEventListener("DOMContentLoaded", async () => {
+  try {
+    const plat = await browser.runtime.getPlatformInfo();
+    if (plat && plat.os === "android") document.documentElement.classList.add("android");
+  } catch (_) {}
+
+  async function queryActiveTab() {
+    try {
+      const found = await browser.tabs.query({ active: true, currentWindow: true });
+      if (found && found[0]) return found[0];
+    } catch (_) {}
+    try {
+      const found = await browser.tabs.query({ active: true });
+      return (found && found[0]) || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   const tabs = document.querySelectorAll(".tab");
   const panels = document.querySelectorAll(".panel");
   const els = {
@@ -518,10 +536,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function checkAutoReload(rule) {
-    if (activeTab && activeTab.url) {
+    if (!activeTab || !activeTab.url || activeTab.id == null) return;
+    try {
       const url = new URL(activeTab.url);
       if (matches(url.hostname, rule)) await browser.tabs.reload(activeTab.id);
-    }
+    } catch (_) {}
   }
 
   async function saveRules() {
@@ -1081,9 +1100,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     renderLists();
     try {
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-      if (tabs[0] && tabs[0].url) {
-        activeTab = tabs[0];
+      const tab = await queryActiveTab();
+      if (tab && tab.url) {
+        activeTab = tab;
         const host = new URL(activeTab.url).hostname;
         if (host) {
           pageHost = normalize(host).replace(/^\*\./, "");
@@ -1257,7 +1276,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   els.openList.addEventListener("click", () => {
-    browser.tabs.create({ url: "list.html" }).finally(() => window.close());
+    const url = browser.runtime.getURL("list.html");
+    browser.tabs.create({ url }).finally(() => {
+      try { window.close(); } catch (_) {}
+    });
   });
   els.domainInput.addEventListener("input", () => {
     const h = hostOfRule(els.domainInput.value);
