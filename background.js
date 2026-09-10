@@ -422,25 +422,38 @@ async function updateBadge(tabId) {
   } catch (e) {}
 }
 
-async function refreshActiveBadge() {
+async function queryActiveTab() {
   try {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-    if (tabs[0]) await updateBadge(tabs[0].id);
+    if (tabs && tabs[0]) return tabs[0];
   } catch (e) {}
+  try {
+    const tabs = await browser.tabs.query({ active: true });
+    return (tabs && tabs[0]) || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function refreshActiveBadge() {
+  const tab = await queryActiveTab();
+  if (tab) await updateBadge(tab.id);
 }
 
 browser.proxy.onRequest.addListener(onProxyRequest, { urls: ALL_WEB_URLS });
 
-browser.webRequest.onAuthRequired.addListener(
-  function (details) {
-    if (details.isProxy && proxyConfig.username && proxyConfig.password) {
-      return { authCredentials: { username: proxyConfig.username, password: proxyConfig.password } };
-    }
-    return {};
-  },
-  { urls: ALL_WEB_URLS },
-  ["blocking"]
-);
+try {
+  browser.webRequest.onAuthRequired.addListener(
+    function (details) {
+      if (details.isProxy && proxyConfig.username && proxyConfig.password) {
+        return { authCredentials: { username: proxyConfig.username, password: proxyConfig.password } };
+      }
+      return {};
+    },
+    { urls: ALL_WEB_URLS },
+    ["blocking"]
+  );
+} catch (e) {}
 
 browser.tabs.onRemoved.addListener((tabId) => {
   delete tabHosts[tabId];
