@@ -6,7 +6,7 @@
   <script src="platform.js"></script>
   <style>
     * { box-sizing: border-box; }
-    html, body { margin: 0; width: 440px; height: 550px; overflow: hidden; background: #1e1f22; color: #f2f3f5; font-family: Inter, Arial, sans-serif; }
+    html, body { margin: 0; width: 440px; height: 650px; overflow: hidden; background: #1e1f22; color: #f2f3f5; font-family: Inter, Arial, sans-serif; }
     .wrap { height: 100%; padding: 14px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
     .header { display: flex; align-items: center; justify-content: center; gap: 0px; margin-bottom: 14px; font-size: 20px; font-weight: 700; color: #ffffff; flex-shrink: 0; position: relative; }
     .header img { width: 28px; height: 28px; border-radius: 0; object-fit: cover; transform: translateY(-2px); }
@@ -155,14 +155,16 @@
     #panelRules .card #openListBtn { margin-top: auto; }
     .domain-mode { display: none; align-items: center; justify-content: space-between; gap: 6px; flex: 1; min-width: 0; min-height: 32px; margin: 0; padding: 0 8px; background: #1e1f22; border-radius: 8px; font-size: 10px; font-weight: 700; color: #b5bac1; cursor: pointer; }
     .domain-mode.show { display: flex; }
+    .domain-mode .domain-mode-off,
+    .domain-mode .domain-mode-on { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
     .domain-mode .domain-mode-off { color: #57f287; }
     .domain-mode .domain-mode-on { color: #b5bac1; }
     .domain-mode.on .domain-mode-off { color: #b5bac1; }
     .domain-mode.on .domain-mode-on { color: #ffb020; }
-    .domain-mode .switch { width: 36px; height: 20px; }
+    .domain-mode .switch { width: 36px; height: 20px; flex-shrink: 0; }
     .domain-mode .switch-ui::after { width: 14px; height: 14px; left: 3px; top: 3px; }
     .domain-mode .switch input:checked + .switch-ui::after { left: 19px; }
-    .row.has-rule #toggleRuleBtn { flex: 0 1 auto; min-width: 110px; }
+    .row.has-rule #toggleRuleBtn { flex: 0 1 auto; min-width: 0; }
 
     html.android, html.android body {
       width: 100%;
@@ -212,6 +214,29 @@
       padding-bottom: max(8px, env(safe-area-inset-bottom));
     }
     html.android .scope-btn { min-height: 40px; }
+    html.android .row.has-rule {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      grid-template-areas: "mode menu" "del del";
+      gap: 8px;
+      align-items: stretch;
+    }
+    html.android .row.has-rule #toggleRuleBtn { grid-area: del; width: 100%; min-width: 0; }
+    html.android .row.has-rule #domainModeSwitch { grid-area: mode; min-height: 44px; font-size: 11px; }
+    html.android .row.has-rule #viewDomainsBtn { grid-area: menu; }
+    html.android .footer { line-height: 1.45; overflow-wrap: anywhere; }
+    @media (min-width: 520px) {
+      html:not(.android), html:not(.android) body {
+        width: 100%;
+        max-width: 480px;
+        height: auto;
+        min-height: 100vh;
+        margin-left: auto;
+        margin-right: auto;
+        overflow: auto;
+      }
+      html:not(.android) .wrap { min-height: 650px; overflow: auto; }
+    }
   </style>
 </head>
 <body>
@@ -259,13 +284,15 @@
     <div id="panelProxy" class="panel">
       <div class="card">
         <div id="proxyMain">
-          <input id="proxySearch" class="search-box" type="text" placeholder="Поиск по IP или домену" autocomplete="off" spellcheck="false">
+          <input id="proxySearch" class="search-box" type="text" placeholder="Поиск по названию, IP или домену" autocomplete="off" spellcheck="false">
           <div id="proxyEmpty" class="lists-empty">Прокси пока нет</div>
           <div id="proxyContainer" class="lists-wrap"></div>
           <button id="showAddProxyBtn" class="primary lists-add" type="button">Добавить прокси</button>
           <div id="proxyStatus" class="hint"></div>
         </div>
         <div id="proxyForm" style="display:none;">
+          <div class="label">Название (необязательно)</div>
+          <input id="proxyName" type="text" placeholder="Если пусто — будет адрес">
           <div class="label">Тип прокси</div>
           <select id="proxyType">
             <option value="socks">SOCKS5</option>

@@ -463,11 +463,27 @@
     return matchCidr(host, cidrs);
   }
 
+  function basicAuthHeader(user, pass) {
+    var s = String(user || "") + ":" + String(pass || "");
+    return "Basic " + btoa(unescape(encodeURIComponent(s)));
+  }
+
   function userProxyToFirefox(cfg) {
     if (!cfg || !cfg.host || !cfg.port) return { type: "direct" };
     var t = cfg.type === "socks" ? "socks" : (cfg.type === "https" ? "https" : "http");
-    var out = { type: t, host: cfg.host, port: Number(cfg.port) };
-    if (t === "socks") out.proxyDNS = true;
+    var host = String(cfg.host).replace(/^\s+|\s+$/g, "");
+    var port = Number(cfg.port);
+    if (!host || !(port > 0 && port < 65536)) return { type: "direct" };
+    var out = { type: t, host: host, port: port, failoverTimeout: 5 };
+    if (t === "socks") {
+      out.proxyDNS = true;
+      if (cfg.username || cfg.password) {
+        out.username = String(cfg.username || "");
+        out.password = String(cfg.password || "");
+      }
+    } else if (cfg.username || cfg.password) {
+      out.proxyAuthorizationHeader = basicAuthHeader(cfg.username, cfg.password);
+    }
     return out;
   }
 
