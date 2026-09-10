@@ -442,13 +442,23 @@ async function refreshActiveBadge() {
 
 browser.proxy.onRequest.addListener(onProxyRequest, { urls: ALL_WEB_URLS });
 
+const proxyAuthTried = new Set();
+
 try {
   browser.webRequest.onAuthRequired.addListener(
     function (details) {
-      if (details.isProxy && proxyConfig.username && proxyConfig.password) {
-        return { authCredentials: { username: proxyConfig.username, password: proxyConfig.password } };
-      }
-      return {};
+      if (!details.isProxy) return {};
+      if (!proxyConfig.username && !proxyConfig.password) return {};
+      const id = details.requestId;
+      if (proxyAuthTried.has(id)) return { cancel: true };
+      if (proxyAuthTried.size > 200) proxyAuthTried.clear();
+      proxyAuthTried.add(id);
+      return {
+        authCredentials: {
+          username: proxyConfig.username || "",
+          password: proxyConfig.password || ""
+        }
+      };
     },
     { urls: ALL_WEB_URLS },
     ["blocking"]
