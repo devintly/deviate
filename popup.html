@@ -24,8 +24,12 @@
     .row { display: flex; gap: 8px; align-items: stretch; }
     .form-col { flex: 1; min-width: 0; }
     .form-col-port { flex: 0 0 108px; }
+    .form-col-type { flex: 0 0 104px; width: 104px; }
+    .form-col-interval { flex: 0 0 128px; width: 128px; }
+    .form-col-interval .label { white-space: nowrap; }
     .form-pair { align-items: flex-end; }
-    .form-pair .switch-row { margin: 0 0 12px; min-height: 36px; }
+    .form-pair .switch-row { flex: 1 1 0; min-width: 0; margin: 0 0 12px; min-height: 36px; }
+    .form-pair .switch-row > span:first-child { white-space: nowrap; }
     #panelRules .row { margin-bottom: 12px; }
 
     input[type="text"], input[type="password"], input[type="number"], select { width: 100%; box-sizing: border-box; border: 0; outline: 0; background: #1e1f22; color: #f2f3f5; padding: 10px 12px; border-radius: 10px; font-size: 13px; margin: 0 0 12px; height: 36px; }
@@ -76,6 +80,7 @@
     #proxyForm input[type="password"],
     #proxyForm input[type="number"],
     #proxyForm select { margin-bottom: 8px; }
+    #proxyForm select { padding-left: 10px; padding-right: 6px; }
     .list-card { display: flex; align-items: stretch; gap: 8px; background: #1e1f22; border-radius: 10px; padding: 8px 8px 8px 10px; margin-bottom: 8px; }
     .list-card:last-child { margin-bottom: 0; }
     .list-card-body { flex: 1; min-width: 0; }
@@ -235,6 +240,8 @@
     html.android .row.has-rule #domainModeSwitch { grid-area: mode; min-height: 44px; font-size: 11px; }
     html.android .row.has-rule #viewDomainsBtn { grid-area: menu; }
     html.android .footer { line-height: 1.45; overflow-wrap: anywhere; }
+    html.android .form-col-type { flex-basis: 124px; width: 124px; }
+    html.android .form-col-interval { flex-basis: 128px; width: 128px; }
     @media (min-width: 520px) {
       html:not(.android), html:not(.android) body {
         width: 100%;
@@ -301,7 +308,7 @@
               <div class="label">Название (необязательно)</div>
               <input id="proxyName" type="text" placeholder="Если пусто — будет адрес">
             </div>
-            <div class="form-col">
+            <div class="form-col-type">
               <div class="label">Тип прокси</div>
               <select id="proxyType">
                 <option value="socks">SOCKS5</option>
@@ -360,7 +367,7 @@
           <div class="label">URL списка (TXT / PAC)</div>
           <input id="listUrl" type="text" placeholder="https://.../filter.txt или https://.../proxy.pac">
           <div class="row form-pair">
-            <div class="form-col">
+            <div class="form-col-interval">
               <div class="label">Обновление (часы)</div>
               <input id="listInterval" type="number" min="1" max="168" value="12" placeholder="12">
             </div>
