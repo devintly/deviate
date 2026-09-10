@@ -154,12 +154,19 @@
     .status-caption.proxy { color: #57f287; }
     .status-caption.direct { color: #ffb020; }
     .status-caption.none { color: #da373c; }
-    .status-caption:empty { visibility: hidden; }
+    .status-caption:empty { display: none; margin: 0; min-height: 0; }
     #panelRules .card #openListBtn { margin-top: auto; }
-    .domain-mode { display: none; align-items: center; justify-content: space-between; gap: 6px; flex: 1; min-width: 0; min-height: 32px; margin: 0; padding: 0 8px; background: #1e1f22; border-radius: 8px; font-size: 10px; font-weight: 700; color: #b5bac1; cursor: pointer; }
+    .domain-mode { display: none; align-items: center; justify-content: center; gap: 6px; flex: 1; min-width: 0; min-height: 32px; margin: 0; padding: 0 6px; background: #1e1f22; border-radius: 8px; font-size: 10px; font-weight: 700; color: #b5bac1; cursor: pointer; }
     .domain-mode.show { display: flex; }
     .domain-mode .domain-mode-off,
-    .domain-mode .domain-mode-on { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .domain-mode .domain-mode-on {
+      flex: 1;
+      min-width: 0;
+      text-align: center;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .domain-mode .domain-mode-off { color: #57f287; }
     .domain-mode .domain-mode-on { color: #b5bac1; }
     .domain-mode.on .domain-mode-off { color: #b5bac1; }
