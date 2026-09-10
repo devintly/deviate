@@ -560,6 +560,7 @@ async function fetchAndStoreList(url, existingId, msg) {
     item.viaProxy = meta.viaProxy;
     item.updatedAt = Date.now();
     item.updateError = "";
+    item.updateFailCount = 0;
     item.lastAttemptAt = item.updatedAt;
     if (existingId != null) {
       item.id = existingId;
@@ -595,9 +596,7 @@ async function saveListMeta(msg) {
 let listUpdateBusy = false;
 
 function markListUpdateError(list, err) {
-  if (!list) return;
-  list.updateError = ListUpdate.clipError(err);
-  list.lastAttemptAt = Date.now();
+  ListUpdate.markFailure(list, err, Date.now());
 }
 
 async function updateListedLists(all) {

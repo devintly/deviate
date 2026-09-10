@@ -2,7 +2,8 @@
   "use strict";
 
   var HOUR_MS = 3600000;
-  var RETRY_MS = 30 * 60 * 1000;
+  var RETRY_MS = 10 * 60 * 1000;
+  var RETRY_LIMIT = 6;
   var MIN_ALARM_MS = 60 * 1000;
   var DEFAULT_HOURS = 12;
   var MAX_HOURS = 168;
@@ -18,6 +19,15 @@
     return intervalHours(list) * HOUR_MS;
   }
 
+  function failCount(list) {
+    var n = Number(list && list.updateFailCount) || 0;
+    return n > 0 ? n : 0;
+  }
+
+  function retryDelayMs(list) {
+    return failCount(list) <= RETRY_LIMIT ? RETRY_MS : intervalMs(list);
+  }
+
   function clipError(err) {
     var text = "";
     if (err && err.message) text = String(err.message);
@@ -27,27 +37,34 @@
     return text.slice(0, 180);
   }
 
+  function markFailure(list, err, now) {
+    if (!list) return list;
+    list.updateError = clipError(err);
+    list.lastAttemptAt = Number(now) || 0;
+    list.updateFailCount = failCount(list) + 1;
+    return list;
+  }
+
   function isDue(list, now) {
     if (!list || !list.url) return false;
     now = Number(now) || 0;
-    if (now - (Number(list.updatedAt) || 0) < intervalMs(list)) return false;
-    if (list.updateError) {
-      var attempt = Number(list.lastAttemptAt) || 0;
-      if (attempt && now - attempt < RETRY_MS) return false;
+    var attempt = Number(list.lastAttemptAt) || 0;
+    if (list.updateError && attempt) {
+      return now - attempt >= retryDelayMs(list);
     }
-    return true;
+    return now - (Number(list.updatedAt) || 0) >= intervalMs(list);
   }
 
   function nextCheckAt(list, now) {
     if (!list || !list.url) return 0;
     now = Number(now) || 0;
-    var due = (Number(list.updatedAt) || 0) + intervalMs(list);
-    if (now < due) return due;
-    if (list.updateError) {
-      var retryAt = (Number(list.lastAttemptAt) || 0) + RETRY_MS;
-      if (now < retryAt) return retryAt;
+    var attempt = Number(list.lastAttemptAt) || 0;
+    if (list.updateError && attempt) {
+      var retryAt = attempt + retryDelayMs(list);
+      return now < retryAt ? retryAt : now;
     }
-    return now;
+    var due = (Number(list.updatedAt) || 0) + intervalMs(list);
+    return now < due ? due : now;
   }
 
   function soonestCheckAt(lists, now) {
@@ -69,12 +86,16 @@
 
   var api = {
     RETRY_MS: RETRY_MS,
+    RETRY_LIMIT: RETRY_LIMIT,
     MIN_ALARM_MS: MIN_ALARM_MS,
     DEFAULT_HOURS: DEFAULT_HOURS,
     MAX_HOURS: MAX_HOURS,
     intervalHours: intervalHours,
     intervalMs: intervalMs,
+    failCount: failCount,
+    retryDelayMs: retryDelayMs,
     clipError: clipError,
+    markFailure: markFailure,
     isDue: isDue,
     nextCheckAt: nextCheckAt,
     soonestCheckAt: soonestCheckAt,
