@@ -1,0 +1,45 @@
+﻿{
+  "manifest_version": 3,
+  "name": "DeviateProxy",
+  "version": "1.0",
+  "description": "DeviateProxy — проксирование сайтов по правилам средствами SOCKS/HTTP.",
+  "incognito": "spanning",
+  "permissions": [
+    "proxy",
+    "storage",
+    "tabs",
+    "alarms",
+    "webRequest",
+    "webRequestAuthProvider",
+    "unlimitedStorage"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*",
+    "ws://*/*",
+    "wss://*/*"
+  ],
+  "icons": {
+    "32": "icons/icon_32.png",
+    "64": "icons/icon_64.png",
+    "128": "icons/icon_128.png",
+    "256": "icons/icon_256.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "DeviateProxy",
+    "default_icon": {
+      "32": "icons/icon_32.png",
+      "64": "icons/icon_64.png",
+      "128": "icons/icon_128.png",
+      "256": "icons/icon_256.png"
+    }
+  },
+  "options_ui": {
+    "page": "popup.html",
+    "open_in_tab": true
+  }
+}
