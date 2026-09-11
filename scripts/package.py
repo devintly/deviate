@@ -1,5 +1,5 @@
-﻿#!/usr/bin/env python3
-"""Сборка пакетов DeviateProxy для Firefox, Chrome и Edge."""
+#!/usr/bin/env python3
+"""Сборка пакетов DeviateProxy для Firefox и Chromium (Chrome, Edge, Opera)."""
 from __future__ import annotations
 
 import json
@@ -12,7 +12,7 @@ SRC = ROOT / "src"
 COMMON = SRC / "common"
 DIST = ROOT / "dist"
 UNPACKED = DIST / "unpacked"
-TARGETS = ("firefox", "chrome", "edge")
+TARGETS = ("firefox", "chrome")
 SKIP_NAMES = {".DS_Store", "Thumbs.db"}
 
 

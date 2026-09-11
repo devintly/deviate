@@ -2,7 +2,7 @@
 
 Расширение для выборочного проксирования сайтов по правилам через SOCKS5, HTTP и HTTPS.
 
-Поддерживает **Firefox** (ПК и Android), **Google Chrome** и **Microsoft Edge**.
+Поддерживает **Firefox** (ПК и Android) и браузеры на базе **Chromium** (Google Chrome, Microsoft Edge, Opera, Brave, Vivaldi, Яндекс Браузер).
 
 ## Функции
 
@@ -21,9 +21,8 @@
 deviateproxy/
 ├── src/
 │   ├── common/             # Общие ресурсы и логика (UI, иконки, парсеры списков)
-│   ├── firefox/            # Манифест и скрипты для Firefox
-│   ├── chrome/             # Манифест и скрипты для Chrome
-│   └── edge/               # Манифест и скрипты для Edge
+│   ├── firefox/            # Манифест и скрипты для Firefox (Gecko)
+│   └── chrome/             # Манифест и скрипты для Chromium (Chrome, Edge, Opera)
 ├── scripts/
 │   ├── package.py          # Сборка пакетов (Python)
 │   └── package.ps1         # Сборка пакетов (PowerShell)

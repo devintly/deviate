@@ -7,7 +7,7 @@ $Src = Join-Path $Root "src"
 $Common = Join-Path $Src "common"
 $Dist = Join-Path $Root "dist"
 $Unpacked = Join-Path $Dist "unpacked"
-$Targets = @("firefox", "chrome", "edge")
+$Targets = @("firefox", "chrome")
 
 if (Test-Path $Dist) {
     Remove-Item -Path $Dist -Recurse -Force
