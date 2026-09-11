@@ -42,5 +42,5 @@ powershell -ExecutionPolicy Bypass -File scripts/package.ps1
 
 ---
 
-Репозиторий: [github.com/devintly/deviateproxy](https://github.com/devintly/deviateproxy)  
-Вдохновлено MeguProxy: [github.com/ventordimi/meguproxy](https://github.com/ventordimi/meguproxy)
+Исходный код: [GitHub](https://github.com/devintly/deviateproxy)  
+Вдохновлено MeguProxy: [GitHub](https://github.com/ventordimi/meguproxy)
