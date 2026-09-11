@@ -16,15 +16,6 @@
       if (!line || line.charAt(0) === "!" || line.charAt(0) === "#") continue;
       var matchHosts = line.match(/^(?:0\.0\.0\.0|127\.0\.0\.1)\s+([^\s]+)/);
       if (matchHosts) { domains[matchHosts[1]] = 1; continue; }
-      if (line.indexOf("||") === 0) {
-        var endIdx = line.indexOf("^");
-        if (endIdx === -1) endIdx = line.indexOf("/");
-        if (endIdx === -1) endIdx = line.indexOf(":");
-        if (endIdx === -1) endIdx = line.length;
-        var domain = line.substring(2, endIdx).split("$")[0];
-        if (domain) domains[domain] = 1;
-        continue;
-      }
       if (/^(?:\*\.)?([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,}$/i.test(line)) {
         domains[line.replace(/^\*\./, "")] = 1;
       }

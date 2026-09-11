@@ -31,12 +31,12 @@ function assert(cond, msg) {
 assert(api.isPacUrl("https://x.test/proxy.pac"), "pac url");
 assert(!api.isPacUrl("https://x.test/list.txt"), "txt url");
 
-const domains = api.parseList("||example.com^\n# skip\nsub.example.org\n0.0.0.0 ads.test");
-assert(domains.includes("example.com"), "adblock host");
+const domains = api.parseList("example.com\n# skip\nsub.example.org\n0.0.0.0 ads.test");
+assert(domains.includes("example.com"), "plain domain");
 assert(domains.includes("sub.example.org"), "plain host");
 assert(domains.includes("ads.test"), "hosts file");
 
-const txt = api.ingestRemote("https://x.test/list.txt", "||ok.example^\n");
+const txt = api.ingestRemote("https://x.test/list.txt", "ok.example\n");
 assert(txt.format === "txt", "txt ingest");
 assert(txt.domains.includes("ok.example"), "txt domain");
 
