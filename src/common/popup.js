@@ -451,24 +451,47 @@ document.addEventListener("DOMContentLoaded", async () => {
       els.rulesStatus.textContent = "";
     }
   }
+  let activeToast = null;
+  let toastHideTimer = null;
+
+  function dismissToast(el) {
+    if (!el) return;
+    el.classList.remove("toast-in");
+    el.classList.add("toast-out");
+    setTimeout(() => {
+      if (el.parentNode) el.parentNode.removeChild(el);
+    }, 250);
+  }
+
   function showToast(text, type = "success") {
     if (!text) return;
     const container = els.toastContainer || document.getElementById("toastContainer");
     if (!container) return;
-    while (container.children.length >= 2) {
-      container.removeChild(container.firstChild);
+
+    if (toastHideTimer) {
+      clearTimeout(toastHideTimer);
+      toastHideTimer = null;
     }
+
+    if (activeToast) {
+      dismissToast(activeToast);
+      activeToast = null;
+    }
+
     const toast = document.createElement("div");
     toast.className = `toast toast-${type}`;
     toast.textContent = text;
     container.appendChild(toast);
-    setTimeout(() => {
-      toast.classList.add("toast-out");
-      setTimeout(() => {
-        if (toast.parentNode === container) {
-          container.removeChild(toast);
-        }
-      }, 250);
+    activeToast = toast;
+
+    void toast.offsetHeight;
+    toast.classList.add("toast-in");
+
+    toastHideTimer = setTimeout(() => {
+      if (activeToast === toast) {
+        activeToast = null;
+      }
+      dismissToast(toast);
     }, 2200);
   }
   function flash(el, t, c = "#57f287") {
@@ -927,7 +950,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           <div class="${name ? "list-card-url" : "list-card-title"}" title="${escapeHtml(url)}">${escapeHtml(url)}</div>
           <div class="list-card-meta">${escapeHtml(metaText)}</div>
           <div class="list-card-updated">${escapeHtml(updatedText)}</div>
-          ${l.updateError ? `<div class="list-card-error" title="${escapeHtml(l.updateError)}">${escapeHtml(l.updateError)}</div>` : ""}
+          ${(l.updateError || l.lastError) ? `<div class="list-card-error" title="${escapeHtml(l.updateError || l.lastError)}">${escapeHtml(l.updateError || l.lastError)}</div>` : ""}
         </div>
         <div class="list-card-actions">
           <button type="button" class="btn-refresh" title="${escapeHtml(I18n.t("btn_refresh"))}" aria-label="${escapeHtml(I18n.t("btn_refresh"))}">${SVGS.refresh}</button>
@@ -947,10 +970,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     return String(url || "").trim().replace(/\/+$/, "").toLowerCase();
   }
 
-  function showListsMain() {
+  async function showListsMain() {
     editingListId = null;
     els.listsForm.style.display = "none";
     els.listsMain.style.display = "flex";
+    try {
+      const st = await browser.storage.local.get("proxyLists");
+      if (st && Array.isArray(st.proxyLists)) currentLists = st.proxyLists;
+    } catch (_) {}
     renderLists();
   }
 
@@ -1175,11 +1202,16 @@ document.addEventListener("DOMContentLoaded", async () => {
       const existing = editingListId != null ? currentLists.find(l => l.id === editingListId) : null;
       const urlChanged = existing && canonListUrl(existing.url) !== canonListUrl(form.url);
       const proxyChanged = existing && !!existing.viaProxy !== form.viaProxy;
-      const needFetch = !existing || urlChanged || proxyChanged;
+      const hasError = existing && !!(existing.updateError || existing.lastError);
+      const needFetch = !existing || urlChanged || proxyChanged || hasError;
       const res = await sendListMessage(needFetch
         ? { action: "fetchList", id: editingListId, url: form.url, name: form.name, intervalHours: form.intervalHours, viaProxy: form.viaProxy }
         : { action: "saveListMeta", id: editingListId, url: form.url, name: form.name, intervalHours: form.intervalHours, viaProxy: form.viaProxy });
       if (res && res.success) {
+        try {
+          const st = await browser.storage.local.get("proxyLists");
+          if (st && Array.isArray(st.proxyLists)) currentLists = st.proxyLists;
+        } catch (_) {}
         flash(els.lStatus, existing ? I18n.t("msg_saved") : I18n.t("msg_list_added"));
         showListsMain();
       } else flash(els.lFormStatus, (res && res.error) ? String(res.error).slice(0, 180) : I18n.t("msg_error"), "#ff6b6b");

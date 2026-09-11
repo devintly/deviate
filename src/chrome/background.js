@@ -555,7 +555,8 @@ async function fetchAndStoreList(url, existingId, msg) {
     if (existingId != null) {
       const idx = proxyLists.findIndex(x => x.id === existingId);
       if (idx >= 0) {
-        proxyLists[idx].lastError = String((e && e.message) || e || "Ошибка загрузки");
+        ListUpdate.markFailure(proxyLists[idx], e, Date.now());
+        proxyLists[idx].lastError = proxyLists[idx].updateError;
         await chrome.storage.local.set({ proxyLists });
       }
     }

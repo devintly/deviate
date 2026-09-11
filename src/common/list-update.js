@@ -102,6 +102,7 @@
     next.viaProxy = !!(meta && meta.viaProxy);
     next.updatedAt = Number(now) || 0;
     next.updateError = "";
+    next.lastError = "";
     next.updateFailCount = 0;
     next.lastAttemptAt = next.updatedAt;
     next.url = url;
