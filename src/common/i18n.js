@@ -98,7 +98,15 @@
       msg_rule_added: "Добавлено",
       placeholder_proxy_name: "Если пусто — будет адрес",
       placeholder_list_name: "Если пусто — будет ссылка",
-      placeholder_list_url: "https://.../filter.txt или https://.../proxy.pac"
+      placeholder_list_url: "https://.../filter.txt или https://.../proxy.pac",
+      conflict_warning_title: "Конфликт расширений",
+      conflict_warning_desc: "Другое расширение контролирует настройки прокси. Отключите конфликтующие VPN или прокси-расширения.",
+      info_title: "О расширении",
+      info_version: "Версия {version}",
+      info_desc: "Выборочное проксирование сайтов по правилам через SOCKS5, HTTP и HTTPS с поддержкой удаленных списков и масок.",
+      info_source_link: "Исходный код (GitHub)",
+      info_inspired_link: "Вдохновлено MeguProxy",
+      btn_close: "Закрыть"
     },
     en: {
       tabs_proxy: "Proxy",
@@ -196,7 +204,15 @@
       msg_rule_added: "Added",
       placeholder_proxy_name: "If empty — host will be used",
       placeholder_list_name: "If empty — URL will be used",
-      placeholder_list_url: "https://.../filter.txt or https://.../proxy.pac"
+      placeholder_list_url: "https://.../filter.txt or https://.../proxy.pac",
+      conflict_warning_title: "Extension Conflict",
+      conflict_warning_desc: "Another extension is controlling proxy settings. Please disable conflicting VPN or proxy extensions.",
+      info_title: "About DeviateProxy",
+      info_version: "Version {version}",
+      info_desc: "Selective rule-based website proxying via SOCKS5, HTTP, and HTTPS with remote lists and wildcard domain support.",
+      info_source_link: "Source Code (GitHub)",
+      info_inspired_link: "Inspired by MeguProxy",
+      btn_close: "Close"
     }
   };
 

@@ -74,7 +74,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     deleteList: document.getElementById("deleteListBtn"), cancelList: document.getElementById("cancelListBtn"),
     refreshLists: document.getElementById("refreshListsBtn"), lCont: document.getElementById("listsContainer"),
     lStatus: document.getElementById("listStatus"), lFormStatus: document.getElementById("listFormStatus"),
-    powerBtn: document.getElementById("powerBtn")
+    powerBtn: document.getElementById("powerBtn"),
+    infoBtn: document.getElementById("infoBtn"),
+    infoModal: document.getElementById("infoModal"),
+    closeInfoBtn: document.getElementById("closeInfoBtn"),
+    confirmInfoBtn: document.getElementById("confirmInfoBtn"),
+    infoVersion: document.getElementById("infoVersion"),
+    conflictBanner: document.getElementById("conflictBanner"),
+    toastContainer: document.getElementById("toastContainer")
   };
 
   let currentRules = [];
@@ -444,9 +451,29 @@ document.addEventListener("DOMContentLoaded", async () => {
       els.rulesStatus.textContent = "";
     }
   }
+  function showToast(text, type = "success") {
+    if (!text) return;
+    const container = els.toastContainer || document.getElementById("toastContainer");
+    if (!container) return;
+    while (container.children.length >= 2) {
+      container.removeChild(container.firstChild);
+    }
+    const toast = document.createElement("div");
+    toast.className = `toast toast-${type}`;
+    toast.textContent = text;
+    container.appendChild(toast);
+    setTimeout(() => {
+      toast.classList.add("toast-out");
+      setTimeout(() => {
+        if (toast.parentNode === container) {
+          container.removeChild(toast);
+        }
+      }, 250);
+    }, 2200);
+  }
   function flash(el, t, c = "#57f287") {
-    el.style.color = c; el.textContent = t;
-    setTimeout(() => { if (el.textContent === t) el.textContent = ""; }, 2000);
+    const isErr = c === "#ff6b6b" || (typeof c === "string" && (c.includes("da373c") || c.includes("ff6b6b")));
+    showToast(t, isErr ? "error" : "success");
   }
   function foldSearch(s) {
     return String(s || "").toLowerCase().replace(/\s+/g, "");
@@ -1013,6 +1040,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     } catch (_) {}
     refreshScopeUI();
     refreshIcon();
+    await checkProxyConflict();
+  }
+
+  async function checkProxyConflict() {
+    try {
+      const res = await browser.runtime.sendMessage({ action: "checkProxyControl" });
+      if (els.conflictBanner) {
+        els.conflictBanner.style.display = (res && res.isBlocked) ? "flex" : "none";
+      }
+    } catch (_) {}
   }
 
   els.showAddProxy.addEventListener("click", () => openProxyForm(null));
@@ -1225,7 +1262,38 @@ document.addEventListener("DOMContentLoaded", async () => {
     extensionEnabled = !extensionEnabled;
     await browser.storage.local.set({ extensionEnabled });
     refreshPowerBtn();
+    await checkProxyConflict();
   });
+
+  function openInfoModal() {
+    if (els.infoModal) els.infoModal.classList.add("open");
+  }
+  function closeInfoModal() {
+    if (els.infoModal) els.infoModal.classList.remove("open");
+  }
+  if (els.infoBtn) els.infoBtn.addEventListener("click", openInfoModal);
+  if (els.closeInfoBtn) els.closeInfoBtn.addEventListener("click", closeInfoModal);
+  if (els.confirmInfoBtn) els.confirmInfoBtn.addEventListener("click", closeInfoModal);
+  if (els.infoModal) {
+    els.infoModal.addEventListener("click", (e) => {
+      if (e.target === els.infoModal) closeInfoModal();
+    });
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      if (els.infoModal && els.infoModal.classList.contains("open")) {
+        closeInfoModal();
+      } else if (domainsPanelOpen) {
+        closeDomainsPanel();
+      }
+    }
+  });
+  try {
+    const manifest = browser.runtime.getManifest();
+    if (manifest && manifest.version && els.infoVersion) {
+      els.infoVersion.textContent = "v" + manifest.version;
+    }
+  } catch (_) {}
 
   browser.storage.onChanged.addListener((c, a) => {
     if (a !== "local") return;

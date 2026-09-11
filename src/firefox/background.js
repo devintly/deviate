@@ -702,6 +702,19 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({ domains: domains.sort() });
     return true;
   }
+  if (msg.action === "checkProxyControl") {
+    if (browser.proxy && browser.proxy.settings && typeof browser.proxy.settings.get === "function") {
+      browser.proxy.settings.get({}).then(details => {
+        const level = (details && details.levelOfControl) || "";
+        sendResponse({ levelOfControl: level, isBlocked: level === "controlled_by_other_extensions" });
+      }).catch(() => {
+        sendResponse({ levelOfControl: "", isBlocked: false });
+      });
+    } else {
+      sendResponse({ levelOfControl: "", isBlocked: false });
+    }
+    return true;
+  }
 });
 
 browser.alarms.onAlarm.addListener((alarm) => {

@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 importScripts("pac-parse.js", "list-update.js", "list-ingest.js");
 
@@ -392,15 +392,32 @@ function isHostProxied(host) {
 function recordTabHost(tabId, host) {
   if (tabId == null || tabId < 0 || !host) return;
   if (PacParse.IPV4_RE.test(host) || host.indexOf(":") >= 0) return;
+  host = host.toLowerCase();
   let s = tabHosts[tabId];
   if (!s) { s = new Set(); tabHosts[tabId] = s; }
   if (s.size < 200) s.add(host);
+
+  if (extensionEnabled && isHostProxied(host)) {
+    let p = tabProxied[tabId];
+    if (!p) { p = new Set(); tabProxied[tabId] = p; }
+    p.add(host);
+    scheduleBadge(tabId);
+  }
 }
 
-function incrementTabProxied(tabId) {
-  if (tabId == null || tabId < 0) return;
-  tabProxied[tabId] = (tabProxied[tabId] || 0) + 1;
-  scheduleBadge(tabId);
+function recountTabProxied() {
+  Object.keys(tabHosts).forEach(id => {
+    const tabId = Number(id);
+    const next = new Set();
+    const hosts = tabHosts[tabId];
+    if (hosts && extensionEnabled) {
+      hosts.forEach(h => {
+        if (isHostProxied(h)) next.add(h);
+      });
+    }
+    tabProxied[tabId] = next;
+    scheduleBadge(tabId);
+  });
 }
 
 // Request observer for badge and tab hosts tracking
@@ -412,9 +429,6 @@ chrome.webRequest.onBeforeRequest.addListener(
       const host = u.hostname;
       if (!host) return;
       recordTabHost(details.tabId, host);
-      if (extensionEnabled && isHostProxied(host)) {
-        incrementTabProxied(details.tabId);
-      }
     } catch (_) {}
   },
   { urls: ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"] }
@@ -442,7 +456,7 @@ function isWebTab(tab) {
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === "loading" && isWebTab(tab)) {
     tabHosts[tabId] = new Set();
-    tabProxied[tabId] = 0;
+    tabProxied[tabId] = new Set();
     scheduleBadge(tabId);
   }
 });
@@ -470,8 +484,9 @@ function scheduleBadge(tabId) {
 }
 
 async function flushBadge(tabId) {
-  const count = tabProxied[tabId] || 0;
-  const text = (extensionEnabled && count > 0) ? (count > 99 ? "99+" : String(count)) : "";
+  const set = tabProxied[tabId];
+  const count = (extensionEnabled && set) ? set.size : 0;
+  const text = count > 0 ? (count > 99 ? "99+" : String(count)) : "";
   try {
     if (!badgeColorsReady) {
       await chrome.action.setBadgeBackgroundColor({ color: "#6d6f78" });
@@ -705,6 +720,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       refreshActiveBadge().then(() => sendResponse({ ok: true }));
       return;
     }
+    if (msg.action === "checkProxyControl") {
+      try {
+        chrome.proxy.settings.get({ incognito: false }, (details) => {
+          const level = (details && details.levelOfControl) || "";
+          sendResponse({ levelOfControl: level, isBlocked: level === "controlled_by_other_extensions" });
+        });
+      } catch (e) {
+        sendResponse({ levelOfControl: "", isBlocked: false });
+      }
+      return;
+    }
     sendResponse({});
   }).catch(e => {
     sendResponse({ success: false, error: String((e && e.message) || e) });
@@ -746,6 +772,7 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
 
   if (needRebuild) {
     rebuildMaps();
+    recountTabProxied();
     await applyProxySettings();
   }
 });
@@ -777,6 +804,7 @@ async function initBackground() {
   if (Object.keys(persist).length) await chrome.storage.local.set(persist);
 
   rebuildMaps();
+  recountTabProxied();
   await applyProxySettings();
   initialized = true;
   await updateDueLists();

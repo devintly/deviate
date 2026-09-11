@@ -9,12 +9,18 @@
     * { box-sizing: border-box; }
     html, body { margin: 0; width: 440px; height: 450px; overflow: hidden; background: #1e1f22; color: #f2f3f5; font-family: Inter, Arial, sans-serif; }
     .wrap { height: 100%; padding: 14px; display: flex; flex-direction: column; min-height: 0; overflow-x: hidden; overflow-y: auto; }
-    .power-btn { width: 36px; min-width: 36px; min-height: 0; padding: 6px; flex: none; align-self: stretch; background: #2b2d31; color: #949ba4; border-radius: 10px; }
-    .power-btn:hover { background: #35373c; }
+    .power-btn, .info-btn { width: 36px; min-width: 36px; min-height: 0; padding: 6px; flex: none; align-self: stretch; background: #2b2d31; color: #949ba4; border-radius: 10px; border: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.15s; }
+    .power-btn:hover, .info-btn:hover { background: #35373c; color: #f2f3f5; }
     .power-btn.on { color: #57f287; background: rgba(87, 242, 135, 0.16); }
     .power-btn.on:hover { background: rgba(87, 242, 135, 0.26); }
     .power-btn.off { color: #949ba4; }
-    .power-btn svg { width: 18px; height: 18px; display: block; }
+    .power-btn svg, .info-btn svg { width: 18px; height: 18px; display: block; }
+    .conflict-banner { display: flex; align-items: center; gap: 10px; background: rgba(218, 55, 60, 0.16); border: 1px solid rgba(218, 55, 60, 0.35); border-radius: 10px; padding: 8px 12px; margin-bottom: 12px; flex-shrink: 0; }
+    .conflict-icon { color: #ff6b6b; flex-shrink: 0; display: flex; align-items: center; }
+    .conflict-icon svg { width: 20px; height: 20px; display: block; }
+    .conflict-text { flex: 1; min-width: 0; }
+    .conflict-title { font-size: 12px; font-weight: 700; color: #ff6b6b; line-height: 1.2; }
+    .conflict-desc { font-size: 11px; color: #b5bac1; margin-top: 2px; line-height: 1.3; }
     .tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-shrink: 0; align-items: stretch; }
     .tab { flex: 1; border: 0; border-radius: 10px; background: #2b2d31; color: #b5bac1; padding: 8px 0; font-size: 12px; font-weight: 600; cursor: pointer; text-align: center; transition: 0.15s; display: flex; align-items: center; justify-content: center; }
     .tab.active { background: #017df1; color: #ffffff; }
@@ -62,10 +68,30 @@
     .secondary:hover { background: #4e5058; }
     .secondary + .secondary { margin-top: 8px; }
 
-    .hint { text-align: center; font-size: 12px; color: #57f287; margin-top: 8px; flex-shrink: 0; min-height: 16px; line-height: 1.3; }
+    .hint { text-align: center; font-size: 11px; color: #ff6b6b; margin-top: 6px; flex-shrink: 0; line-height: 1.3; }
     .hint:empty { display: none; margin: 0; }
-    .footer { text-align: center; font-size: 11px; color: #949ba4; margin-top: 12px; flex-shrink: 0; }
-    .footer a { color: #00a8fc; text-decoration: none; }
+    .info-overlay { display: none; position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,0.65); padding: 16px; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
+    .info-overlay.open { display: flex; }
+    .info-modal { background: #2b2d31; border-radius: 14px; padding: 16px; width: 100%; max-width: 360px; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+    .info-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .info-modal-title { font-size: 15px; font-weight: 700; color: #f2f3f5; display: flex; align-items: center; gap: 8px; }
+    .info-version { font-size: 11px; font-weight: 600; color: #017df1; background: rgba(1, 125, 241, 0.15); padding: 2px 6px; border-radius: 6px; }
+    .info-close-btn { width: 28px; height: 28px; min-width: 28px; min-height: 28px; padding: 0; background: transparent; color: #949ba4; border: 0; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .info-close-btn:hover { background: #35373c; color: #f2f3f5; }
+    .info-close-btn svg { width: 16px; height: 16px; display: block; }
+    .info-desc { font-size: 12px; color: #b5bac1; line-height: 1.5; margin: 0 0 14px; }
+    .info-links { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+    .info-link { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #1e1f22; border-radius: 10px; color: #00a8fc; text-decoration: none; font-size: 12px; font-weight: 600; transition: background 0.15s, color 0.15s; }
+    .info-link:hover { background: #35373c; color: #fff; }
+    .info-link svg { width: 16px; height: 16px; flex-shrink: 0; }
+    #confirmInfoBtn { width: 100%; min-height: 34px; }
+    .toast-container { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 100; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; width: max-content; max-width: 90%; }
+    .toast { pointer-events: auto; padding: 8px 16px; border-radius: 10px; font-size: 12px; font-weight: 600; line-height: 1.4; text-align: center; box-shadow: 0 6px 20px rgba(0,0,0,0.5); animation: toast-in 0.2s ease-out forwards; transition: opacity 0.25s ease, transform 0.25s ease; word-break: break-word; }
+    .toast.toast-success { background: #1b3024; color: #57f287; border: 1px solid rgba(87, 242, 135, 0.4); }
+    .toast.toast-error { background: #351c20; color: #ff6b6b; border: 1px solid rgba(255, 107, 107, 0.4); }
+    .toast.toast-info { background: #17263c; color: #00a8fc; border: 1px solid rgba(0, 168, 252, 0.4); }
+    .toast.toast-out { opacity: 0; transform: translateY(8px); }
+    @keyframes toast-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
     .lists-empty { font-size: 12px; color: #b5bac1; text-align: center; padding: 12px 4px; }
     .lists-wrap { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; margin: 0 0 8px; }
     .lists-add { width: 100%; flex: none; margin-top: 8px; }
@@ -200,15 +226,16 @@
       overflow: auto;
     }
     html.android .tab { min-height: 40px; padding: 10px 0; font-size: 13px; }
-    html.android button { min-height: 44px; }
     html.android .icon-btn,
-    html.android .power-btn {
+    html.android .power-btn,
+    html.android .info-btn {
       width: 44px;
       min-width: 44px;
       min-height: 44px;
     }
     html.android .icon-btn svg,
-    html.android .power-btn svg { width: 20px; height: 20px; }
+    html.android .power-btn svg,
+    html.android .info-btn svg { width: 20px; height: 20px; }
     html.android .list-card-actions button,
     html.android .list-card-side button {
       width: 40px;
@@ -238,7 +265,6 @@
     html.android .row.has-rule #toggleRuleBtn { grid-area: del; width: 100%; min-width: 0; max-width: none; }
     html.android .row.has-rule #domainModeSwitch { grid-area: mode; min-height: 44px; font-size: 11px; }
     html.android .row.has-rule #viewDomainsBtn { grid-area: menu; }
-    html.android .footer { line-height: 1.45; overflow-wrap: anywhere; }
     html.android .form-col-type { flex-basis: 124px; width: 124px; }
     html.android .form-col-interval { flex-basis: 128px; width: 128px; }
     @media (min-width: 520px) {
@@ -264,6 +290,19 @@
       <div id="tabRules" class="tab active" data-i18n="tabs_rules">Правила</div>
       <div id="tabProxy" class="tab" data-i18n="tabs_proxy">Прокси</div>
       <div id="tabLists" class="tab" data-i18n="tabs_lists">Списки</div>
+      <button id="infoBtn" class="info-btn" type="button" data-i18n-title="info_title" title="О расширении" aria-label="О расширении">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      </button>
+    </div>
+
+    <div id="conflictBanner" class="conflict-banner" style="display: none;">
+      <div class="conflict-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <div class="conflict-text">
+        <div class="conflict-title" data-i18n="conflict_warning_title">Конфликт расширений</div>
+        <div class="conflict-desc" data-i18n="conflict_warning_desc">Другое расширение контролирует настройки прокси. Отключите конфликтующие VPN или прокси-расширения.</div>
+      </div>
     </div>
 
     <div id="panelRules" class="panel active">
@@ -386,8 +425,28 @@
         </div>
       </div>
     </div>
-
-    <div class="footer"><span data-i18n="footer_source">Исходный код: </span><a href="https://github.com/devintly/deviateproxy" target="_blank">GitHub</a><span data-i18n="footer_inspired"> · Вдохновлено MeguProxy: </span><a href="https://github.com/ventordimi/meguproxy" target="_blank">GitHub</a></div>
+  </div>
+  <div id="infoModal" class="info-overlay">
+    <div class="info-modal">
+      <div class="info-header">
+        <div class="info-modal-title">DeviateProxy <span id="infoVersion" class="info-version">v2.0</span></div>
+        <button id="closeInfoBtn" class="info-close-btn" type="button" aria-label="Закрыть">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="info-desc" data-i18n="info_desc">Выборочное проксирование сайтов по правилам через SOCKS5, HTTP и HTTPS с поддержкой удаленных списков и масок.</div>
+      <div class="info-links">
+        <a class="info-link" href="https://github.com/devintly/deviateproxy" target="_blank" rel="noopener noreferrer">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+          <span data-i18n="info_source_link">Исходный код (GitHub)</span>
+        </a>
+        <a class="info-link" href="https://github.com/ventordimi/meguproxy" target="_blank" rel="noopener noreferrer">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          <span data-i18n="info_inspired_link">Вдохновлено MeguProxy</span>
+        </a>
+      </div>
+      <button id="confirmInfoBtn" class="primary" type="button" data-i18n="btn_close">Закрыть</button>
+    </div>
   </div>
   <div id="domainsPanel" class="domains-overlay">
     <div class="domains-modal">
@@ -401,6 +460,7 @@
       </div>
     </div>
   </div>
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
   <script src="popup.js"></script>
 </body>
 </html>
