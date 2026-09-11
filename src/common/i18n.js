@@ -103,7 +103,7 @@
       conflict_warning_desc: "Другое расширение контролирует настройки прокси. Отключите конфликтующие VPN или прокси-расширения.",
       info_title: "О расширении",
       info_version: "Версия {version}",
-      info_desc: "Выборочное проксирование сайтов по правилам через SOCKS5, HTTP и HTTPS с поддержкой удаленных списков и масок.",
+      info_desc: "Проксирование сайтов через SOCKS/HTTP/HTTPS по пользовательским правилам с поддержкой импорта TXT/PAC списков.",
       info_source_link: "Исходный код (GitHub)",
       info_inspired_link: "Вдохновлено MeguProxy",
       btn_close: "Закрыть"
@@ -209,7 +209,7 @@
       conflict_warning_desc: "Another extension is controlling proxy settings. Please disable conflicting VPN or proxy extensions.",
       info_title: "About DeviateProxy",
       info_version: "Version {version}",
-      info_desc: "Selective rule-based website proxying via SOCKS5, HTTP, and HTTPS with remote lists and wildcard domain support.",
+      info_desc: "Website proxying via SOCKS/HTTP/HTTPS using custom rules with support for importing TXT/PAC lists.",
       info_source_link: "Source Code (GitHub)",
       info_inspired_link: "Inspired by MeguProxy",
       btn_close: "Close"

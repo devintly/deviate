@@ -1,8 +1,8 @@
-﻿{
+{
   "extensionName": {
     "message": "DeviateProxy"
   },
   "extensionDescription": {
-    "message": "Rule-based site proxying via SOCKS and HTTP."
+    "message": "Website proxying via SOCKS/HTTP/HTTPS using custom rules with support for importing TXT/PAC lists."
   }
 }

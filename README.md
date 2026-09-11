@@ -1,6 +1,6 @@
 # DeviateProxy
 
-Расширение для выборочного проксирования сайтов по правилам через SOCKS5, HTTP и HTTPS.
+Проксирование сайтов через SOCKS/HTTP/HTTPS по пользовательским правилам с поддержкой импорта TXT/PAC списков.
 
 Поддерживает **Firefox** (ПК и Android) и браузеры на базе **Chromium** (Google Chrome, Microsoft Edge, Opera и т.д.).
 

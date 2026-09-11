@@ -1,8 +1,8 @@
-﻿{
+{
   "extensionName": {
     "message": "DeviateProxy"
   },
   "extensionDescription": {
-    "message": "Проксирование сайтов по правилам средствами SOCKS/HTTP."
+    "message": "Проксирование сайтов через SOCKS/HTTP/HTTPS по пользовательским правилам с поддержкой импорта TXT/PAC списков."
   }
 }
