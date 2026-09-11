@@ -1,0 +1,8 @@
+﻿{
+  "extensionName": {
+    "message": "DeviateProxy"
+  },
+  "extensionDescription": {
+    "message": "Rule-based site proxying via SOCKS and HTTP."
+  }
+}

@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
+  "default_locale": "ru",
   "name": "DeviateProxy",
   "version": "1.0",
-  "description": "Проксирование сайтов по правилам средствами SOCKS/HTTP.",
+  "description": "__MSG_extensionDescription__",
   "browser_specific_settings": {
     "gecko": {
       "id": "deviateproxy@devintly",

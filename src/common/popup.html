@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <script src="platform.js"></script>
+  <script src="i18n.js"></script>
   <style>
     * { box-sizing: border-box; }
     html, body { margin: 0; width: 440px; height: 450px; overflow: hidden; background: #1e1f22; color: #f2f3f5; font-family: Inter, Arial, sans-serif; }
@@ -14,6 +15,8 @@
     .power-btn.on:hover { background: rgba(87, 242, 135, 0.26); }
     .power-btn.off { color: #949ba4; }
     .power-btn svg { width: 18px; height: 18px; display: block; }
+    .lang-btn { width: 36px; min-width: 36px; min-height: 0; padding: 6px 0; flex: none; align-self: stretch; background: #2b2d31; color: #b5bac1; border-radius: 10px; font-size: 11px; font-weight: 700; cursor: pointer; border: 0; transition: 0.15s; display: flex; align-items: center; justify-content: center; user-select: none; }
+    .lang-btn:hover { background: #35373c; color: #ffffff; }
     .tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-shrink: 0; align-items: stretch; }
     .tab { flex: 1; border: 0; border-radius: 10px; background: #2b2d31; color: #b5bac1; padding: 8px 0; font-size: 12px; font-weight: 600; cursor: pointer; text-align: center; transition: 0.15s; display: flex; align-items: center; justify-content: center; }
     .tab.active { background: #017df1; color: #ffffff; }
@@ -260,54 +263,55 @@
       <button id="powerBtn" class="power-btn off" type="button" title="Включить расширение" aria-label="Включить расширение" aria-pressed="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v8"/><path d="M7.4 6.4a7 7 0 1 0 9.2 0"/></svg>
       </button>
-      <div id="tabRules" class="tab active">Правила</div>
-      <div id="tabProxy" class="tab">Прокси</div>
-      <div id="tabLists" class="tab">Списки</div>
+      <div id="tabRules" class="tab active" data-i18n="tabs_rules">Правила</div>
+      <div id="tabProxy" class="tab" data-i18n="tabs_proxy">Прокси</div>
+      <div id="tabLists" class="tab" data-i18n="tabs_lists">Списки</div>
+      <button id="langBtn" class="lang-btn" type="button" title="RU / EN">RU</button>
     </div>
 
     <div id="panelRules" class="panel active">
       <div class="card">
         <div id="domainScope" class="scope-row">
-          <button id="scopeHostBtn" class="scope-btn active" type="button">Текущий</button>
-          <button id="scopeApexBtn" class="scope-btn" type="button">Основной</button>
+          <button id="scopeHostBtn" class="scope-btn active" type="button" data-i18n="lbl_scope_host">Текущий</button>
+          <button id="scopeApexBtn" class="scope-btn" type="button" data-i18n="lbl_scope_apex">Основной</button>
         </div>
         <div class="inputWrap">
-          <input id="domainInput" type="text" placeholder="example.com или *.example.com">
+          <input id="domainInput" type="text" data-i18n-placeholder="domain_placeholder" placeholder="example.com или *.example.com">
           <div id="statusIcon" class="statusIcon" title="Нет правил"></div>
         </div>
         <div class="row" id="domainActionRow">
-          <button id="toggleRuleBtn" class="primary" type="button">Создать правило</button>
+          <button id="toggleRuleBtn" class="primary" type="button" data-i18n="btn_to_rules">Создать правило</button>
           <label id="domainModeSwitch" class="domain-mode">
-            <span class="domain-mode-off">Проксировать</span>
+            <span class="domain-mode-off" data-i18n="rule_proxy">Проксировать</span>
             <span class="switch mode-switch"><input id="domainDirect" type="checkbox"><span class="switch-ui"></span></span>
-            <span class="domain-mode-on">Напрямую</span>
+            <span class="domain-mode-on" data-i18n="rule_direct">Напрямую</span>
           </label>
-          <button id="viewDomainsBtn" class="icon-btn" type="button" title="Домены текущей вкладки" aria-label="Домены текущей вкладки">
+          <button id="viewDomainsBtn" class="icon-btn" type="button" data-i18n-title="btn_tab_domains" title="Домены текущей вкладки" aria-label="Домены текущей вкладки">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
           </button>
         </div>
         <div id="rulesStatus" class="hint"></div>
-        <button id="openListBtn" class="secondary" type="button">Редактор правил</button>
+        <button id="openListBtn" class="secondary" type="button" data-i18n="btn_rule_editor">Редактор правил</button>
       </div>
     </div>
 
     <div id="panelProxy" class="panel">
       <div class="card">
         <div id="proxyMain">
-          <input id="proxySearch" class="search-box" type="text" placeholder="Поиск по названию, IP или домену" autocomplete="off" spellcheck="false">
-          <div id="proxyEmpty" class="lists-empty">Прокси пока нет</div>
+          <input id="proxySearch" class="search-box" type="text" data-i18n-placeholder="search_proxies" placeholder="Поиск по названию, IP или домену" autocomplete="off" spellcheck="false">
+          <div id="proxyEmpty" class="lists-empty" data-i18n="empty_proxies">Прокси пока нет</div>
           <div id="proxyContainer" class="lists-wrap"></div>
-          <button id="showAddProxyBtn" class="primary lists-add" type="button">Добавить прокси</button>
+          <button id="showAddProxyBtn" class="primary lists-add" type="button" data-i18n="btn_add_proxy">Добавить прокси</button>
           <div id="proxyStatus" class="hint"></div>
         </div>
         <div id="proxyForm" style="display:none;">
           <div class="row form-pair">
             <div class="form-col">
-              <div class="label">Название</div>
-              <input id="proxyName" type="text" placeholder="Если пусто — будет адрес">
+              <div class="label" data-i18n="lbl_name">Название</div>
+              <input id="proxyName" type="text" data-i18n-placeholder="placeholder_proxy_name" placeholder="Если пусто — будет адрес">
             </div>
             <div class="form-col-type">
-              <div class="label">Тип прокси</div>
+              <div class="label" data-i18n="lbl_protocol">Тип прокси</div>
               <select id="proxyType">
                 <option value="socks">SOCKS5</option>
                 <option value="http">HTTP</option>
@@ -317,29 +321,29 @@
           </div>
           <div class="row form-pair">
             <div class="form-col">
-              <div class="label">IP адрес / Хост<span class="req" aria-hidden="true">*</span></div>
+              <div class="label"><span data-i18n="lbl_host">IP адрес / Хост</span><span class="req" aria-hidden="true">*</span></div>
               <input id="proxyHost" type="text" placeholder="127.0.0.1">
             </div>
             <div class="form-col-port">
-              <div class="label">Порт<span class="req" aria-hidden="true">*</span></div>
+              <div class="label"><span data-i18n="lbl_port">Порт</span><span class="req" aria-hidden="true">*</span></div>
               <input id="proxyPort" type="number" min="1" max="65535" placeholder="1080">
             </div>
           </div>
           <div class="row">
             <div class="form-col">
-              <div class="label">Логин</div>
+              <div class="label" data-i18n="lbl_username">Логин</div>
               <input id="proxyUser" type="text" placeholder="user">
             </div>
             <div class="form-col">
-              <div class="label">Пароль</div>
+              <div class="label" data-i18n="lbl_password">Пароль</div>
               <input id="proxyPass" type="password" placeholder="password">
             </div>
           </div>
           <div class="form-actions">
-            <button id="saveProxyBtn" class="primary" type="button">Сохранить</button>
-            <button id="deleteProxyBtn" class="danger" type="button" style="display:none;">Удалить</button>
+            <button id="saveProxyBtn" class="primary" type="button" data-i18n="btn_save">Сохранить</button>
+            <button id="deleteProxyBtn" class="danger" type="button" style="display:none;" data-i18n="btn_delete">Удалить</button>
           </div>
-          <button id="cancelProxyBtn" class="secondary lists-add" type="button">Отмена</button>
+          <button id="cancelProxyBtn" class="secondary lists-add" type="button" data-i18n="btn_cancel">Отмена</button>
           <div id="proxyFormStatus" class="hint"></div>
         </div>
       </div>
@@ -348,55 +352,55 @@
     <div id="panelLists" class="panel">
       <div class="card">
         <div id="listsMain">
-          <input id="listsSearch" class="search-box" type="text" placeholder="Поиск по названию или ссылке" autocomplete="off" spellcheck="false">
-          <div id="listsEmpty" class="lists-empty">Списков пока нет</div>
+          <input id="listsSearch" class="search-box" type="text" data-i18n-placeholder="search_lists" placeholder="Поиск по названию или ссылке" autocomplete="off" spellcheck="false">
+          <div id="listsEmpty" class="lists-empty" data-i18n="empty_lists">Списков пока нет</div>
           <div id="listsContainer" class="lists-wrap"></div>
           <div class="row lists-add">
-            <button id="showAddListBtn" class="primary" type="button">Добавить список</button>
-            <button id="refreshListsBtn" class="icon-btn" type="button" title="Обновить все" aria-label="Обновить все">
+            <button id="showAddListBtn" class="primary" type="button" data-i18n="btn_add_list">Добавить список</button>
+            <button id="refreshListsBtn" class="icon-btn" type="button" data-i18n-title="btn_update_all" title="Обновить все" aria-label="Обновить все">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><polyline points="21 3 21 9 15 9"/></svg>
             </button>
           </div>
           <div id="listStatus" class="hint"></div>
         </div>
         <div id="listsForm" style="display:none;">
-          <div class="label">Название</div>
-          <input id="listName" type="text" placeholder="Если пусто — будет ссылка">
-          <div class="label">URL списка (TXT / PAC)<span class="req" aria-hidden="true">*</span></div>
-          <input id="listUrl" type="text" placeholder="https://.../filter.txt или https://.../proxy.pac">
+          <div class="label" data-i18n="lbl_name">Название</div>
+          <input id="listName" type="text" data-i18n-placeholder="placeholder_list_name" placeholder="Если пусто — будет ссылка">
+          <div class="label"><span data-i18n="lbl_url">URL списка (TXT / PAC)</span><span class="req" aria-hidden="true">*</span></div>
+          <input id="listUrl" type="text" data-i18n-placeholder="placeholder_list_url" placeholder="https://.../filter.txt или https://.../proxy.pac">
           <div class="row form-pair">
             <div class="form-col-interval">
-              <div class="label">Обновление (часы)</div>
+              <div class="label" data-i18n="lbl_interval">Обновление (часы)</div>
               <input id="listInterval" type="number" min="1" max="168" value="12" placeholder="12">
             </div>
             <label class="form-col form-col-switch">
-              <span class="label">Скачивать через прокси</span>
+              <span class="label" data-i18n="lbl_via_proxy">Скачивать через прокси</span>
               <span class="switch-field">
                 <span class="switch"><input id="listViaProxy" type="checkbox"><span class="switch-ui"></span></span>
               </span>
             </label>
           </div>
           <div class="form-actions">
-            <button id="saveListBtn" class="primary" type="button">Сохранить</button>
-            <button id="deleteListBtn" class="danger" type="button" style="display:none;">Удалить</button>
+            <button id="saveListBtn" class="primary" type="button" data-i18n="btn_save">Сохранить</button>
+            <button id="deleteListBtn" class="danger" type="button" style="display:none;" data-i18n="btn_delete">Удалить</button>
           </div>
-          <button id="cancelListBtn" class="secondary lists-add" type="button">Отмена</button>
+          <button id="cancelListBtn" class="secondary lists-add" type="button" data-i18n="btn_cancel">Отмена</button>
           <div id="listFormStatus" class="hint"></div>
         </div>
       </div>
     </div>
 
-    <div class="footer">Исходный код: <a href="https://github.com/devintly/deviateproxy" target="_blank">GitHub</a> · Вдохновлено MeguProxy: <a href="https://github.com/ventordimi/meguproxy" target="_blank">GitHub</a></div>
+    <div class="footer"><span data-i18n="footer_source">Исходный код: </span><a href="https://github.com/devintly/deviateproxy" target="_blank">GitHub</a><span data-i18n="footer_inspired"> · Вдохновлено MeguProxy: </span><a href="https://github.com/ventordimi/meguproxy" target="_blank">GitHub</a></div>
   </div>
   <div id="domainsPanel" class="domains-overlay">
     <div class="domains-modal">
-      <div class="label">Домены вкладки</div>
-      <input id="domainsSearch" class="search-box" type="text" placeholder="Поиск домена" autocomplete="off" spellcheck="false">
-      <div id="domainsEmpty" class="domains-empty">Нет доменов. Откройте сайт и обновите страницу.</div>
+      <div class="label" data-i18n="btn_tab_domains">Домены вкладки</div>
+      <input id="domainsSearch" class="search-box" type="text" data-i18n-placeholder="search_domains" placeholder="Поиск домена" autocomplete="off" spellcheck="false">
+      <div id="domainsEmpty" class="domains-empty" data-i18n="empty_domains">Нет доменов. Откройте сайт и обновите страницу.</div>
       <div id="domainsList" class="domains-list"></div>
       <div class="form-actions domains-actions">
-        <button id="saveDomainsBtn" class="primary" type="button">Сохранить</button>
-        <button id="cancelDomainsBtn" class="secondary" type="button">Отмена</button>
+        <button id="saveDomainsBtn" class="primary" type="button" data-i18n="btn_save">Сохранить</button>
+        <button id="cancelDomainsBtn" class="secondary" type="button" data-i18n="btn_cancel">Отмена</button>
       </div>
     </div>
   </div>

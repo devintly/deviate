@@ -27,22 +27,23 @@
 </head>
 <body>
   <div class="top">
-    <div class="title">Редактор правил</div>
+    <div class="title" data-i18n="list_editor_title">Редактор правил</div>
     <div class="right">
       <div id="status" class="status" aria-live="polite"></div>
-      <button id="saveBtn" type="button">Сохранить</button>
+      <button id="saveBtn" type="button" data-i18n="list_editor_save">Сохранить</button>
     </div>
   </div>
   <div class="panes">
     <div class="pane">
-      <div class="label">Проксировать</div>
+      <div class="label" data-i18n="list_editor_proxy">Проксировать</div>
       <textarea id="proxyEditor" placeholder="example.com&#10;*.example.com&#10;1.2.3.4"></textarea>
     </div>
     <div class="pane">
-      <div class="label">Напрямую</div>
+      <div class="label" data-i18n="list_editor_direct">Напрямую</div>
       <textarea id="directEditor" placeholder="example.com&#10;*.example.com&#10;1.2.3.4"></textarea>
     </div>
   </div>
+  <script src="i18n.js"></script>
   <script src="list.js"></script>
 </body>
 </html>

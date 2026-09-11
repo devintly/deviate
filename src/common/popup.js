@@ -1,6 +1,7 @@
 const browser = globalThis.browser || globalThis.chrome;
 
 document.addEventListener("DOMContentLoaded", async () => {
+  if (typeof I18n !== "undefined") await I18n.init(browser);
   try {
     const plat = await browser.runtime.getPlatformInfo();
     if (plat && plat.os === "android") document.documentElement.classList.add("android");
@@ -73,7 +74,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     deleteList: document.getElementById("deleteListBtn"), cancelList: document.getElementById("cancelListBtn"),
     refreshLists: document.getElementById("refreshListsBtn"), lCont: document.getElementById("listsContainer"),
     lStatus: document.getElementById("listStatus"), lFormStatus: document.getElementById("listFormStatus"),
-    powerBtn: document.getElementById("powerBtn")
+    powerBtn: document.getElementById("powerBtn"),
+    langBtn: document.getElementById("langBtn")
   };
 
   let currentRules = [];
@@ -298,13 +300,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
   const STATUS = {
-    none: { title: "Нет правил", tone: "none", icons: ["x"] },
-    proxyFull: { title: "Проксируется", tone: "proxy", icons: ["check"] },
-    directFull: { title: "Идёт напрямую", tone: "direct", icons: ["check"] },
-    proxyApex: { title: "Проксируется правилом", tone: "proxy", icons: ["dot"] },
-    directApex: { title: "Идёт напрямую правилом", tone: "direct", icons: ["dot"] },
-    listFull: { title: "Проксируется списком", tone: "proxy", icons: ["check", "list"] },
-    listApex: { title: "Проксируется списком по правилу", tone: "proxy", icons: ["dot", "list"] }
+    none: { get title() { return I18n.t("status_none"); }, tone: "none", icons: ["x"] },
+    proxyFull: { get title() { return I18n.t("status_proxy_full"); }, tone: "proxy", icons: ["check"] },
+    directFull: { get title() { return I18n.t("status_direct_full"); }, tone: "direct", icons: ["check"] },
+    proxyApex: { get title() { return I18n.t("status_proxy_apex"); }, tone: "proxy", icons: ["dot"] },
+    directApex: { get title() { return I18n.t("status_direct_apex"); }, tone: "direct", icons: ["dot"] },
+    listFull: { get title() { return I18n.t("status_list_full"); }, tone: "proxy", icons: ["check", "list"] },
+    listApex: { get title() { return I18n.t("status_list_apex"); }, tone: "proxy", icons: ["dot", "list"] }
   };
   function coverOf(host, covers) {
     if (!host || !covers) return null;
@@ -365,27 +367,27 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (st === STATUS.directFull) return { text: "", kind: "direct" };
     if (st === STATUS.proxyApex) {
       const p = coveringParent(host, proxy, direct);
-      return { text: p.rule ? `Проксируется правилом ${p.rule}` : "Проксируется правилом", kind: "proxy" };
+      return { text: p.rule ? I18n.t("status_proxied_by_rule", { rule: p.rule }) : I18n.t("status_proxy_apex"), kind: "proxy" };
     }
     if (st === STATUS.directApex) {
       const p = coveringParent(host, proxy, direct);
-      return { text: p.rule ? `Идёт напрямую правилом ${p.rule}` : "Идёт напрямую правилом", kind: "direct" };
+      return { text: p.rule ? I18n.t("status_direct_by_rule", { rule: p.rule }) : I18n.t("status_direct_apex"), kind: "direct" };
     }
     if (st === STATUS.listFull) {
       const info = coverInfoOf(host, covers);
       const name = info && info.listName;
-      return { text: name ? `Проксируется списком ${name}` : "Проксируется списком", kind: "proxy" };
+      return { text: name ? I18n.t("status_proxied_by_list", { name }) : I18n.t("status_list_full"), kind: "proxy" };
     }
     if (st === STATUS.listApex) {
       const info = coverInfoOf(host, covers);
       const rule = info && info.listedParentRule;
       const name = info && info.listName;
-      if (name && rule) return { text: `Проксируется списком ${name} по правилу ${rule}`, kind: "proxy" };
-      if (name) return { text: `Проксируется списком ${name}`, kind: "proxy" };
-      if (rule) return { text: `Проксируется правилом ${rule}`, kind: "proxy" };
-      return { text: "Проксируется списком", kind: "proxy" };
+      if (name && rule) return { text: I18n.t("status_proxied_by_list_rule", { name, rule }), kind: "proxy" };
+      if (name) return { text: I18n.t("status_proxied_by_list", { name }), kind: "proxy" };
+      if (rule) return { text: I18n.t("status_proxied_by_rule", { rule }), kind: "proxy" };
+      return { text: I18n.t("status_list_full"), kind: "proxy" };
     }
-    if (st === STATUS.none) return { text: "Нет правил", kind: "none" };
+    if (st === STATUS.none) return { text: I18n.t("status_none"), kind: "none" };
     return { text: "", kind: "" };
   }
   function paintStatusIcon() {
@@ -425,16 +427,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     const existing = existingUserRule(rule);
     const inList = !!existing;
     const direct = inList && isDirectRule(existing);
-    els.toggleRule.textContent = inList ? "Удалить" : "Создать правило";
+    els.toggleRule.textContent = inList ? I18n.t("btn_remove_rule") : I18n.t("btn_to_rules");
     els.toggleRule.className = inList ? "danger" : "primary";
     els.toggleRule.disabled = !rule;
     els.domainActionRow.classList.toggle("has-rule", inList);
     els.domainMode.classList.toggle("show", inList);
     els.domainMode.classList.toggle("on", direct);
     els.domainDirect.checked = direct;
-    const hintSpace = "Уберите пробелы";
-    const hintLatin = "Только латиница";
-    const hintDot = "Нужна точка в домене";
+    const hintSpace = I18n.t("hint_no_spaces");
+    const hintLatin = I18n.t("hint_latin_only");
+    const hintDot = I18n.t("hint_dot_required");
     const cur = els.rulesStatus.textContent;
     if (trimmed && !rule) {
       els.rulesStatus.style.color = "#ff6b6b";
@@ -466,7 +468,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         emptyEl.textContent = emptyDefault;
         emptyEl.style.display = "block";
       } else if (!shown) {
-        emptyEl.textContent = "Ничего не найдено";
+        emptyEl.textContent = I18n.t("empty_generic");
         emptyEl.style.display = "block";
       } else {
         emptyEl.style.display = "none";
@@ -475,13 +477,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     return shown;
   }
   function filterDomainsList() {
-    applySearchFilter(els.domainsList, ".domain-item", els.domainsSearch && els.domainsSearch.value, els.domainsEmpty, "Нет доменов. Откройте сайт и обновите страницу.");
+    applySearchFilter(els.domainsList, ".domain-item", els.domainsSearch && els.domainsSearch.value, els.domainsEmpty, I18n.t("empty_domains"));
   }
   function filterProxies() {
-    applySearchFilter(els.pCont, ".list-card", els.proxySearch && els.proxySearch.value, els.proxyEmpty, "Прокси пока нет");
+    applySearchFilter(els.pCont, ".list-card", els.proxySearch && els.proxySearch.value, els.proxyEmpty, I18n.t("empty_proxies"));
   }
   function filterLists() {
-    applySearchFilter(els.lCont, ".list-card", els.listsSearch && els.listsSearch.value, els.listsEmpty, "Списков пока нет");
+    applySearchFilter(els.lCont, ".list-card", els.listsSearch && els.listsSearch.value, els.listsEmpty, I18n.t("empty_lists"));
   }
 
   async function checkAutoReload(rule) {
@@ -561,7 +563,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         <input type="checkbox" class="domain-pick" data-rule="${escapeHtml(rule)}" data-kind="${kind}" data-apex="${escapeHtml(apex)}" ${existing ? "checked" : ""}>
         <span class="mini-status"></span>
         <span class="${bold ? "domain-name" : "domain-apex"}" title="${escapeHtml(rule)}">${escapeHtml(rule)}</span>
-        <label class="mode-wrap" title="Проксировать / Напрямую">
+        <label class="mode-wrap" title="${escapeHtml(I18n.t("mode_proxy_direct"))}">
           <span class="switch mode-switch">
             <input type="checkbox" class="mode-direct" ${isDirect ? "checked" : ""}>
             <span class="switch-ui"></span>
@@ -698,7 +700,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   function formatListUpdated(ts) {
     const n = Number(ts);
-    if (!(n > 0)) return "ещё не обновлялся";
+    if (!(n > 0)) return I18n.t("updated_never");
     const d = new Date(n);
     const pad = v => String(v).padStart(2, "0");
     return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -772,7 +774,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const on = extensionEnabled && hasConfiguredProxy();
     els.powerBtn.classList.toggle("on", on);
     els.powerBtn.classList.toggle("off", !on);
-    const label = !hasConfiguredProxy() ? "Сначала добавьте прокси" : (on ? "Выключить расширение" : "Включить расширение");
+    const label = !hasConfiguredProxy() ? I18n.t("power_setup") : (on ? I18n.t("power_off") : I18n.t("power_on"));
     els.powerBtn.title = label;
     els.powerBtn.setAttribute("aria-label", label);
     els.powerBtn.setAttribute("aria-pressed", on ? "true" : "false");
@@ -803,11 +805,11 @@ document.addEventListener("DOMContentLoaded", async () => {
           <div class="list-card-meta">${escapeHtml(metaBits.join(" · "))}</div>
         </div>
         <div class="list-card-side">
-          <label class="switch" title="${p.enabled ? "Активный прокси" : "Сделать активным"}">
+          <label class="switch" title="${p.enabled ? escapeHtml(I18n.t("proxy_active")) : escapeHtml(I18n.t("proxy_inactive"))}">
             <input type="checkbox" ${p.enabled ? "checked" : ""}>
             <span class="switch-ui"></span>
           </label>
-          <button type="button" class="btn-edit" title="Редактировать" aria-label="Редактировать">${SVGS.edit}</button>
+          <button type="button" class="btn-edit" title="${escapeHtml(I18n.t("btn_edit"))}" aria-label="${escapeHtml(I18n.t("btn_edit"))}">${SVGS.edit}</button>
         </div>
       `;
 
@@ -818,7 +820,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           return;
         }
         await persistProxies(currentProxies.map(item => Object.assign({}, item, { enabled: item.id === p.id })));
-        flash(els.pStatus, "Активный прокси выбран");
+        flash(els.pStatus, I18n.t("msg_active_saved"));
       });
       card.querySelector(".btn-edit").addEventListener("click", () => openProxyForm(p));
       els.pCont.appendChild(card);
@@ -855,12 +857,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       els.pPort.value = item.port || "";
       els.pUser.value = item.username || "";
       els.pPass.value = item.password || "";
-      els.saveProxy.textContent = "Сохранить";
+      els.saveProxy.textContent = I18n.t("btn_save");
       els.deleteProxy.style.display = "";
     } else {
       editingProxyId = null;
       resetProxyForm();
-      els.saveProxy.textContent = "Сохранить";
+      els.saveProxy.textContent = I18n.t("btn_save");
       els.deleteProxy.style.display = "none";
     }
   }
@@ -887,8 +889,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       const fmt = l.format === "pac" ? "PAC" : "txt";
       const domains = l.domainCount || (l.domains || []).length || 0;
       const ips = l.ipCount || (l.ips || []).length || 0;
-      const metaText = `${fmt} · ${domains} ${pluralRu(domains, "домен", "домена", "доменов")} / ${ips} IP`;
-      const updatedText = `Обновлён: ${formatListUpdated(l.updatedAt)}`;
+      const domLabel = I18n.getLang() === "ru"
+        ? pluralRu(domains, "домен", "домена", "доменов")
+        : (domains === 1 ? "domain" : "domains");
+      const metaText = `${fmt} · ${domains} ${domLabel} / ${ips} IP`;
+      const updatedText = `${I18n.t("lbl_updated")}: ${formatListUpdated(l.updatedAt)}`;
 
       card.innerHTML = `
         <div class="list-card-body">
@@ -899,8 +904,8 @@ document.addEventListener("DOMContentLoaded", async () => {
           ${l.updateError ? `<div class="list-card-error" title="${escapeHtml(l.updateError)}">${escapeHtml(l.updateError)}</div>` : ""}
         </div>
         <div class="list-card-actions">
-          <button type="button" class="btn-refresh" title="Обновить" aria-label="Обновить">${SVGS.refresh}</button>
-          <button type="button" class="btn-edit" title="Редактировать" aria-label="Редактировать">${SVGS.edit}</button>
+          <button type="button" class="btn-refresh" title="${escapeHtml(I18n.t("btn_refresh"))}" aria-label="${escapeHtml(I18n.t("btn_refresh"))}">${SVGS.refresh}</button>
+          <button type="button" class="btn-edit" title="${escapeHtml(I18n.t("btn_edit"))}" aria-label="${escapeHtml(I18n.t("btn_edit"))}">${SVGS.edit}</button>
         </div>
       `;
 
@@ -941,12 +946,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       els.lUrl.value = item.url || "";
       els.lInterval.value = String(Number(item.intervalHours) > 0 ? Number(item.intervalHours) : 12);
       els.lViaProxy.checked = !!item.viaProxy;
-      els.saveList.textContent = "Сохранить";
+      els.saveList.textContent = I18n.t("btn_save");
       els.deleteList.style.display = "";
     } else {
       editingListId = null;
       resetListForm();
-      els.saveList.textContent = "Сохранить";
+      els.saveList.textContent = I18n.t("btn_save");
       els.deleteList.style.display = "none";
     }
   }
@@ -967,7 +972,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function sendListMessage(payload) {
     return Promise.race([
       browser.runtime.sendMessage(payload),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("Таймаут")), 60000))
+      new Promise((_, reject) => setTimeout(() => reject(new Error(I18n.t("msg_timeout"))), 60000))
     ]);
   }
 
@@ -975,8 +980,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (btn) { btn.disabled = true; btn.classList.add("busy"); }
     try {
       const res = await sendListMessage({ action: "refreshList", id });
-      if (res && res.success) flash(els.lStatus, "Обновлено");
-      else flash(els.lStatus, (res && res.error) ? String(res.error).slice(0, 180) : "Ошибка обновления", "#ff6b6b");
+      if (res && res.success) flash(els.lStatus, I18n.t("msg_updated"));
+      else flash(els.lStatus, (res && res.error) ? String(res.error).slice(0, 180) : I18n.t("msg_update_error"), "#ff6b6b");
     } catch (e) {
       flash(els.lStatus, String(e.message || e).slice(0, 180), "#ff6b6b");
     } finally {
@@ -991,6 +996,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     currentLists = Array.isArray(res.proxyLists) ? res.proxyLists : [];
     currentProxies = Array.isArray(res.proxyServers) ? res.proxyServers : [];
     extensionEnabled = !!res.extensionEnabled && hasConfiguredProxy();
+    updateLangBtn();
     renderProxies();
     refreshPowerBtn();
     renderLists();
@@ -1017,18 +1023,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   els.saveProxy.addEventListener("click", async () => {
     const form = collectProxyForm();
     if (!form.host || !(form.port > 0 && form.port < 65536)) {
-      return flash(els.pFormStatus, "Заполните хост и порт", "#ff6b6b");
+      return flash(els.pFormStatus, I18n.t("msg_fill_fields"), "#ff6b6b");
     }
     const dup = currentProxies.find(p => proxyKey(p) === proxyKey(form) && p.id !== editingProxyId);
-    if (dup) return flash(els.pFormStatus, "Прокси добавить нельзя, он уже существует", "#ff6b6b");
+    if (dup) return flash(els.pFormStatus, I18n.t("msg_proxy_exists"), "#ff6b6b");
     if (editingProxyId != null) {
       const next = currentProxies.map(p => p.id === editingProxyId ? Object.assign({}, p, form) : p);
       await persistProxies(next);
-      flash(els.pStatus, "Сохранено");
+      flash(els.pStatus, I18n.t("msg_proxy_saved"));
     } else {
       const item = Object.assign({ id: Date.now(), enabled: !currentProxies.length }, form);
       await persistProxies(currentProxies.concat(item));
-      flash(els.pStatus, "Прокси добавлен");
+      flash(els.pStatus, I18n.t("msg_proxy_added"));
     }
     showProxyMain();
   });
@@ -1036,7 +1042,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   els.deleteProxy.addEventListener("click", async () => {
     if (editingProxyId == null) return;
     await persistProxies(currentProxies.filter(p => p.id !== editingProxyId));
-    flash(els.pStatus, "Удалено");
+    flash(els.pStatus, I18n.t("msg_proxy_deleted"));
     showProxyMain();
   });
 
@@ -1045,7 +1051,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const trimmed = raw.trim();
     const rule = toGuiRule(raw);
     if (!rule) {
-      const msg = !trimmed ? "Пустое правило" : /\s/.test(trimmed) ? "Уберите пробелы" : hasNonLatin(trimmed) ? "Только латиница" : "Нужна точка в домене";
+      const msg = !trimmed ? I18n.t("hint_empty_rule") : /\s/.test(trimmed) ? I18n.t("hint_no_spaces") : hasNonLatin(trimmed) ? I18n.t("hint_latin_only") : I18n.t("hint_dot_required");
       return flash(els.rulesStatus, msg, "#ff6b6b");
     }
     const existing = existingUserRule(rule);
@@ -1054,12 +1060,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       removeUserRulesForHost(existing);
       await saveRules();
       refreshIcon();
-      flash(els.rulesStatus, "Удалено");
+      flash(els.rulesStatus, I18n.t("msg_deleted"));
     } else {
       setUserRule(rule, "proxy");
       await saveRules();
       refreshIcon();
-      flash(els.rulesStatus, "Добавлено");
+      flash(els.rulesStatus, I18n.t("msg_rule_added"));
     }
     syncOpenDomainLine(existing || rule);
     checkAutoReload(existing || rule);
@@ -1076,7 +1082,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     setUserRule(existing, els.domainDirect.checked ? "direct" : "proxy");
     await saveRules();
     refreshIcon();
-    flash(els.rulesStatus, els.domainDirect.checked ? "Напрямую" : "Проксировать");
+    flash(els.rulesStatus, els.domainDirect.checked ? I18n.t("rule_direct") : I18n.t("rule_proxy"));
     syncOpenDomainLine(existing);
     checkAutoReload(existing);
   });
@@ -1103,10 +1109,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (added || removed || changed) {
       await saveRules();
       const parts = [];
-      if (added) parts.push(`добавлено: ${added}`);
-      if (removed) parts.push(`удалено: ${removed}`);
-      if (changed && !added && !removed) parts.push("сохранено");
-      flash(els.rulesStatus, parts.join(", ") || "Сохранено");
+      if (added) parts.push(I18n.t("msg_added", { count: added }));
+      if (removed) parts.push(I18n.t("msg_removed", { count: removed }));
+      if (changed && !added && !removed) parts.push(I18n.t("msg_saved"));
+      flash(els.rulesStatus, parts.join(", ") || I18n.t("msg_saved"));
     }
     const shown = existingUserRule(els.domainInput.value);
     if (shown) els.domainInput.value = shown;
@@ -1124,12 +1130,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   els.saveList.addEventListener("click", async () => {
     const form = collectListForm();
-    if (!form.url.startsWith("http")) return flash(els.lFormStatus, "Введите корректный URL", "#ff6b6b");
+    if (!form.url.startsWith("http")) return flash(els.lFormStatus, I18n.t("msg_invalid_url"), "#ff6b6b");
     const dup = currentLists.find(l => canonListUrl(l.url) === canonListUrl(form.url) && l.id !== editingListId);
-    if (dup) return flash(els.lFormStatus, "Список добавить нельзя, он уже существует", "#ff6b6b");
+    if (dup) return flash(els.lFormStatus, I18n.t("msg_list_exists"), "#ff6b6b");
     els.saveList.disabled = true;
     els.saveList.classList.add("busy");
-    els.saveList.textContent = "Сохранение...";
+    els.saveList.textContent = I18n.t("btn_saving");
     try {
       const existing = editingListId != null ? currentLists.find(l => l.id === editingListId) : null;
       const urlChanged = existing && canonListUrl(existing.url) !== canonListUrl(form.url);
@@ -1139,15 +1145,15 @@ document.addEventListener("DOMContentLoaded", async () => {
         ? { action: "fetchList", id: editingListId, url: form.url, name: form.name, intervalHours: form.intervalHours, viaProxy: form.viaProxy }
         : { action: "saveListMeta", id: editingListId, url: form.url, name: form.name, intervalHours: form.intervalHours, viaProxy: form.viaProxy });
       if (res && res.success) {
-        flash(els.lStatus, existing ? "Сохранено" : "Список добавлен");
+        flash(els.lStatus, existing ? I18n.t("msg_saved") : I18n.t("msg_list_added"));
         showListsMain();
-      } else flash(els.lFormStatus, (res && res.error) ? String(res.error).slice(0, 180) : "Ошибка", "#ff6b6b");
+      } else flash(els.lFormStatus, (res && res.error) ? String(res.error).slice(0, 180) : I18n.t("msg_error"), "#ff6b6b");
     } catch (e) {
       flash(els.lFormStatus, String(e.message || e).slice(0, 180), "#ff6b6b");
     } finally {
       els.saveList.disabled = false;
       els.saveList.classList.remove("busy");
-      els.saveList.textContent = "Сохранить";
+      els.saveList.textContent = I18n.t("btn_save");
     }
   });
 
@@ -1155,22 +1161,22 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (editingListId == null) return;
     currentLists = currentLists.filter(x => x.id !== editingListId);
     await browser.storage.local.set({ proxyLists: currentLists });
-    flash(els.lStatus, "Удалено");
+    flash(els.lStatus, I18n.t("msg_deleted"));
     showListsMain();
   });
 
   els.refreshLists.addEventListener("click", async () => {
-    if (!currentLists.length) return flash(els.lStatus, "Списков нет", "#ff6b6b");
+    if (!currentLists.length) return flash(els.lStatus, I18n.t("msg_no_lists"), "#ff6b6b");
     els.refreshLists.disabled = true;
     els.refreshLists.classList.add("busy");
     try {
       const res = await sendListMessage({ action: "refreshLists" });
       if (res && res.success) {
         const failed = Number(res.failed) || 0;
-        if (failed) flash(els.lStatus, `Обновлено: ${res.updated || 0}, ошибок: ${failed}`, "#ff6b6b");
-        else flash(els.lStatus, `Обновлено: ${res.updated || 0}`);
+        if (failed) flash(els.lStatus, I18n.t("msg_updated_failed", { updated: res.updated || 0, failed }), "#ff6b6b");
+        else flash(els.lStatus, I18n.t("msg_updated_count", { count: res.updated || 0 }));
       }
-      else flash(els.lStatus, (res && res.error) ? String(res.error).slice(0, 180) : "Ошибка обновления", "#ff6b6b");
+      else flash(els.lStatus, (res && res.error) ? String(res.error).slice(0, 180) : I18n.t("msg_update_error"), "#ff6b6b");
     } catch (e) {
       flash(els.lStatus, String(e.message || e).slice(0, 180), "#ff6b6b");
     } finally {
@@ -1208,14 +1214,33 @@ document.addEventListener("DOMContentLoaded", async () => {
     refreshIcon();
     if (blockedLatin) {
       els.rulesStatus.style.color = "#ff6b6b";
-      els.rulesStatus.textContent = "Только латиница";
+      els.rulesStatus.textContent = I18n.t("hint_latin_only");
     }
   });
+
+  function updateLangBtn() {
+    if (!els.langBtn) return;
+    els.langBtn.textContent = I18n.getLang().toUpperCase();
+    els.langBtn.title = I18n.t("btn_switch_lang_title");
+  }
+
+  if (els.langBtn) {
+    els.langBtn.addEventListener("click", async () => {
+      const next = I18n.getLang() === "ru" ? "en" : "ru";
+      await I18n.setLang(next, browser);
+      updateLangBtn();
+      renderProxies();
+      renderLists();
+      refreshPowerBtn();
+      refreshToggleBtn();
+      refreshIcon();
+    });
+  }
 
   els.powerBtn.addEventListener("click", async () => {
     if (!hasConfiguredProxy()) {
       showProxyTab();
-      flash(els.pStatus, "Сначала добавьте прокси", "#ff6b6b");
+      flash(els.pStatus, I18n.t("msg_setup_proxy_first"), "#ff6b6b");
       return;
     }
     extensionEnabled = !extensionEnabled;

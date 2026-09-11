@@ -1,6 +1,7 @@
 const browser = globalThis.browser || globalThis.chrome;
 
 document.addEventListener("DOMContentLoaded", async () => {
+  if (typeof I18n !== "undefined") await I18n.init(browser);
   const proxyEditor = document.getElementById("proxyEditor");
   const directEditor = document.getElementById("directEditor");
   const saveBtn = document.getElementById("saveBtn");
@@ -47,7 +48,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     await browser.storage.local.set({ proxyRules: nextProxy, directRules: nextDirect });
     proxyEditor.value = nextProxy.join("\n");
     directEditor.value = nextDirect.join("\n");
-    flash("Сохранено");
+    flash(typeof I18n !== "undefined" ? I18n.t("list_editor_saved") : "Сохранено");
   });
 
   window.addEventListener("keydown", (e) => {
