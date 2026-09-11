@@ -2,7 +2,7 @@
 
 Расширение для выборочного проксирования сайтов по правилам через SOCKS5, HTTP и HTTPS.
 
-Поддерживает **Firefox** (ПК и Android) и браузеры на базе **Chromium** (Google Chrome, Microsoft Edge, Opera, Brave, Vivaldi, Яндекс Браузер).
+Поддерживает **Firefox** (ПК и Android) и браузеры на базе **Chromium** (Google Chrome, Microsoft Edge, Opera и т.д.).
 
 ## Функции
 
