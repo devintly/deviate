@@ -1,8 +1,8 @@
-﻿{
+{
   "manifest_version": 3,
   "name": "DeviateProxy",
   "version": "1.0",
-  "description": "DeviateProxy — проксирование сайтов по правилам средствами SOCKS/HTTP.",
+  "description": "Проксирование сайтов по правилам средствами SOCKS/HTTP.",
   "minimum_chrome_version": "109.0",
   "incognito": "spanning",
   "permissions": [

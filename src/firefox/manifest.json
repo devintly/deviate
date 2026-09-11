@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "DeviateProxy",
   "version": "1.0",
-  "description": "DeviateProxy — проксирование сайтов по правилам средствами SOCKS/HTTP.",
+  "description": "Проксирование сайтов по правилам средствами SOCKS/HTTP.",
   "browser_specific_settings": {
     "gecko": {
       "id": "deviateproxy@devintly",
