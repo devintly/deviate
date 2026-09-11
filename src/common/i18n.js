@@ -96,7 +96,6 @@
       msg_updated_count: "Обновлено: {count}",
       msg_updated_failed: "Обновлено: {updated}, ошибок: {failed}",
       msg_rule_added: "Добавлено",
-      btn_switch_lang_title: "Сменить язык на English",
       placeholder_proxy_name: "Если пусто — будет адрес",
       placeholder_list_name: "Если пусто — будет ссылка",
       placeholder_list_url: "https://.../filter.txt или https://.../proxy.pac"
@@ -195,7 +194,6 @@
       msg_updated_count: "Updated: {count}",
       msg_updated_failed: "Updated: {updated}, failed: {failed}",
       msg_rule_added: "Added",
-      btn_switch_lang_title: "Switch language to Russian",
       placeholder_proxy_name: "If empty — host will be used",
       placeholder_list_name: "If empty — URL will be used",
       placeholder_list_url: "https://.../filter.txt or https://.../proxy.pac"
@@ -204,9 +202,21 @@
 
   let currentLang = "ru";
 
-  function detectLang() {
-    const nav = (navigator.language || navigator.userLanguage || "").toLowerCase();
-    if (nav.startsWith("ru") || nav.startsWith("be") || nav.startsWith("kk") || nav.startsWith("uk")) {
+  function detectLang(browserApi) {
+    let lang = "";
+    try {
+      if (browserApi && browserApi.i18n && typeof browserApi.i18n.getUILanguage === "function") {
+        lang = browserApi.i18n.getUILanguage();
+      }
+    } catch (_) {}
+    if (!lang && typeof chrome !== "undefined" && chrome.i18n && typeof chrome.i18n.getUILanguage === "function") {
+      try { lang = chrome.i18n.getUILanguage(); } catch (_) {}
+    }
+    if (!lang && typeof navigator !== "undefined") {
+      lang = navigator.language || navigator.userLanguage || "";
+    }
+    const s = String(lang || "").toLowerCase();
+    if (s.startsWith("ru") || s.startsWith("be") || s.startsWith("kk") || s.startsWith("uk")) {
       return "ru";
     }
     return "en";
@@ -239,26 +249,7 @@
   }
 
   async function init(browserApi) {
-    try {
-      const res = await browserApi.storage.local.get("language");
-      if (res && (res.language === "ru" || res.language === "en")) {
-        currentLang = res.language;
-      } else {
-        currentLang = detectLang();
-      }
-    } catch (_) {
-      currentLang = detectLang();
-    }
-    applyDom();
-    return currentLang;
-  }
-
-  async function setLang(lang, browserApi) {
-    if (lang !== "ru" && lang !== "en") lang = "ru";
-    currentLang = lang;
-    try {
-      await browserApi.storage.local.set({ language: lang });
-    } catch (_) {}
+    currentLang = detectLang(browserApi);
     applyDom();
     return currentLang;
   }
@@ -270,7 +261,6 @@
   const I18n = {
     t,
     init,
-    setLang,
     getLang,
     applyDom,
     detectLang,

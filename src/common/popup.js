@@ -74,8 +74,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     deleteList: document.getElementById("deleteListBtn"), cancelList: document.getElementById("cancelListBtn"),
     refreshLists: document.getElementById("refreshListsBtn"), lCont: document.getElementById("listsContainer"),
     lStatus: document.getElementById("listStatus"), lFormStatus: document.getElementById("listFormStatus"),
-    powerBtn: document.getElementById("powerBtn"),
-    langBtn: document.getElementById("langBtn")
+    powerBtn: document.getElementById("powerBtn")
   };
 
   let currentRules = [];
@@ -996,7 +995,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     currentLists = Array.isArray(res.proxyLists) ? res.proxyLists : [];
     currentProxies = Array.isArray(res.proxyServers) ? res.proxyServers : [];
     extensionEnabled = !!res.extensionEnabled && hasConfiguredProxy();
-    updateLangBtn();
     renderProxies();
     refreshPowerBtn();
     renderLists();
@@ -1217,25 +1215,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       els.rulesStatus.textContent = I18n.t("hint_latin_only");
     }
   });
-
-  function updateLangBtn() {
-    if (!els.langBtn) return;
-    els.langBtn.textContent = I18n.getLang().toUpperCase();
-    els.langBtn.title = I18n.t("btn_switch_lang_title");
-  }
-
-  if (els.langBtn) {
-    els.langBtn.addEventListener("click", async () => {
-      const next = I18n.getLang() === "ru" ? "en" : "ru";
-      await I18n.setLang(next, browser);
-      updateLangBtn();
-      renderProxies();
-      renderLists();
-      refreshPowerBtn();
-      refreshToggleBtn();
-      refreshIcon();
-    });
-  }
 
   els.powerBtn.addEventListener("click", async () => {
     if (!hasConfiguredProxy()) {
