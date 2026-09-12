@@ -844,7 +844,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     els.pCont.textContent = "";
     currentProxies.forEach(p => {
       const card = document.createElement("div");
-      card.className = "list-card";
+      card.className = `list-card proxy-item${p.enabled ? " active" : ""}`;
+      card.title = p.enabled ? I18n.t("proxy_active") : I18n.t("proxy_inactive");
       const name = String(p.name || "").trim();
       const addr = proxyAddress(p);
       card.dataset.search = [name, addr, p.host || ""].filter(Boolean).join(" ");
@@ -869,24 +870,30 @@ document.addEventListener("DOMContentLoaded", async () => {
         </div>
         <div class="list-card-side">
           ${pingHtml}
-          <label class="switch" title="${p.enabled ? escapeHtml(I18n.t("proxy_active")) : escapeHtml(I18n.t("proxy_inactive"))}">
-            <input type="checkbox" ${p.enabled ? "checked" : ""}>
-            <span class="switch-ui"></span>
-          </label>
+          ${p.enabled ? `<span class="proxy-active-badge">${escapeHtml(I18n.t("badge_active"))}</span>` : ""}
           <button type="button" class="btn-edit" title="${escapeHtml(I18n.t("btn_edit"))}" aria-label="${escapeHtml(I18n.t("btn_edit"))}">${SVGS.edit}</button>
         </div>
       `;
 
-      const chk = card.querySelector(".switch input");
-      chk.addEventListener("change", async () => {
-        if (!chk.checked) {
-          chk.checked = true;
-          return;
-        }
+      card.addEventListener("click", async () => {
+        if (p.enabled) return;
         await persistProxies(currentProxies.map(item => Object.assign({}, item, { enabled: item.id === p.id })));
         flash(els.pStatus, I18n.t("msg_active_saved"));
       });
-      card.querySelector(".btn-edit").addEventListener("click", () => openProxyForm(p));
+
+      const editBtn = card.querySelector(".btn-edit");
+      if (editBtn) {
+        editBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openProxyForm(p);
+        });
+      }
+
+      const pingEl = card.querySelector(".proxy-ping");
+      if (pingEl) {
+        pingEl.addEventListener("click", (e) => e.stopPropagation());
+      }
+
       els.pCont.appendChild(card);
     });
     filterProxies();
@@ -945,8 +952,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   function renderLists() {
     els.lCont.textContent = "";
     currentLists.forEach(l => {
+      const isEnabled = l.enabled !== false;
       const card = document.createElement("div");
-      card.className = "list-card";
+      card.className = `list-card${isEnabled ? "" : " list-disabled"}`;
       const name = String(l.name || "").trim();
       const url = String(l.url || "");
       card.dataset.search = [name, url].filter(Boolean).join(" ");
@@ -967,13 +975,37 @@ document.addEventListener("DOMContentLoaded", async () => {
           <div class="list-card-updated">${escapeHtml(updatedText)}</div>
           ${(l.updateError || l.lastError) ? `<div class="list-card-error" title="${escapeHtml(l.updateError || l.lastError)}">${escapeHtml(l.updateError || l.lastError)}</div>` : ""}
         </div>
-        <div class="list-card-actions">
-          <button type="button" class="btn-refresh" title="${escapeHtml(I18n.t("btn_refresh"))}" aria-label="${escapeHtml(I18n.t("btn_refresh"))}">${SVGS.refresh}</button>
-          <button type="button" class="btn-edit" title="${escapeHtml(I18n.t("btn_edit"))}" aria-label="${escapeHtml(I18n.t("btn_edit"))}">${SVGS.edit}</button>
+        <div class="list-card-side">
+          <label class="switch" title="${isEnabled ? escapeHtml(I18n.t("list_active")) : escapeHtml(I18n.t("list_inactive"))}">
+            <input type="checkbox" class="list-toggle" ${isEnabled ? "checked" : ""}>
+            <span class="switch-ui"></span>
+          </label>
+          <div class="list-card-actions">
+            <button type="button" class="btn-refresh" title="${escapeHtml(I18n.t("btn_refresh"))}" aria-label="${escapeHtml(I18n.t("btn_refresh"))}">${SVGS.refresh}</button>
+            <button type="button" class="btn-edit" title="${escapeHtml(I18n.t("btn_edit"))}" aria-label="${escapeHtml(I18n.t("btn_edit"))}">${SVGS.edit}</button>
+          </div>
         </div>
       `;
 
+      const toggle = card.querySelector(".list-toggle");
       const refreshBtn = card.querySelector(".btn-refresh");
+
+      toggle.addEventListener("change", async () => {
+        const nextEnabled = toggle.checked;
+        l.enabled = nextEnabled;
+        card.classList.toggle("list-disabled", !nextEnabled);
+        toggle.closest(".switch").title = nextEnabled ? I18n.t("list_active") : I18n.t("list_inactive");
+        await browser.storage.local.set({ proxyLists: currentLists });
+        flash(els.lStatus, nextEnabled ? I18n.t("list_active") : I18n.t("list_inactive"));
+
+        if (nextEnabled) {
+          const due = typeof ListUpdate !== "undefined" && ListUpdate.isDue(l, Date.now());
+          if (due) {
+            refreshOneList(l.id, refreshBtn);
+          }
+        }
+      });
+
       refreshBtn.addEventListener("click", () => refreshOneList(l.id, refreshBtn));
       card.querySelector(".btn-edit").addEventListener("click", () => openListForm(l));
       els.lCont.appendChild(card);
@@ -1029,11 +1061,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     let hours = Number(els.lInterval.value);
     if (!(hours > 0)) hours = 12;
     if (hours > 168) hours = 168;
+    const existing = editingListId != null ? currentLists.find(l => l.id === editingListId) : null;
     return {
       url,
       name: els.lName.value.trim(),
       intervalHours: hours,
-      viaProxy: !!els.lViaProxy.checked
+      viaProxy: !!els.lViaProxy.checked,
+      enabled: existing ? existing.enabled !== false : true
     };
   }
 
@@ -1282,8 +1316,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       const hasError = existing && !!(existing.updateError || existing.lastError);
       const needFetch = !existing || urlChanged || proxyChanged || hasError;
       const res = await sendListMessage(needFetch
-        ? { action: "fetchList", id: editingListId, url: form.url, name: form.name, intervalHours: form.intervalHours, viaProxy: form.viaProxy }
-        : { action: "saveListMeta", id: editingListId, url: form.url, name: form.name, intervalHours: form.intervalHours, viaProxy: form.viaProxy });
+        ? { action: "fetchList", id: editingListId, url: form.url, name: form.name, intervalHours: form.intervalHours, viaProxy: form.viaProxy, enabled: form.enabled }
+        : { action: "saveListMeta", id: editingListId, url: form.url, name: form.name, intervalHours: form.intervalHours, viaProxy: form.viaProxy, enabled: form.enabled });
       if (res && res.success) {
         try {
           const st = await browser.storage.local.get("proxyLists");

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <script src="platform.js"></script>
   <script src="i18n.js"></script>
+  <script src="list-update.js"></script>
   <style>
     * { box-sizing: border-box; }
     html, body { margin: 0; width: 440px; height: 450px; overflow: hidden; background: #1e1f22; color: #f2f3f5; font-family: Tahoma, Arial, sans-serif; }
@@ -106,8 +107,30 @@
     #proxyForm input[type="number"],
     #proxyForm select { margin-bottom: 8px; }
     #proxyForm select { padding-left: 10px; padding-right: 6px; }
-    .list-card { display: flex; align-items: stretch; gap: 8px; background: #1e1f22; border-radius: 10px; padding: 8px 8px 8px 10px; margin-bottom: 8px; }
+    .list-card { display: flex; align-items: stretch; gap: 8px; background: #1e1f22; border-radius: 10px; padding: 8px 8px 8px 10px; margin-bottom: 8px; border: 1px solid transparent; transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, opacity 0.15s; }
     .list-card:last-child { margin-bottom: 0; }
+    .list-card.proxy-item { cursor: pointer; }
+    .list-card.proxy-item:hover { background: #26282d; }
+    .list-card.proxy-item.active {
+      background: #192738;
+      border-color: #017df1;
+      box-shadow: 0 0 10px rgba(1, 125, 241, 0.25);
+    }
+    .list-card.proxy-item.active:hover { background: #1e2f44; }
+    .list-card.list-disabled { opacity: 0.55; }
+    .proxy-active-badge {
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1;
+      padding: 4px 8px;
+      border-radius: 6px;
+      flex-shrink: 0;
+      user-select: none;
+      white-space: nowrap;
+      color: #57f287;
+      background: rgba(87, 242, 135, 0.15);
+      border: 1px solid rgba(87, 242, 135, 0.3);
+    }
     .list-card-body { flex: 1; min-width: 0; }
     .list-card-title { font-weight: 700; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .list-card-meta { font-size: 11px; color: #b5bac1; margin-top: 3px; }
@@ -247,6 +270,7 @@
       min-height: 40px;
     }
     html.android .proxy-ping { font-size: 12px; padding: 4px 8px; }
+    html.android .proxy-active-badge { font-size: 12px; padding: 5px 10px; }
     html.android input[type="text"],
     html.android input[type="password"],
     html.android input[type="number"],

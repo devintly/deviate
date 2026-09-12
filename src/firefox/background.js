@@ -129,6 +129,7 @@ function rebuildMaps() {
   addHostRules(directRules, nextDE, nextDS, nextDIp);
 
   proxyLists.forEach(list => {
+    if (!list || list.enabled === false) return;
     const lExact = {}, lSuffix = {}, lIp = {}, lCidr = [];
     let lPac = null;
     if (list.format === "pac" && list.packed) {
@@ -240,7 +241,8 @@ function listMeta(msg, existing) {
   if (!(hours > 0)) hours = existing && Number(existing.intervalHours) > 0 ? Number(existing.intervalHours) : 12;
   if (hours > 168) hours = 168;
   const viaProxy = msg && msg.viaProxy != null ? !!msg.viaProxy : !!(existing && existing.viaProxy);
-  return { name, intervalHours: hours, viaProxy };
+  const enabled = msg && msg.enabled !== undefined ? msg.enabled !== false : (existing && existing.enabled !== undefined ? existing.enabled !== false : true);
+  return { name, intervalHours: hours, viaProxy, enabled };
 }
 
 function findListByUrl(url, exceptId) {
@@ -615,6 +617,7 @@ async function saveListMeta(msg) {
   proxyLists[idx].name = meta.name;
   proxyLists[idx].intervalHours = meta.intervalHours;
   proxyLists[idx].viaProxy = meta.viaProxy;
+  proxyLists[idx].enabled = meta.enabled;
   proxyLists[idx].type = "proxy";
   proxyLists[idx].url = url;
   await browser.storage.local.set({ proxyLists });
@@ -629,12 +632,12 @@ function markListUpdateError(list, err) {
 async function updateListedLists(all) {
   if (!proxyLists.length) return { updated: 0, failed: 0 };
   const now = Date.now();
-  const ids = proxyLists.filter(list => list.url && (all || ListUpdate.isDue(list, now))).map(list => list.id);
+  const ids = proxyLists.filter(list => list.url && list.enabled !== false && (all || ListUpdate.isDue(list, now))).map(list => list.id);
   let updated = 0;
   let failed = 0;
   for (const id of ids) {
     const list = proxyLists.find(x => x.id === id);
-    if (!list || !list.url) continue;
+    if (!list || !list.url || list.enabled === false) continue;
     if (!all && !ListUpdate.isDue(list, Date.now())) continue;
     try {
       await fetchAndStoreList(list.url, list.id, list);
@@ -664,7 +667,7 @@ async function updateDueLists() {
 
 async function scheduleListUpdates() {
   try {
-    const when = ListUpdate.alarmWhen(proxyLists, Date.now());
+    const when = ListUpdate.alarmWhen(proxyLists.filter(l => l.enabled !== false), Date.now());
     if (!when) {
       await browser.alarms.clear("updateLists");
       return;

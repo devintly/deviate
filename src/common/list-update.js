@@ -46,7 +46,7 @@
   }
 
   function isDue(list, now) {
-    if (!list || !list.url) return false;
+    if (!list || !list.url || list.enabled === false) return false;
     now = Number(now) || 0;
     var attempt = Number(list.lastAttemptAt) || 0;
     if (list.updateError && attempt) {
@@ -56,7 +56,7 @@
   }
 
   function nextCheckAt(list, now) {
-    if (!list || !list.url) return 0;
+    if (!list || !list.url || list.enabled === false) return 0;
     now = Number(now) || 0;
     var attempt = Number(list.lastAttemptAt) || 0;
     if (list.updateError && attempt) {
@@ -107,17 +107,23 @@
     next.lastAttemptAt = next.updatedAt;
     next.url = url;
     next.type = "proxy";
+    var prevEnabled = true;
     if (existingId != null) {
       next.id = existingId;
       var idx = -1;
       for (var i = 0; i < lists.length; i++) {
         if (lists[i] && lists[i].id === existingId) { idx = i; break; }
       }
-      if (idx >= 0) lists[idx] = next;
-      else lists.push(next);
+      if (idx >= 0) {
+        prevEnabled = lists[idx].enabled !== false;
+        lists[idx] = next;
+      } else {
+        lists.push(next);
+      }
     } else {
       lists.push(next);
     }
+    next.enabled = meta && meta.enabled !== undefined ? meta.enabled !== false : prevEnabled;
     return next;
   }
 

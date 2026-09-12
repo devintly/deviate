@@ -127,6 +127,7 @@ function rebuildMaps() {
   addHostRules(directRules, nextDE, nextDS, nextDIp);
 
   proxyLists.forEach(list => {
+    if (!list || list.enabled === false) return;
     if (list.viaProxy && list.url) {
       try {
         const u = new URL(list.url);
@@ -572,7 +573,8 @@ function listMeta(src, current) {
   if (!Number.isFinite(intervalHours) || intervalHours < 1) intervalHours = 24;
   intervalHours = Math.round(intervalHours);
   const viaProxy = !!(src.viaProxy !== undefined ? src.viaProxy : cur.viaProxy);
-  return { name, intervalHours, viaProxy };
+  const enabled = src.enabled !== undefined ? src.enabled !== false : (cur.enabled !== undefined ? cur.enabled !== false : true);
+  return { name, intervalHours, viaProxy, enabled };
 }
 
 async function fetchAndStoreList(url, existingId, msg) {
@@ -619,6 +621,7 @@ async function saveListMeta(msg) {
   proxyLists[idx].name = meta.name;
   proxyLists[idx].intervalHours = meta.intervalHours;
   proxyLists[idx].viaProxy = meta.viaProxy;
+  proxyLists[idx].enabled = meta.enabled;
   proxyLists[idx].type = "proxy";
   proxyLists[idx].url = url;
   await chrome.storage.local.set({ proxyLists });
@@ -631,7 +634,7 @@ let listUpdateBusy = false;
 async function updateListedLists(all) {
   let updated = 0, failed = 0;
   for (const list of proxyLists) {
-    if (!list || !list.url) continue;
+    if (!list || !list.url || list.enabled === false) continue;
     if (!all && !ListUpdate.isDue(list, Date.now())) continue;
     try {
       await fetchAndStoreList(list.url, list.id, list);

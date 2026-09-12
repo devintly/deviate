@@ -32,6 +32,8 @@ assert(api.RETRY_MS === 10 * MIN, "retry is 10 minutes");
 assert(api.RETRY_LIMIT === 6, "six retry iterations");
 
 assert(!api.isDue({ url: "" }, now), "no url is never due");
+assert(!api.isDue({ url: "https://example/list.txt", enabled: false }, now), "disabled list is never due");
+assert(api.nextCheckAt({ url: "https://example/list.txt", enabled: false }, now) === 0, "disabled list next check is 0");
 assert(api.isDue({ url: "https://example/list.txt" }, now), "never updated is due");
 assert(!api.isDue({ url: "https://example/list.txt", updatedAt: now - HOUR, intervalHours: 12 }, now), "fresh list is not due");
 assert(api.isDue({ url: "https://example/list.txt", updatedAt: now - 12 * HOUR, intervalHours: 12 }, now), "exactly at interval is due");
