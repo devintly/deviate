@@ -133,7 +133,6 @@
     if (!host) return false;
     host = host.toLowerCase();
     if (exact[host]) return true;
-    if (host.indexOf("www.") === 0 && exact[host.slice(4)]) return true;
     var parts = host.split(".");
     var current = "";
     for (var i = parts.length - 1; i >= 0; i--) {
@@ -151,7 +150,7 @@
       var base = rule.slice(2);
       return host === base || host.length > base.length && host.slice(-base.length - 1) === "." + base;
     }
-    return host === rule || host === "www." + rule;
+    return host === rule;
   }
 
   function coveringRule(host, proxyRules, directRules) {

@@ -65,7 +65,6 @@ var pacLists = rawPac.map(function(p) {
 
 function matchMaps(host, exact, suffix) {
   if (exact[host]) return true;
-  if (host.indexOf("www.") === 0 && exact[host.slice(4)]) return true;
   var parts = host.split(".");
   var current = "";
   for (var i = parts.length - 1; i >= 0; i--) {

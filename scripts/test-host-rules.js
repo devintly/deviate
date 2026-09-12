@@ -26,7 +26,7 @@ function assert(cond, msg) {
 const exactOnly = { exact: {}, suffix: {}, ipMap: {} };
 api.addHostRules(["cdn.example.com"], exactOnly.exact, exactOnly.suffix, exactOnly.ipMap);
 assert(api.matchMaps("cdn.example.com", exactOnly.exact, exactOnly.suffix), "exact host");
-assert(api.matchMaps("www.cdn.example.com", exactOnly.exact, exactOnly.suffix), "www alias for exact");
+assert(!api.matchMaps("www.cdn.example.com", exactOnly.exact, exactOnly.suffix), "exact host must not cover www alias without wildcard");
 assert(!api.matchMaps("api.cdn.example.com", exactOnly.exact, exactOnly.suffix), "exact must not cover other subdomain");
 assert(!api.matchMaps("example.com", exactOnly.exact, exactOnly.suffix), "exact must not cover parent");
 
@@ -75,13 +75,14 @@ const maps = api.rebuildMaps(["cdn.example.com"], ["skip.test"], [{
   cidrs: []
 }]);
 assert(api.hostIsProxied("cdn.example.com", true, maps, false), "user proxy rule");
-assert(api.hostIsProxied("www.cdn.example.com", true, maps, false), "www alias for user exact");
+assert(!api.hostIsProxied("www.cdn.example.com", true, maps, false), "user exact does not cover www alias");
 assert(!api.hostIsProxied("api.cdn.example.com", true, maps, false), "user exact does not cover other subdomain");
 assert(api.hostIsProxied("listed.example", true, maps, false), "list domain");
 assert(api.hostIsProxied("a.listed.example", true, maps, false), "list covers subdomain");
 assert(!api.hostIsProxied("skip.test", true, maps, false), "direct rule wins");
 assert(!api.hostIsProxied("cdn.example.com", false, maps, false), "disabled extension");
-assert(api.ruleMatchesHost("www.example.com", "example.com"), "UI matcher mirrors backend www alias");
+assert(!api.ruleMatchesHost("www.example.com", "example.com"), "UI matcher does not match www subdomain for exact rule");
+assert(api.ruleMatchesHost("www.example.com", "*.example.com"), "UI matcher matches www subdomain for wildcard rule");
 
 const remembered = {};
 assert(api.rememberHost(remembered, 1, "one.example", 1) === "one.example", "first host remembered");

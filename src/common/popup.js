@@ -627,10 +627,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       const line = document.createElement("div");
       line.className = `domain-line${existing ? " picked" : ""}${hasChildren ? " has-children" : ""}`;
       line.innerHTML = `
+        <input type="checkbox" class="domain-pick" aria-label="${escapeHtml(host)}" data-host="${escapeHtml(host)}" data-kind="${kind}" data-apex="${escapeHtml(apex)}" ${existing ? "checked" : ""}>
         <span class="domain-expander ${hasChildren ? "has-children" : "empty"}">
           ${hasChildren ? SVGS.chevron : ""}
         </span>
-        <input type="checkbox" class="domain-pick" aria-label="${escapeHtml(host)}" data-host="${escapeHtml(host)}" data-kind="${kind}" data-apex="${escapeHtml(apex)}" ${existing ? "checked" : ""}>
         ${isIp ? '<span class="wildcard-btn empty"></span>' : `<button type="button" class="wildcard-btn domain-wildcard-btn ${isWild ? "active" : ""}" title="*.">*.</button>`}
         <span class="${isBold ? "domain-name" : "domain-apex"}" title="${escapeHtml(host)}">${escapeHtml(host)}</span>
         <span class="mini-status"></span>
