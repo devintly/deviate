@@ -653,8 +653,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       const wildBtn = line.querySelector(".domain-wildcard-btn");
       const mode = line.querySelector("input.mode-direct");
       const modeWrap = line.querySelector(".mode-wrap");
-      const textEl = line.querySelector(isBold ? ".domain-name" : ".domain-apex");
-      const expanderEl = line.querySelector(".domain-expander");
 
       cb.addEventListener("click", e => e.stopPropagation());
       if (wildBtn) {
@@ -676,24 +674,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       cb.addEventListener("change", onToggle);
       mode.addEventListener("change", onToggle);
 
-      if (textEl) {
-        textEl.addEventListener("click", e => {
-          e.stopPropagation();
-          cb.checked = !cb.checked;
-          onToggle();
-        });
-      }
-
       if (hasChildren) {
         const toggleExp = e => {
           e.stopPropagation();
           nodeEl.classList.toggle("expanded");
         };
-        if (expanderEl) expanderEl.addEventListener("click", toggleExp);
-        line.addEventListener("click", e => {
-          // If clicked directly on or inside empty area/spacer/line
-          nodeEl.classList.toggle("expanded");
-        });
+        line.addEventListener("click", toggleExp);
       }
 
       refreshDomainLine(line);

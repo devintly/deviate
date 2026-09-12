@@ -46,12 +46,12 @@
     input[type="text"], input[type="password"], input[type="number"], select { width: 100%; box-sizing: border-box; border: 0; outline: 0; background: #1e1f22; color: #f2f3f5; padding: 10px 12px; border-radius: 10px; font-size: 13px; margin: 0 0 12px; height: 36px; }
 
     .inputWrap { position: relative; display: flex; align-items: center; background: #1e1f22; border-radius: 10px; margin: 0 0 12px; height: 32px; padding: 0 4px; box-sizing: border-box; }
-    .inputWrap .wildcard-btn { position: absolute; left: 4px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; min-width: 24px; max-width: 24px; min-height: 24px; max-height: 24px; font-size: 11px; border-radius: 5px; z-index: 2; padding: 0; box-sizing: border-box; }
-    .inputWrap input[type="text"] { appearance: none; width: 100%; height: 32px; min-height: 32px; max-height: 32px; margin: 0; padding: 0 42px 0 32px; background: transparent; font-size: 13px; font-weight: 700; text-align: center; line-height: 32px; border: 0; outline: 0; color: #f2f3f5; box-sizing: border-box; }
-    .statusIcon { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); height: 24px; display: flex; align-items: center; justify-content: flex-end; pointer-events: auto; cursor: default; user-select: none; }
-    .status-mark { display: inline-flex; align-items: center; justify-content: center; gap: 2px; }
-    .status-mark .mark-main { width: 15px; height: 15px; display: block; flex-shrink: 0; }
-    .status-mark .mark-list { width: 14px; height: 14px; display: block; flex-shrink: 0; }
+    .inputWrap .wildcard-btn { position: absolute; left: 4px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; min-width: 24px; max-width: 24px; min-height: 24px; max-height: 24px; font-size: 11px; font-weight: 700; border-radius: 5px; z-index: 2; padding: 0; box-sizing: border-box; }
+    .inputWrap input[type="text"] { appearance: none; width: 100%; height: 32px; min-height: 32px; max-height: 32px; margin: 0; padding: 0 32px; background: transparent; font-size: 13px; font-weight: 700; text-align: center; line-height: 32px; border: 0; outline: 0; color: #f2f3f5; box-sizing: border-box; }
+    .statusIcon { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; pointer-events: auto; cursor: default; user-select: none; }
+    .status-mark { display: inline-flex; align-items: center; justify-content: center; gap: 3px; }
+    .status-mark .mark-main { width: 16px; height: 16px; display: block; }
+    .status-mark .mark-list { width: 15px; height: 15px; display: block; }
     .status-mark.none { color: #da373c; filter: drop-shadow(0 0 5px rgba(218, 55, 60, 0.5)); }
     .status-mark.proxy { color: #57f287; filter: drop-shadow(0 0 5px rgba(87, 242, 135, 0.55)); }
     .status-mark.direct { color: #ffb020; filter: drop-shadow(0 0 5px rgba(255, 176, 32, 0.55)); }
@@ -207,8 +207,8 @@
       padding: 0;
       margin: 0;
       box-sizing: border-box;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      font-weight: 400;
+      font-family: monospace, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-weight: 700;
       line-height: 1;
       border-radius: 4px;
       border: 0;
@@ -221,12 +221,11 @@
     }
     .wildcard-btn:hover {
       background: transparent;
-      color: #dbdee1;
+      color: #ffffff;
     }
     .wildcard-btn.active {
       background: transparent;
-      color: #ffffff;
-      font-weight: 800;
+      color: #017df1;
     }
     .wildcard-btn.active:hover {
       background: transparent;
@@ -236,44 +235,20 @@
       display: none;
     }
 
-    .domain-line {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 4px 8px;
-      margin: 1px 0;
-      font-size: 12px;
-      border-radius: 8px;
-      border: 1px solid transparent;
-      transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
-    }
-    .domain-line:hover {
-      background: rgba(255, 255, 255, 0.04);
-    }
-    .domain-line.picked {
-      background: #192738;
-      border-color: #017df1;
-      box-shadow: 0 0 10px rgba(1, 125, 241, 0.25);
-    }
-    .domain-line.picked:hover {
-      background: #1e2f44;
-    }
+    .domain-line { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 12px; }
     .domain-line .domain-expander { width: 16px; height: 16px; min-width: 16px; max-width: 16px; min-height: 16px; max-height: 16px; flex: none; display: flex; align-items: center; justify-content: center; color: #949ba4; border-radius: 4px; transition: color 0.15s; }
     .domain-line .domain-expander.has-children { cursor: pointer; }
     .domain-line .domain-expander.has-children:hover { color: #f2f3f5; background: rgba(255, 255, 255, 0.08); }
     .domain-line .domain-expander.empty { display: none; }
     .domain-line .domain-expander svg { width: 12px; height: 12px; display: block; transition: transform 0.15s ease; }
     .domain-node.expanded > .domain-line .domain-expander svg { transform: rotate(90deg); }
-    .domain-line .domain-wildcard-btn { display: none; width: 16px; height: 16px; min-width: 16px; max-width: 16px; min-height: 16px; max-height: 16px; padding: 0; font-size: 10px; line-height: 1; letter-spacing: -0.5px; border-radius: 3px; box-sizing: border-box; }
-    .domain-line .domain-wildcard-btn.active { font-weight: 800; color: #ffffff; }
+    .domain-line input.domain-pick { width: 16px; height: 16px; min-width: 16px; max-width: 16px; min-height: 16px; max-height: 16px; margin: 0; flex-shrink: 0; accent-color: #017df1; cursor: pointer; }
+    .domain-line .domain-wildcard-btn { display: none; width: 16px; height: 16px; min-width: 16px; max-width: 16px; min-height: 16px; max-height: 16px; padding: 0; font-size: 9px; font-weight: 700; line-height: 1; letter-spacing: -0.5px; border-radius: 3px; box-sizing: border-box; }
     .domain-line.picked .domain-wildcard-btn { display: inline-flex; }
-    .domain-line .domain-name { font-weight: 400; color: #b5bac1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; cursor: pointer; flex-shrink: 1; }
-    .domain-line .domain-apex { font-weight: 400; color: #b5bac1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; cursor: pointer; flex-shrink: 1; }
-    .domain-line:hover .domain-name,
-    .domain-line:hover .domain-apex { color: #dbdee1; }
-    .domain-line.picked .domain-name,
-    .domain-line.picked .domain-apex { font-weight: 700; color: #ffffff; }
+    .domain-line .domain-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; cursor: default; flex-shrink: 1; }
+    .domain-line .domain-apex { font-weight: 400; color: #b5bac1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; cursor: default; flex-shrink: 1; }
     .domain-line.has-children { cursor: pointer; }
+    .domain-line.has-children .domain-name, .domain-line.has-children .domain-apex { cursor: pointer; }
     .domain-line .mini-status { flex: none; min-width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; }
     .domain-line .mini-status .mark-main { width: 14px; height: 14px; }
     .domain-line .mini-status .mark-list { width: 13px; height: 13px; }
@@ -285,14 +260,25 @@
     .domain-line .mode-wrap .switch input:checked + .switch-ui::after { left: 17px; }
 
     .domain-node { position: relative; }
-    .domain-children {
-      display: none;
-      position: relative;
-      padding-left: 14px;
-      margin-left: 8px;
-      border-left: 1px solid rgba(255, 255, 255, 0.12);
-      margin-top: 2px;
-      margin-bottom: 2px;
+    .domain-children { display: none; position: relative; padding-left: 0; margin-left: 0; margin-top: 2px; }
+    .domain-children::before {
+      content: "";
+      position: absolute;
+      left: 29px;
+      top: 0;
+      bottom: 4px;
+      width: 1px;
+      background: rgba(255, 255, 255, 0.12);
+      pointer-events: none;
+    }
+    .domain-children > .domain-node > .domain-line > input.domain-pick {
+      margin-right: 18px;
+    }
+    .domain-children .domain-children::before {
+      left: 53px;
+    }
+    .domain-children .domain-children > .domain-node > .domain-line > input.domain-pick {
+      margin-right: 42px;
     }
     .domain-node.expanded > .domain-children { display: block; }
     .domains-actions { margin-top: 12px; flex: none; }
