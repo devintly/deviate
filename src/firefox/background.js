@@ -13,6 +13,7 @@ let ffProxy = { type: "direct" };
 
 const tabHosts = {};
 const tabProxied = {};
+const tabApex = {};
 const dnsCache = new Map();
 const pendingDns = new Map();
 const fetchProxyHosts = {};
@@ -24,6 +25,33 @@ let badgeColorsReady = false;
 let listUpdateQueue = Promise.resolve();
 let initialized = false;
 let badgeRecountGeneration = 0;
+
+function sessionAvailable() {
+  try {
+    return !!(browser.storage && browser.storage.session && typeof browser.storage.session.get === "function");
+  } catch (_) {
+    return false;
+  }
+}
+
+let sessionSaveTimer = null;
+function persistTabHostsSession() {
+  if (!sessionAvailable()) return;
+  if (sessionSaveTimer) return;
+  sessionSaveTimer = setTimeout(async () => {
+    sessionSaveTimer = null;
+    try {
+      const obj = {};
+      const apexObj = {};
+      Object.keys(tabHosts).forEach(id => {
+        const s = tabHosts[id];
+        if (s && s.size) obj[id] = Array.from(s);
+        if (tabApex[id]) apexObj[id] = tabApex[id];
+      });
+      await browser.storage.session.set({ tabHosts: obj, tabApex: apexObj });
+    } catch (_) {}
+  }, 300);
+}
 
 function applyMaps(next) {
   maps = next;
@@ -70,16 +98,29 @@ function rememberTabHost(tabId, host, proxied) {
       changed = true;
     }
   }
-  if (changed) scheduleBadge(tabId);
+  if (changed) {
+    scheduleBadge(tabId);
+    persistTabHostsSession();
+  }
+}
+
+function getUrlHost(url) {
+  if (!url) return "";
+  try {
+    const p = new URL(url);
+    if (p.protocol !== "http:" && p.protocol !== "https:") return "";
+    return p.hostname.toLowerCase();
+  } catch (_) {
+    return "";
+  }
 }
 
 function seedTabUrl(tabId, url) {
   if (tabId == null || tabId < 0 || !url || HostRules.isOwnPage(url, ownPageBase())) return;
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
-    rememberTabHost(tabId, parsed.hostname, false);
-  } catch (_) {}
+  const host = getUrlHost(url);
+  if (!host) return;
+  if (!tabApex[tabId]) tabApex[tabId] = HostRules.apexDomain(host);
+  rememberTabHost(tabId, host, false);
 }
 
 function recountTabProxied() {
@@ -247,11 +288,13 @@ try {
 browser.tabs.onRemoved.addListener(tabId => {
   delete tabHosts[tabId];
   delete tabProxied[tabId];
+  delete tabApex[tabId];
   delete badgeTextCache[tabId];
   if (badgeWait[tabId]) {
     clearTimeout(badgeWait[tabId]);
     delete badgeWait[tabId];
   }
+  persistTabHostsSession();
 });
 
 browser.tabs.onActivated.addListener(async info => {
@@ -263,17 +306,40 @@ browser.tabs.onActivated.addListener(async info => {
 });
 
 browser.tabs.onUpdated.addListener((tabId, change, tab) => {
+  const targetUrl = change.url || (tab && (tab.pendingUrl || tab.url));
+  const targetHost = getUrlHost(targetUrl);
+  const targetApex = targetHost ? HostRules.apexDomain(targetHost) : "";
+
   if (change.status === "loading") {
-    tabHosts[tabId] = new Set();
-    tabProxied[tabId] = new Set();
-    delete badgeTextCache[tabId];
-    seedTabUrl(tabId, change.url || (tab && (tab.pendingUrl || tab.url)));
+    const prevApex = tabApex[tabId];
+    if (targetApex && prevApex && targetApex !== prevApex) {
+      tabHosts[tabId] = new Set();
+      tabProxied[tabId] = new Set();
+      delete badgeTextCache[tabId];
+    } else if (!tabHosts[tabId]) {
+      tabHosts[tabId] = new Set();
+      tabProxied[tabId] = new Set();
+      delete badgeTextCache[tabId];
+    }
+    if (targetApex) tabApex[tabId] = targetApex;
+    if (targetUrl) seedTabUrl(tabId, targetUrl);
     scheduleBadge(tabId);
+    persistTabHostsSession();
     return;
   }
-  if (change.url) seedTabUrl(tabId, change.url);
-  else if (change.status === "complete" && tab && tab.url) seedTabUrl(tabId, tab.url);
-  scheduleBadge(tabId);
+  if (change.url) {
+    if (targetApex && tabApex[tabId] && targetApex !== tabApex[tabId]) {
+      tabHosts[tabId] = new Set();
+      tabProxied[tabId] = new Set();
+      delete badgeTextCache[tabId];
+      tabApex[tabId] = targetApex;
+    }
+    seedTabUrl(tabId, change.url);
+    scheduleBadge(tabId);
+  } else if (change.status === "complete" && tab && tab.url) {
+    seedTabUrl(tabId, tab.url);
+    scheduleBadge(tabId);
+  }
 });
 
 async function withFetchRoute(url, viaProxy, fn) {
@@ -599,6 +665,23 @@ async function initBackground() {
   proxyLists = rawLists.map(list => ListUpdate.migrateList(Object.assign({}, list)));
   if (JSON.stringify(rawLists) !== JSON.stringify(proxyLists)) persist.proxyLists = proxyLists;
   if (Object.keys(persist).length) await browser.storage.local.set(persist);
+
+  if (sessionAvailable()) {
+    try {
+      const s = await browser.storage.session.get(["tabHosts", "tabApex"]);
+      if (s && s.tabHosts && typeof s.tabHosts === "object") {
+        Object.keys(s.tabHosts).forEach(id => {
+          const arr = s.tabHosts[id];
+          if (Array.isArray(arr)) {
+            tabHosts[Number(id)] = new Set(arr);
+          }
+        });
+      }
+      if (s && s.tabApex && typeof s.tabApex === "object") {
+        Object.assign(tabApex, s.tabApex);
+      }
+    } catch (_) {}
+  }
 
   applyMaps(HostRules.rebuildMaps(proxyRules, directRules, proxyLists));
   await syncToolbarIcon();

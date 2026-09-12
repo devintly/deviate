@@ -12,6 +12,8 @@ const maps = HostRules.rebuildMaps(["*.rutracker.org", "instagram.com"], [], [])
 const tabHosts = {};
 const tabProxied = {};
 
+const tabApex = {};
+
 function isHostProxied(host) {
   return HostRules.hostIsProxied(host, true, maps);
 }
@@ -33,14 +35,24 @@ function seedTabUrl(tabId, url) {
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
-    recordTabHost(tabId, parsed.hostname);
+    const host = parsed.hostname.toLowerCase();
+    if (host && !tabApex[tabId]) tabApex[tabId] = HostRules.apexDomain(host);
+    recordTabHost(tabId, host);
   } catch (_) {}
 }
 
 function simulateNavigation(tabId, url, subrequests) {
-  // Navigation starts: status loading
-  tabHosts[tabId] = new Set();
-  tabProxied[tabId] = new Set();
+  // Navigation starts: status loading with apex preservation
+  const host = new URL(url).hostname.toLowerCase();
+  const apex = HostRules.apexDomain(host);
+  if (apex && tabApex[tabId] && apex !== tabApex[tabId]) {
+    tabHosts[tabId] = new Set();
+    tabProxied[tabId] = new Set();
+  } else if (!tabHosts[tabId]) {
+    tabHosts[tabId] = new Set();
+    tabProxied[tabId] = new Set();
+  }
+  if (apex) tabApex[tabId] = apex;
   seedTabUrl(tabId, url);
 
   // Subrequests load
@@ -79,11 +91,19 @@ assert(!tabProxied[2].has("google-analytics.com"), "Direct host must not be in t
 assert(tabProxied[2].size === 3, "Total proxied count must be 3 (main domain + 2 subdomains)");
 assert(ProxyConfig.badgeText(tabProxied[2].size) === "3", "Badge text must be '3'");
 
-// Case 3: Direct main domain
-simulateNavigation(3, "https://wikipedia.org/wiki/Main_Page", [
-  "https://upload.wikimedia.org/image.jpg"
-]);
-assert(tabProxied[3].size === 0, "Direct site must have 0 proxied hosts");
-assert(ProxyConfig.badgeText(tabProxied[3].size) === "", "Badge text must be empty for direct site");
+// Case 4: Soft reload / background iframe reload on the SAME domain (rutracker.org)
+// All previously captured subdomains MUST remain and not disappear!
+simulateNavigation(2, "https://rutracker.org/forum/viewtopic.php?t=999", []);
+assert(tabHosts[2].has("static.rutracker.org"), "Subdomain static must NOT disappear on same-site navigation");
+assert(tabHosts[2].has("api.rutracker.org"), "Subdomain api must NOT disappear on same-site navigation");
+assert(tabProxied[2].size === 3, "Total proxied count must remain 3 after same-site navigation");
+
+// Case 5: Navigating to a DIFFERENT domain (from rutracker to wikipedia)
+// Old subdomains MUST be cleared!
+simulateNavigation(2, "https://wikipedia.org/", []);
+assert(!tabHosts[2].has("static.rutracker.org"), "Old site subdomains must be cleared on cross-domain navigation");
+assert(!tabHosts[2].has("rutracker.org"), "Old site main domain must be cleared on cross-domain navigation");
+assert(tabHosts[2].has("wikipedia.org"), "New domain must be present");
+assert(tabProxied[2].size === 0, "Direct new domain must have 0 proxied hosts");
 
 console.log("test-tab-seeding: ok");

@@ -13,6 +13,7 @@ let maps = HostRules.rebuildMaps([], [], []);
 
 const tabHosts = {};
 const tabProxied = {};
+const tabApex = {};
 const badgeWait = {};
 let badgeColorsReady = false;
 let listUpdateQueue = Promise.resolve();
@@ -62,11 +63,13 @@ function persistTabHostsSession() {
     sessionSaveTimer = null;
     try {
       const obj = {};
+      const apexObj = {};
       Object.keys(tabHosts).forEach(id => {
         const s = tabHosts[id];
         if (s && s.size) obj[id] = Array.from(s);
+        if (tabApex[id]) apexObj[id] = tabApex[id];
       });
-      await chrome.storage.session.set({ tabHosts: obj });
+      await chrome.storage.session.set({ tabHosts: obj, tabApex: apexObj });
     } catch (_) {}
   }, 300);
 }
@@ -75,13 +78,23 @@ function isHostProxied(host) {
   return HostRules.hostIsProxied(host, extensionEnabled, maps);
 }
 
+function getUrlHost(url) {
+  if (!url) return "";
+  try {
+    const p = new URL(url);
+    if (p.protocol !== "http:" && p.protocol !== "https:") return "";
+    return p.hostname.toLowerCase();
+  } catch (_) {
+    return "";
+  }
+}
+
 function seedTabUrl(tabId, url) {
   if (tabId == null || tabId < 0 || !url || HostRules.isOwnPage(url, ownPageBase())) return;
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
-    recordTabHost(tabId, parsed.hostname);
-  } catch (_) {}
+  const host = getUrlHost(url);
+  if (!host) return;
+  if (!tabApex[tabId]) tabApex[tabId] = HostRules.apexDomain(host);
+  recordTabHost(tabId, host);
 }
 
 function recordTabHost(tabId, host) {
@@ -221,16 +234,31 @@ chrome.webRequest.onBeforeRequest.addListener(
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   ensureInit().then(() => {
+    const targetUrl = changeInfo.url || (tab && (tab.pendingUrl || tab.url));
+    const targetHost = getUrlHost(targetUrl);
+    const targetApex = targetHost ? HostRules.apexDomain(targetHost) : "";
+
     if (changeInfo.status === "loading") {
-      tabHosts[tabId] = new Set();
-      tabProxied[tabId] = new Set();
-      const targetUrl = changeInfo.url || (tab && (tab.pendingUrl || tab.url));
+      const prevApex = tabApex[tabId];
+      if (targetApex && prevApex && targetApex !== prevApex) {
+        tabHosts[tabId] = new Set();
+        tabProxied[tabId] = new Set();
+      } else if (!tabHosts[tabId]) {
+        tabHosts[tabId] = new Set();
+        tabProxied[tabId] = new Set();
+      }
+      if (targetApex) tabApex[tabId] = targetApex;
       if (targetUrl) seedTabUrl(tabId, targetUrl);
       scheduleBadge(tabId);
       persistTabHostsSession();
       return;
     }
     if (changeInfo.url) {
+      if (targetApex && tabApex[tabId] && targetApex !== tabApex[tabId]) {
+        tabHosts[tabId] = new Set();
+        tabProxied[tabId] = new Set();
+        tabApex[tabId] = targetApex;
+      }
       seedTabUrl(tabId, changeInfo.url);
       scheduleBadge(tabId);
     } else if (changeInfo.status === "complete" && tab && tab.url) {
@@ -243,6 +271,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 chrome.tabs.onRemoved.addListener(tabId => {
   delete tabHosts[tabId];
   delete tabProxied[tabId];
+  delete tabApex[tabId];
   if (badgeWait[tabId]) {
     clearTimeout(badgeWait[tabId]);
     delete badgeWait[tabId];
@@ -713,7 +742,7 @@ async function initBackground() {
 
   if (sessionAvailable()) {
     try {
-      const s = await chrome.storage.session.get(["tabHosts"]);
+      const s = await chrome.storage.session.get(["tabHosts", "tabApex"]);
       if (s && s.tabHosts && typeof s.tabHosts === "object") {
         Object.keys(s.tabHosts).forEach(id => {
           const arr = s.tabHosts[id];
@@ -721,6 +750,9 @@ async function initBackground() {
             tabHosts[Number(id)] = new Set(arr);
           }
         });
+      }
+      if (s && s.tabApex && typeof s.tabApex === "object") {
+        Object.assign(tabApex, s.tabApex);
       }
     } catch (_) {}
   }
