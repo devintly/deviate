@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Tests
         run: |
@@ -34,7 +34,7 @@ jobs:
         run: python3 scripts/package.py
 
       - name: Upload packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: deviateproxy-packages
           path: |
@@ -43,7 +43,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload unpacked extensions
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: deviateproxy-unpacked
           path: dist/unpacked/
@@ -58,7 +58,7 @@ jobs:
       contents: write
     steps:
       - name: Download packages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: deviateproxy-packages
           path: dist
