@@ -64,6 +64,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     proxyEmpty: document.getElementById("proxyEmpty"), pCont: document.getElementById("proxyContainer"),
     proxySearch: document.getElementById("proxySearch"),
     showAddProxy: document.getElementById("showAddProxyBtn"), deleteProxy: document.getElementById("deleteProxyBtn"),
+    pingProxies: document.getElementById("pingProxiesBtn"),
     cancelProxy: document.getElementById("cancelProxyBtn"),
     listsMain: document.getElementById("listsMain"), listsForm: document.getElementById("listsForm"),
     listsEmpty: document.getElementById("listsEmpty"), listsSearch: document.getElementById("listsSearch"),
@@ -78,7 +79,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     infoBtn: document.getElementById("infoBtn"),
     infoModal: document.getElementById("infoModal"),
     closeInfoBtn: document.getElementById("closeInfoBtn"),
-    confirmInfoBtn: document.getElementById("confirmInfoBtn"),
     infoVersion: document.getElementById("infoVersion"),
     conflictBanner: document.getElementById("conflictBanner"),
     toastContainer: document.getElementById("toastContainer")
@@ -88,6 +88,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   let currentDirect = [];
   let currentLists = [];
   let currentProxies = [];
+  let currentPingResults = {};
   let activeTab = null;
   let domainsPanelOpen = false;
   let pageHost = "";
@@ -845,7 +846,17 @@ document.addEventListener("DOMContentLoaded", async () => {
       const addr = proxyAddress(p);
       card.dataset.search = [name, addr, p.host || ""].filter(Boolean).join(" ");
       const metaBits = [proxyTypeLabel(p.type)];
-      if (p.username) metaBits.push(p.username);
+      const pingData = currentPingResults[p.id];
+      let pingHtml = "";
+      if (pingData) {
+        if (pingData.checking) {
+          pingHtml = `<span class="proxy-ping checking" title="${escapeHtml(I18n.t("msg_pinging"))}">...</span>`;
+        } else if (pingData.success && Number.isFinite(pingData.latency)) {
+          pingHtml = `<span class="proxy-ping good" title="${pingData.latency} ms">${pingData.latency} ms</span>`;
+        } else {
+          pingHtml = `<span class="proxy-ping bad" title="n/a">n/a</span>`;
+        }
+      }
 
       card.innerHTML = `
         <div class="list-card-body">
@@ -854,6 +865,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           <div class="list-card-meta">${escapeHtml(metaBits.join(" · "))}</div>
         </div>
         <div class="list-card-side">
+          ${pingHtml}
           <label class="switch" title="${p.enabled ? escapeHtml(I18n.t("proxy_active")) : escapeHtml(I18n.t("proxy_inactive"))}">
             <input type="checkbox" ${p.enabled ? "checked" : ""}>
             <span class="switch-ui"></span>
@@ -1079,6 +1091,53 @@ document.addEventListener("DOMContentLoaded", async () => {
     } catch (_) {}
   }
 
+  let isPingingProxies = false;
+
+  async function pingAllProxies() {
+    if (isPingingProxies) return;
+    if (!currentProxies.length) {
+      showToast(I18n.t("msg_no_proxies"), "info");
+      return;
+    }
+    isPingingProxies = true;
+    if (els.pingProxies) {
+      els.pingProxies.classList.add("busy");
+      els.pingProxies.disabled = true;
+    }
+    showToast(I18n.t("msg_pinging"), "info");
+
+    currentProxies.forEach(p => {
+      currentPingResults[p.id] = { checking: true };
+    });
+    renderProxies();
+
+    try {
+      const resp = await browser.runtime.sendMessage({
+        action: "pingAllProxies",
+        servers: currentProxies
+      });
+      if (resp && resp.results) {
+        Object.keys(resp.results).forEach(id => {
+          currentPingResults[id] = resp.results[id];
+        });
+      }
+      showToast(I18n.t("msg_ping_done"), "success");
+    } catch (e) {
+      showToast(I18n.t("msg_error"), "error");
+    } finally {
+      isPingingProxies = false;
+      if (els.pingProxies) {
+        els.pingProxies.classList.remove("busy");
+        els.pingProxies.disabled = false;
+      }
+      renderProxies();
+    }
+  }
+
+  if (els.pingProxies) {
+    els.pingProxies.addEventListener("click", pingAllProxies);
+  }
+
   els.showAddProxy.addEventListener("click", () => openProxyForm(null));
   els.cancelProxy.addEventListener("click", () => showProxyMain());
 
@@ -1103,6 +1162,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   els.deleteProxy.addEventListener("click", async () => {
     if (editingProxyId == null) return;
+    delete currentPingResults[editingProxyId];
     await persistProxies(currentProxies.filter(p => p.id !== editingProxyId));
     flash(els.pStatus, I18n.t("msg_proxy_deleted"));
     showProxyMain();
@@ -1305,7 +1365,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   if (els.infoBtn) els.infoBtn.addEventListener("click", openInfoModal);
   if (els.closeInfoBtn) els.closeInfoBtn.addEventListener("click", closeInfoModal);
-  if (els.confirmInfoBtn) els.confirmInfoBtn.addEventListener("click", closeInfoModal);
   if (els.infoModal) {
     els.infoModal.addEventListener("click", (e) => {
       if (e.target === els.infoModal) closeInfoModal();

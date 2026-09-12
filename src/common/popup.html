@@ -80,11 +80,10 @@
     .info-close-btn:hover { background: #35373c; color: #f2f3f5; }
     .info-close-btn svg { width: 16px; height: 16px; display: block; }
     .info-desc { font-size: 12px; color: #b5bac1; line-height: 1.5; margin: 0 0 14px; }
-    .info-links { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+    .info-links { display: flex; flex-direction: column; gap: 8px; margin-bottom: 0; }
     .info-link { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #1e1f22; border-radius: 10px; color: #00a8fc; text-decoration: none; font-size: 12px; font-weight: 600; transition: background 0.15s, color 0.15s; }
     .info-link:hover { background: #35373c; color: #fff; }
     .info-link svg { width: 16px; height: 16px; flex-shrink: 0; }
-    #confirmInfoBtn { width: 100%; min-height: 34px; }
     .toast-container { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 100; pointer-events: none; width: 0; height: 0; }
     .toast { position: absolute; bottom: 0; left: 50%; transform: translate(-50%, 10px); pointer-events: auto; padding: 8px 16px; border-radius: 10px; font-size: 12px; font-weight: 600; line-height: 1.4; text-align: center; box-shadow: 0 6px 20px rgba(0,0,0,0.5); opacity: 0; transition: opacity 0.25s ease, transform 0.25s ease; word-break: break-word; max-width: 380px; width: max-content; box-sizing: border-box; }
     .toast.toast-in { opacity: 1; transform: translate(-50%, 0); }
@@ -123,6 +122,10 @@
     .list-card-actions button.busy svg { animation: list-spin 0.8s linear infinite; }
     @keyframes list-spin { to { transform: rotate(360deg); } }
     .list-card-side { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+    .proxy-ping { font-size: 11px; font-weight: 700; line-height: 1; padding: 3px 6px; border-radius: 6px; flex-shrink: 0; user-select: none; white-space: nowrap; }
+    .proxy-ping.good { color: #57f287; background: rgba(87, 242, 135, 0.12); }
+    .proxy-ping.bad { color: #ff6b6b; background: rgba(255, 107, 107, 0.12); }
+    .proxy-ping.checking { color: #b5bac1; background: rgba(255, 255, 255, 0.06); }
     .list-card .switch-ui { background: #404249; }
     .list-card-side button { width: 28px; height: 28px; min-width: 28px; min-height: 28px; padding: 0; flex: none; background: #35373c; color: #f2f3f5; border-radius: 8px; }
     .list-card-side button:hover { background: #016bcf; color: #fff; }
@@ -243,6 +246,7 @@
       min-width: 40px;
       min-height: 40px;
     }
+    html.android .proxy-ping { font-size: 12px; padding: 4px 8px; }
     html.android input[type="text"],
     html.android input[type="password"],
     html.android input[type="number"],
@@ -337,7 +341,12 @@
           <input id="proxySearch" class="search-box" type="text" data-i18n-placeholder="search_proxies" placeholder="Поиск по названию, IP или домену" autocomplete="off" spellcheck="false">
           <div id="proxyEmpty" class="lists-empty" data-i18n="empty_proxies">Прокси пока нет</div>
           <div id="proxyContainer" class="lists-wrap"></div>
-          <button id="showAddProxyBtn" class="primary lists-add" type="button" data-i18n="btn_add_proxy">Добавить прокси</button>
+          <div class="row lists-add">
+            <button id="showAddProxyBtn" class="primary" type="button" data-i18n="btn_add_proxy">Добавить прокси</button>
+            <button id="pingProxiesBtn" class="icon-btn" type="button" data-i18n-title="btn_ping_all" title="Проверить пинг" aria-label="Проверить пинг">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            </button>
+          </div>
           <div id="proxyStatus" class="hint"></div>
         </div>
         <div id="proxyForm" style="display:none;">
@@ -445,7 +454,6 @@
           <span data-i18n="info_inspired_link">Вдохновлено MeguProxy</span>
         </a>
       </div>
-      <button id="confirmInfoBtn" class="primary" type="button" data-i18n="btn_close">Закрыть</button>
     </div>
   </div>
   <div id="domainsPanel" class="domains-overlay">

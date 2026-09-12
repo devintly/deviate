@@ -1,4 +1,5 @@
 let proxyConfig = { type: "socks", host: "", port: 0, username: "", password: "" };
+let proxyServers = [];
 let proxyRules = [];
 let directRules = [];
 let proxyLists = [];
@@ -290,8 +291,24 @@ function onProxyRequest(requestInfo) {
 function handleProxyRequest(requestInfo) {
   if (isOwnPage(requestInfo && requestInfo.url)) return { type: "direct" };
   let host = "";
-  try { host = new URL(requestInfo.url).hostname.toLowerCase(); } catch (e) { return { type: "direct" }; }
+  let u = null;
+  try {
+    u = new URL(requestInfo.url);
+    host = u.hostname.toLowerCase();
+  } catch (e) { return { type: "direct" }; }
   if (!host) return { type: "direct" };
+
+  if (host === "cp.cloudflare.com") {
+    const probeId = u.searchParams.get("__deviate_probe");
+    if (probeId) {
+      const target = proxyServers.find(p => String(p.id) === String(probeId));
+      if (target && target.host && target.port) {
+        return PacParse.userProxyToFirefox(target);
+      }
+      return { type: "http", host: "127.0.0.1", port: 0 };
+    }
+  }
+
   const tabId = requestInfo.tabId;
   const sync = decideProxySync(host, tabId);
   if (sync) {
@@ -427,15 +444,22 @@ try {
   browser.webRequest.onAuthRequired.addListener(
     function (details) {
       if (!details.isProxy) return {};
-      if (!proxyConfig.username && !proxyConfig.password) return {};
+      const chHost = details.challenger && details.challenger.host;
+      const chPort = details.challenger && details.challenger.port;
+      const srv = (chHost && chPort && proxyServers.find(p =>
+        (p.host === chHost || String(p.host).toLowerCase() === String(chHost).toLowerCase()) &&
+        Number(p.port) === chPort
+      )) || (proxyConfig.username && proxyConfig.password ? proxyConfig : null);
+
+      if (!srv || !srv.username || !srv.password) return {};
       const id = details.requestId;
       if (proxyAuthTried.has(id)) return { cancel: true };
       if (proxyAuthTried.size > 200) proxyAuthTried.clear();
       proxyAuthTried.add(id);
       return {
         authCredentials: {
-          username: proxyConfig.username || "",
-          password: proxyConfig.password || ""
+          username: srv.username || "",
+          password: srv.password || ""
         }
       };
     },
@@ -650,7 +674,45 @@ async function scheduleListUpdates() {
   } catch (e) {}
 }
 
+async function pingServer(server) {
+  if (!server || !server.host || !server.port) {
+    return { id: server ? server.id : null, success: false, latency: null };
+  }
+  const probeUrl = `http://cp.cloudflare.com/generate_204?__deviate_probe=${server.id}&_t=${Date.now()}_${Math.random()}`;
+  const start = performance.now();
+  try {
+    await fetch(probeUrl, {
+      cache: "no-store",
+      mode: "no-cors",
+      signal: AbortSignal.timeout(5000)
+    });
+    const latency = Math.max(1, Math.round(performance.now() - start));
+    return { id: server.id, success: true, latency };
+  } catch (e) {
+    return { id: server.id, success: false, latency: null };
+  }
+}
+
+async function pingAllServers(serversToPing) {
+  const targets = (serversToPing && serversToPing.length ? serversToPing : proxyServers).filter(p => p && p.host && p.port);
+  if (!targets.length) return {};
+  const results = {};
+  const pings = await Promise.all(targets.map(p => pingServer(p)));
+  pings.forEach(res => {
+    if (res && res.id != null) {
+      results[res.id] = { success: res.success, latency: res.latency };
+    }
+  });
+  return results;
+}
+
 browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.action === "pingAllProxies") {
+    pingAllServers(msg.servers)
+      .then(results => sendResponse({ success: true, results }))
+      .catch(e => sendResponse({ success: false, error: String(e.message || e), results: {} }));
+    return true;
+  }
   if (msg.action === "fetchList") {
     fetchAndStoreList(msg.url, msg.id, msg)
       .then(() => sendResponse({ success: true }))
@@ -725,7 +787,8 @@ browser.alarms.onAlarm.addListener((alarm) => {
 browser.storage.onChanged.addListener(async (changes) => {
   let need = false;
   if (changes.proxyServers) {
-    proxyConfig = configFromServers(migrateProxyServers(changes.proxyServers.newValue || [], null));
+    proxyServers = Array.isArray(changes.proxyServers.newValue) ? changes.proxyServers.newValue : [];
+    proxyConfig = configFromServers(migrateProxyServers(proxyServers, null));
     need = true;
   } else if (changes.proxyConfig) {
     proxyConfig = changes.proxyConfig.newValue || proxyConfig;
@@ -772,8 +835,8 @@ let initialized = false;
 
 async function initBackground() {
   const res = await browser.storage.local.get(["proxyConfig", "proxyServers", "proxyRules", "directRules", "proxyLists", "extensionEnabled"]);
-  const servers = migrateProxyServers(res.proxyServers, res.proxyConfig);
-  proxyConfig = configFromServers(servers);
+  proxyServers = migrateProxyServers(res.proxyServers, res.proxyConfig);
+  proxyConfig = configFromServers(proxyServers);
   if (res.extensionEnabled == null) extensionEnabled = !!(proxyConfig && proxyConfig.host);
   else extensionEnabled = !!res.extensionEnabled && !!(proxyConfig && proxyConfig.host);
   const persist = {};

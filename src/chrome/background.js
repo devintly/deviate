@@ -167,7 +167,31 @@ function pacProxyString(cfg) {
   return `PROXY ${host}:${port}; DIRECT`;
 }
 
-function generatePacScript(proxyStr, dExact, dSuffix, dIp, pExact, pSuffix, pIp, pCidr, pacLists, viaProxy) {
+function pacProbeString(p) {
+  if (!p || !p.host || !p.port) return "PROXY 0.0.0.0:0";
+  const type = String(p.type || "socks").toLowerCase();
+  const host = String(p.host).trim();
+  const port = Number(p.port);
+  if (type === "socks" || type === "socks5") {
+    return `SOCKS5 ${host}:${port}; SOCKS ${host}:${port}`;
+  }
+  if (type === "https") {
+    return `HTTPS ${host}:${port}`;
+  }
+  return `PROXY ${host}:${port}`;
+}
+
+function buildProbeProxiesMap(servers) {
+  const map = {};
+  (servers || []).forEach(p => {
+    if (p && p.id != null) {
+      map[p.id] = pacProbeString(p);
+    }
+  });
+  return map;
+}
+
+function generatePacScript(proxyStr, dExact, dSuffix, dIp, pExact, pSuffix, pIp, pCidr, pacLists, viaProxy, probeMap) {
   const serializedPacLists = (pacLists || []).map(p => ({
     extra: p.extraMap || {},
     packed: p.packed || null,
@@ -186,6 +210,7 @@ var pIp = ${JSON.stringify(pIp)};
 var pCidr = ${JSON.stringify(pCidr)};
 var viaProxy = ${JSON.stringify(viaProxy)};
 var rawPac = ${JSON.stringify(serializedPacLists)};
+var probeProxies = ${JSON.stringify(probeMap || {})};
 
 function indexPacked(packed) {
   var idx = {};
@@ -282,6 +307,14 @@ function FindProxyForURL(url, host) {
   if (host.charCodeAt(host.length - 1) === 46) host = host.slice(0, -1);
   if (host.charCodeAt(0) === 46) host = host.slice(1);
 
+  if (host === "cp.cloudflare.com") {
+    var probeIdx = url.indexOf("__deviate_probe=");
+    if (probeIdx !== -1) {
+      var probeId = url.substring(probeIdx + 16).split("&")[0];
+      if (probeProxies[probeId]) return probeProxies[probeId];
+    }
+  }
+
   if (dE[host] || dIp[host] || matchSuffix(host, dS)) return "DIRECT";
   if (viaProxy[host]) return PROXY;
   if (pE[host] || pIp[host] || matchSuffix(host, pS)) return PROXY;
@@ -313,7 +346,8 @@ async function applyProxySettings() {
   }
 
   const proxyStr = pacProxyString(proxyConfig);
-  const pacCode = generatePacScript(proxyStr, dE, dS, dIp, pE, pS, pIp, pCidr, pPac, viaProxyHosts);
+  const probeMap = buildProbeProxiesMap(proxyServers);
+  const pacCode = generatePacScript(proxyStr, dE, dS, dIp, pE, pS, pIp, pCidr, pPac, viaProxyHosts, probeMap);
 
   return new Promise(resolve => {
     chrome.proxy.settings.set({
@@ -343,11 +377,22 @@ async function applyProxySettings() {
 chrome.webRequest.onAuthRequired.addListener(
   (details, callbackFn) => {
     ensureInit().then(() => {
-      if (details.isProxy && proxyConfig.username && proxyConfig.password) {
+      if (!details.isProxy) {
+        callbackFn({});
+        return;
+      }
+      const chHost = details.challenger && details.challenger.host;
+      const chPort = details.challenger && details.challenger.port;
+      const srv = (chHost && chPort && proxyServers.find(p =>
+        (p.host === chHost || String(p.host).toLowerCase() === String(chHost).toLowerCase()) &&
+        Number(p.port) === chPort
+      )) || (proxyConfig.username && proxyConfig.password ? proxyConfig : null);
+
+      if (srv && srv.username && srv.password) {
         callbackFn({
           authCredentials: {
-            username: proxyConfig.username,
-            password: proxyConfig.password
+            username: srv.username,
+            password: srv.password
           }
         });
       } else {
@@ -665,8 +710,81 @@ function coverPayload(host) {
   return { listed, listedParent, listedParentRule, listName };
 }
 
+async function pingServer(server) {
+  if (!server || !server.host || !server.port) {
+    return { id: server ? server.id : null, success: false, latency: null };
+  }
+  const probeUrl = `http://cp.cloudflare.com/generate_204?__deviate_probe=${server.id}&_t=${Date.now()}_${Math.random()}`;
+  const start = performance.now();
+  try {
+    await fetch(probeUrl, {
+      cache: "no-store",
+      mode: "no-cors",
+      signal: AbortSignal.timeout(5000)
+    });
+    const latency = Math.max(1, Math.round(performance.now() - start));
+    return { id: server.id, success: true, latency };
+  } catch (e) {
+    return { id: server.id, success: false, latency: null };
+  }
+}
+
+async function pingAllServers(serversToPing) {
+  const targets = (serversToPing && serversToPing.length ? serversToPing : proxyServers).filter(p => p && p.host && p.port);
+  if (!targets.length) return {};
+
+  const wasDisabled = !extensionEnabled || !proxyConfig || !proxyConfig.host;
+  if (wasDisabled) {
+    const probeMap = buildProbeProxiesMap(targets);
+    const tempPac = `var probeProxies = ${JSON.stringify(probeMap)};
+function FindProxyForURL(url, host) {
+  if (host === "cp.cloudflare.com") {
+    var probeIdx = url.indexOf("__deviate_probe=");
+    if (probeIdx !== -1) {
+      var probeId = url.substring(probeIdx + 16).split("&")[0];
+      if (probeProxies[probeId]) return probeProxies[probeId];
+    }
+  }
+  return "DIRECT";
+}`;
+    await new Promise(res => {
+      chrome.proxy.settings.set({
+        value: { mode: "pac_script", pacScript: { data: tempPac, mandatory: false } },
+        scope: "regular"
+      }, () => res());
+    });
+  }
+
+  const results = {};
+  try {
+    const pings = await Promise.all(targets.map(p => pingServer(p)));
+    pings.forEach(res => {
+      if (res && res.id != null) {
+        results[res.id] = { success: res.success, latency: res.latency };
+      }
+    });
+  } finally {
+    if (wasDisabled) {
+      if (!extensionEnabled || !proxyConfig || !proxyConfig.host) {
+        await new Promise(res => {
+          chrome.proxy.settings.clear({ scope: "regular" }, () => res());
+        });
+      } else {
+        await applyProxySettings();
+      }
+    }
+  }
+  return results;
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   ensureInit().then(() => {
+    if (msg.action === "pingAllProxies") {
+      pingAllServers(msg.servers)
+        .then(results => sendResponse({ success: true, results }))
+        .catch(e => sendResponse({ success: false, error: String((e && e.message) || e), results: {} }));
+      return;
+    }
     if (msg.action === "fetchList") {
       fetchAndStoreList(msg.url, msg.id, msg)
         .then(() => sendResponse({ success: true }))
