@@ -27,10 +27,11 @@
       btn_save: "Сохранить",
       btn_saving: "Сохранение...",
       btn_cancel: "Отмена",
+      btn_close: "Закрыть",
       btn_add_proxy: "Добавить прокси",
       btn_add_list: "Добавить список",
       btn_update_all: "Обновить все",
-      btn_ping_all: "Проверить пинг",
+      btn_ping_all: "Проверить доступность",
       lbl_protocol: "Тип прокси",
       lbl_host: "IP адрес / Хост",
       lbl_port: "Порт",
@@ -70,7 +71,7 @@
       msg_list_added: "Список добавлен",
       msg_no_lists: "Списков нет",
       msg_no_proxies: "Нет прокси для проверки",
-      msg_pinging: "Проверка прокси...",
+      msg_pinging: "Проверка доступности...",
       msg_ping_done: "Проверка завершена",
       msg_active_saved: "Активный прокси выбран",
       msg_saved: "Сохранено",
@@ -78,10 +79,6 @@
       msg_added: "добавлено: {count}",
       msg_removed: "удалено: {count}",
       msg_setup_proxy_first: "Сначала добавьте прокси",
-      updated_ago_min: "{n} мин. назад",
-      updated_ago_hr: "{n} ч. назад",
-      updated_ago_day: "{n} дн. назад",
-      updated_just_now: "только что",
       updated_never: "еще не обновлялся",
       lbl_updated: "Обновлён",
       list_editor_title: "Редактор правил",
@@ -101,13 +98,21 @@
       msg_updated_count: "Обновлено: {count}",
       msg_updated_failed: "Обновлено: {updated}, ошибок: {failed}",
       msg_rule_added: "Добавлено",
+      msg_invalid_rules: "Исправьте некорректные строки: {lines}",
+      not_available: "н/д",
+      error_list_missing: "Список не найден",
+      error_html_response: "Сервер вернул HTML вместо списка или PAC",
+      error_not_pac: "Ответ не похож на PAC-файл",
+      error_empty_pac: "Получен пустой PAC-файл",
+      error_parse_timeout: "Разбор списка превысил время ожидания",
+      error_parse: "Не удалось разобрать список",
+      error_proxy_apply: "Не удалось применить настройки прокси",
       placeholder_proxy_name: "Если пусто — будет адрес",
       placeholder_list_name: "Если пусто — будет ссылка",
       placeholder_list_url: "https://.../filter.txt или https://.../proxy.pac",
       conflict_warning_title: "Конфликт расширений",
       conflict_warning_desc: "Другое расширение контролирует настройки прокси. Отключите конфликтующие VPN или прокси-расширения.",
       info_title: "О расширении",
-      info_version: "Версия {version}",
       info_desc: "Проксирование сайтов через SOCKS/HTTP/HTTPS по пользовательским правилам с поддержкой импорта TXT/PAC списков.",
       info_source_link: "Исходный код (GitHub)",
       info_inspired_link: "Вдохновлено MeguProxy"
@@ -137,10 +142,11 @@
       btn_save: "Save",
       btn_saving: "Saving...",
       btn_cancel: "Cancel",
+      btn_close: "Close",
       btn_add_proxy: "Add Proxy",
       btn_add_list: "Add List",
       btn_update_all: "Update All",
-      btn_ping_all: "Check ping",
+      btn_ping_all: "Check availability",
       lbl_protocol: "Proxy type",
       lbl_host: "IP / Host",
       lbl_port: "Port",
@@ -180,7 +186,7 @@
       msg_list_added: "List added",
       msg_no_lists: "No lists",
       msg_no_proxies: "No proxies to check",
-      msg_pinging: "Checking proxies...",
+      msg_pinging: "Checking availability...",
       msg_ping_done: "Check complete",
       msg_active_saved: "Active proxy selected",
       msg_saved: "Saved",
@@ -188,10 +194,6 @@
       msg_added: "added: {count}",
       msg_removed: "removed: {count}",
       msg_setup_proxy_first: "Configure proxy first",
-      updated_ago_min: "{n} min ago",
-      updated_ago_hr: "{n} hr ago",
-      updated_ago_day: "{n} d ago",
-      updated_just_now: "just now",
       updated_never: "never updated",
       lbl_updated: "Updated",
       list_editor_title: "Rule Editor",
@@ -211,13 +213,21 @@
       msg_updated_count: "Updated: {count}",
       msg_updated_failed: "Updated: {updated}, failed: {failed}",
       msg_rule_added: "Added",
+      msg_invalid_rules: "Fix invalid lines: {lines}",
+      not_available: "n/a",
+      error_list_missing: "List not found",
+      error_html_response: "The server returned HTML instead of a list or PAC",
+      error_not_pac: "The response is not a PAC file",
+      error_empty_pac: "The PAC response is empty",
+      error_parse_timeout: "List parsing timed out",
+      error_parse: "Could not parse the list",
+      error_proxy_apply: "Could not apply proxy settings",
       placeholder_proxy_name: "If empty — host will be used",
       placeholder_list_name: "If empty — URL will be used",
       placeholder_list_url: "https://.../filter.txt or https://.../proxy.pac",
       conflict_warning_title: "Extension Conflict",
       conflict_warning_desc: "Another extension is controlling proxy settings. Please disable conflicting VPN or proxy extensions.",
       info_title: "About DeviateProxy",
-      info_version: "Version {version}",
       info_desc: "Website proxying via SOCKS/HTTP/HTTPS using custom rules with support for importing TXT/PAC lists.",
       info_source_link: "Source Code (GitHub)",
       info_inspired_link: "Inspired by MeguProxy"
@@ -257,7 +267,16 @@
     return str;
   }
 
+  function error(message, code) {
+    if (code && MESSAGES.en[code]) return t(code);
+    const text = String((message && message.message) || message || "").trim();
+    return text.slice(0, 180) || t("msg_error");
+  }
+
   function applyDom() {
+    document.documentElement.lang = currentLang;
+    const titleKey = document.documentElement.getAttribute("data-i18n-document-title");
+    if (titleKey) document.title = `DeviateProxy — ${t(titleKey)}`;
     document.querySelectorAll("[data-i18n]").forEach(el => {
       const key = el.getAttribute("data-i18n");
       if (key) el.textContent = t(key);
@@ -268,7 +287,14 @@
     });
     document.querySelectorAll("[data-i18n-title]").forEach(el => {
       const key = el.getAttribute("data-i18n-title");
-      if (key) el.title = t(key);
+      if (key) {
+        el.title = t(key);
+        if (el.hasAttribute("aria-label")) el.setAttribute("aria-label", t(key));
+      }
+    });
+    document.querySelectorAll("[data-i18n-aria-label]").forEach(el => {
+      const key = el.getAttribute("data-i18n-aria-label");
+      if (key) el.setAttribute("aria-label", t(key));
     });
   }
 
@@ -284,6 +310,7 @@
 
   const I18n = {
     t,
+    error,
     init,
     getLang,
     applyDom,

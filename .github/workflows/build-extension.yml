@@ -14,17 +14,27 @@ jobs:
   build:
     name: Собрать zip/xpi
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
+
+      - name: Tests
+        run: |
+          node scripts/test-host-rules.js
+          node scripts/test-own-pages.js
+          node scripts/test-list-ingest.js
+          node scripts/test-list-update.js
+          node scripts/test-proxy-info.js
+          node scripts/test-generate-pac.js
+          node scripts/test-pac-parse.js
+          node scripts/test-routing-parity.js
+          node scripts/test-background-contracts.js
 
       - name: Package
         run: python3 scripts/package.py
 
       - name: Upload packages
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: deviateproxy-packages
           path: |
@@ -33,14 +43,27 @@ jobs:
           if-no-files-found: error
 
       - name: Upload unpacked extensions
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: deviateproxy-unpacked
           path: dist/unpacked/
           if-no-files-found: error
 
+  release:
+    name: Опубликовать релиз
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          name: deviateproxy-packages
+          path: dist
+
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

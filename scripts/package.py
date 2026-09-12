@@ -16,9 +16,16 @@ TARGETS = ("firefox", "chrome")
 SKIP_NAMES = {".DS_Store", "Thumbs.db"}
 
 
-def copy_tree_filtered(src: Path, dst: Path) -> None:
+TARGET_EXCLUDE = {
+    "firefox": {"generate-pac.js"},
+    "chrome": set(),
+}
+
+
+def copy_tree_filtered(src: Path, dst: Path, exclude_names: set[str] | None = None) -> None:
+    excludes = SKIP_NAMES if exclude_names is None else (SKIP_NAMES | exclude_names)
     for item in src.rglob("*"):
-        if item.is_file() and item.name not in SKIP_NAMES:
+        if item.is_file() and item.name not in excludes:
             rel = item.relative_to(src)
             target = dst / rel
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -32,7 +39,7 @@ def prepare_unpacked(target: str) -> Path:
     out_dir.mkdir(parents=True)
 
     # 1. Shared common assets and scripts
-    copy_tree_filtered(COMMON, out_dir)
+    copy_tree_filtered(COMMON, out_dir, TARGET_EXCLUDE.get(target))
 
     # 2. Browser-specific files (manifest, background, etc.)
     target_src = SRC / target

@@ -15,6 +15,12 @@ sandbox.exports = sandbox.module.exports;
 vm.createContext(sandbox);
 vm.runInContext(code, sandbox, { filename: "pac-parse.js" });
 const api = sandbox.PacParse || sandbox.module.exports;
+const proxyConfigPath = path.join(ROOT, "src", "common", "proxy-config.js");
+const proxySandbox = { module: { exports: {} }, crypto: require("crypto").webcrypto };
+proxySandbox.exports = proxySandbox.module.exports;
+vm.createContext(proxySandbox);
+vm.runInContext(fs.readFileSync(proxyConfigPath, "utf8"), proxySandbox, { filename: "proxy-config.js" });
+const proxyApi = proxySandbox.module.exports;
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
@@ -51,19 +57,12 @@ assert(http.type === "http", "http type");
 assert(http.username == null && http.password == null, "http must not set socks username fields");
 assert(http.proxyAuthorizationHeader === "Basic " + btoa("user:secret"), "http basic header");
 
-function proxyKey(p) {
-  const host = String(p.host || "").trim().toLowerCase();
-  const port = Number(p.port) || 0;
-  const user = String(p.username || "");
-  const pass = String(p.password || "");
-  return `${host}|${port}|${user}|${pass}`;
-}
-
 const a = { host: "127.0.0.1", port: 2080, username: "u1", password: "p1" };
 const b = { host: "127.0.0.1", port: 2080, username: "u2", password: "p2" };
 const c = { host: "127.0.0.1", port: 2080, username: "u1", password: "p1", name: "Домашний", type: "http" };
-assert(proxyKey(a) !== proxyKey(b), "same host/port with different login must not be a duplicate");
-assert(proxyKey(a) === proxyKey(c), "name and type must not affect duplicate key");
-assert(proxyKey({ host: "127.0.0.1", port: 2080 }) !== proxyKey({ host: "127.0.0.1", port: 2080, username: "u", password: "p" }), "empty auth is not the same as filled auth");
+assert(proxyApi.proxyKey(a) !== proxyApi.proxyKey(b), "same host/port with different login must not be a duplicate");
+assert(proxyApi.proxyKey(a) !== proxyApi.proxyKey(c), "proxy type must affect duplicate key");
+assert(proxyApi.proxyKey({ host: "127.0.0.1", port: 2080 }) !== proxyApi.proxyKey({ host: "127.0.0.1", port: 2080, username: "u", password: "p" }), "empty auth is not the same as filled auth");
+assert(proxyApi.uniqueId() !== proxyApi.uniqueId(), "generated IDs must be unique");
 
 console.log("test-proxy-info: ok");

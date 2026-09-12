@@ -6,6 +6,6 @@ self.onmessage = function (e) {
   try {
     self.postMessage({ ok: true, item: ListIngest.ingestRemote(data.url, data.text) });
   } catch (err) {
-    self.postMessage({ ok: false, error: String((err && err.message) || err) });
+    self.postMessage({ ok: false, error: String((err && err.message) || err), code: (err && err.code) || "" });
   }
 };

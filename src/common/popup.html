@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <script src="platform.js"></script>
   <script src="i18n.js"></script>
+  <script src="host-rules.js"></script>
+  <script src="proxy-config.js"></script>
   <script src="list-update.js"></script>
   <style>
     * { box-sizing: border-box; }
@@ -311,15 +313,15 @@
 </head>
 <body>
   <div class="wrap">
-    <div class="tabs">
+    <div class="tabs" role="tablist">
       <button id="powerBtn" class="power-btn off" type="button" title="Включить расширение" aria-label="Включить расширение" aria-pressed="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v8"/><path d="M7.4 6.4a7 7 0 1 0 9.2 0"/></svg>
       </button>
-      <div id="tabRules" class="tab active" data-i18n="tabs_rules">Правила</div>
-      <div id="tabProxy" class="tab" data-i18n="tabs_proxy">Прокси</div>
-      <div id="tabLists" class="tab" data-i18n="tabs_lists">Списки</div>
-      <button id="infoBtn" class="info-btn" type="button" data-i18n-title="info_title" title="О расширении" aria-label="О расширении">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      <button id="tabRules" class="tab active" type="button" role="tab" aria-controls="panelRules" aria-selected="true" data-i18n="tabs_rules">Правила</button>
+      <button id="tabProxy" class="tab" type="button" role="tab" aria-controls="panelProxy" aria-selected="false" tabindex="-1" data-i18n="tabs_proxy">Прокси</button>
+      <button id="tabLists" class="tab" type="button" role="tab" aria-controls="panelLists" aria-selected="false" tabindex="-1" data-i18n="tabs_lists">Списки</button>
+      <button id="infoBtn" class="info-btn" type="button" data-i18n-title="info_title" data-i18n-aria-label="info_title" title="О расширении" aria-label="О расширении">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8v.01"/></svg>
       </button>
     </div>
 
@@ -333,7 +335,7 @@
       </div>
     </div>
 
-    <div id="panelRules" class="panel active">
+    <div id="panelRules" class="panel active" role="tabpanel" aria-labelledby="tabRules">
       <div class="card">
         <div id="domainScope" class="scope-row">
           <button id="scopeHostBtn" class="scope-btn active" type="button" data-i18n="lbl_scope_host">Текущий</button>
@@ -359,7 +361,7 @@
       </div>
     </div>
 
-    <div id="panelProxy" class="panel">
+    <div id="panelProxy" class="panel" role="tabpanel" aria-labelledby="tabProxy">
       <div class="card">
         <div id="proxyMain">
           <input id="proxySearch" class="search-box" type="text" data-i18n-placeholder="search_proxies" placeholder="Поиск по названию, IP или домену" autocomplete="off" spellcheck="false">
@@ -371,7 +373,6 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
             </button>
           </div>
-          <div id="proxyStatus" class="hint"></div>
         </div>
         <div id="proxyForm" style="display:none;">
           <div class="row form-pair">
@@ -413,12 +414,11 @@
             <button id="deleteProxyBtn" class="danger" type="button" style="display:none;" data-i18n="btn_delete">Удалить</button>
           </div>
           <button id="cancelProxyBtn" class="secondary lists-add" type="button" data-i18n="btn_cancel">Отмена</button>
-          <div id="proxyFormStatus" class="hint"></div>
         </div>
       </div>
     </div>
 
-    <div id="panelLists" class="panel">
+    <div id="panelLists" class="panel" role="tabpanel" aria-labelledby="tabLists">
       <div class="card">
         <div id="listsMain">
           <input id="listsSearch" class="search-box" type="text" data-i18n-placeholder="search_lists" placeholder="Поиск по названию или ссылке" autocomplete="off" spellcheck="false">
@@ -430,7 +430,6 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><polyline points="21 3 21 9 15 9"/></svg>
             </button>
           </div>
-          <div id="listStatus" class="hint"></div>
         </div>
         <div id="listsForm" style="display:none;">
           <div class="label" data-i18n="lbl_name">Название</div>
@@ -454,16 +453,15 @@
             <button id="deleteListBtn" class="danger" type="button" style="display:none;" data-i18n="btn_delete">Удалить</button>
           </div>
           <button id="cancelListBtn" class="secondary lists-add" type="button" data-i18n="btn_cancel">Отмена</button>
-          <div id="listFormStatus" class="hint"></div>
         </div>
       </div>
     </div>
   </div>
   <div id="infoModal" class="info-overlay">
-    <div class="info-modal">
+    <div class="info-modal" role="dialog" aria-modal="true" aria-labelledby="infoModalTitle">
       <div class="info-header">
-        <div class="info-modal-title">DeviateProxy <span id="infoVersion" class="info-version">v2.0</span></div>
-        <button id="closeInfoBtn" class="info-close-btn" type="button" aria-label="Закрыть">
+        <div id="infoModalTitle" class="info-modal-title">DeviateProxy <span id="infoVersion" class="info-version"></span></div>
+        <button id="closeInfoBtn" class="info-close-btn" type="button" data-i18n-aria-label="btn_close" aria-label="Закрыть">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -481,8 +479,8 @@
     </div>
   </div>
   <div id="domainsPanel" class="domains-overlay">
-    <div class="domains-modal">
-      <div class="label" data-i18n="btn_tab_domains">Домены вкладки</div>
+    <div class="domains-modal" role="dialog" aria-modal="true" aria-labelledby="domainsModalTitle">
+      <div id="domainsModalTitle" class="label" data-i18n="btn_tab_domains">Домены вкладки</div>
       <input id="domainsSearch" class="search-box" type="text" data-i18n-placeholder="search_domains" placeholder="Поиск домена" autocomplete="off" spellcheck="false">
       <div id="domainsEmpty" class="domains-empty" data-i18n="empty_domains">Нет доменов. Откройте сайт и обновите страницу.</div>
       <div id="domainsList" class="domains-list"></div>

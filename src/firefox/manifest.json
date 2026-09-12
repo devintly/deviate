@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "default_locale": "ru",
-  "name": "DeviateProxy",
+  "name": "__MSG_extensionName__",
   "version": "1.0",
   "description": "__MSG_extensionDescription__",
   "browser_specific_settings": {
@@ -40,7 +40,7 @@
     "256": "icons/icon_256.png"
   },
   "background": {
-    "scripts": ["pac-parse.js", "list-update.js", "list-ingest.js", "background.js"]
+    "scripts": ["pac-parse.js", "list-update.js", "list-ingest.js", "host-rules.js", "proxy-config.js", "background.js"]
   },
   "action": {
     "default_popup": "popup.html",

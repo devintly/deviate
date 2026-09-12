@@ -7,34 +7,27 @@ document.addEventListener("DOMContentLoaded", async () => {
   const saveBtn = document.getElementById("saveBtn");
   const status = document.getElementById("status");
 
-  function isIpHost(h) {
-    return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(h) || String(h || "").indexOf(":") >= 0;
+  function parseRules(text) {
+    const rules = [];
+    const invalid = [];
+    String(text || "").split("\n").forEach((line, index) => {
+      const raw = line.trim();
+      if (!raw) return;
+      const normalized = HostRules.normalizeRule(raw);
+      if (!normalized) invalid.push(index + 1);
+      else if (!rules.includes(normalized)) rules.push(normalized);
+    });
+    return { rules, invalid };
   }
-  function isAcceptableHost(h) {
-    h = String(h || "");
-    if (!h || /\s/.test(h) || /[^\x00-\x7F]/.test(h)) return false;
-    if (isIpHost(h)) return true;
-    if (!/^[a-z0-9.:\[\]-]+$/i.test(h)) return false;
-    return h.indexOf(".") >= 0 && h.indexOf("..") < 0;
-  }
-  function normalizeRule(rule) {
-    const trimmed = String(rule || "").trim();
-    if (!trimmed || /\s/.test(trimmed)) return "";
-    let s = trimmed.toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
-    if (/\s/.test(s)) return "";
-    const wild = s.startsWith("*.");
-    if (wild) s = s.slice(2);
-    s = s.replace(/^\.+|\.+$/g, "");
-    if (!s || !isAcceptableHost(s)) return "";
-    if (isIpHost(s)) return s;
-    return wild ? "*." + s : s;
-  }
-  function parseRules(text) { return [...new Set(String(text || "").split("\n").map(normalizeRule).filter(Boolean))]; }
   function dropOverlap(proxy, direct) {
-    const d = new Set(direct.map(normalizeRule));
-    return proxy.filter(r => !d.has(normalizeRule(r)));
+    const d = new Set(direct.map(HostRules.normalizeRule));
+    return proxy.filter(r => !d.has(HostRules.normalizeRule(r)));
   }
-  function flash(text, color = "#57f287") { status.style.color = color; status.textContent = text; setTimeout(() => { if (status.textContent === text) status.textContent = ""; }, 1800); }
+  function flash(text, error) {
+    status.style.color = error ? "#ff6b6b" : "#57f287";
+    status.textContent = text;
+    setTimeout(() => { if (status.textContent === text) status.textContent = ""; }, 1800);
+  }
 
   const res = await browser.storage.local.get(["proxyRules", "directRules"]);
   const direct = Array.isArray(res.directRules) ? res.directRules : [];
@@ -43,8 +36,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   directEditor.value = direct.join("\n");
 
   saveBtn.addEventListener("click", async () => {
-    const nextDirect = parseRules(directEditor.value);
-    const nextProxy = dropOverlap(parseRules(proxyEditor.value), nextDirect);
+    const directParsed = parseRules(directEditor.value);
+    const proxyParsed = parseRules(proxyEditor.value);
+    const invalid = directParsed.invalid.concat(proxyParsed.invalid);
+    if (invalid.length) {
+      flash(I18n.t("msg_invalid_rules", { lines: invalid.join(", ") }), true);
+      return;
+    }
+    const nextDirect = directParsed.rules;
+    const nextProxy = dropOverlap(proxyParsed.rules, nextDirect);
     await browser.storage.local.set({ proxyRules: nextProxy, directRules: nextDirect });
     proxyEditor.value = nextProxy.join("\n");
     directEditor.value = nextDirect.join("\n");
@@ -58,4 +58,3 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 });
-

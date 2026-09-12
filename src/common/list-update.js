@@ -28,6 +28,12 @@
     return failCount(list) <= RETRY_LIMIT ? RETRY_MS : intervalMs(list);
   }
 
+  function codedError(code, text) {
+    var err = new Error(String(text || code || "").trim());
+    err.code = code || "";
+    return err;
+  }
+
   function clipError(err) {
     var text = "";
     if (err && err.message) text = String(err.message);
@@ -37,9 +43,20 @@
     return text.slice(0, 180);
   }
 
+  function errorCode(err) {
+    if (err && err.code) return String(err.code);
+    return "";
+  }
+
+  function hasUpdateError(list) {
+    return !!(list && (list.updateError || list.updateErrorCode));
+  }
+
   function markFailure(list, err, now) {
     if (!list) return list;
     list.updateError = clipError(err);
+    list.updateErrorCode = errorCode(err);
+    delete list.lastError;
     list.lastAttemptAt = Number(now) || 0;
     list.updateFailCount = failCount(list) + 1;
     return list;
@@ -49,7 +66,7 @@
     if (!list || !list.url || list.enabled === false) return false;
     now = Number(now) || 0;
     var attempt = Number(list.lastAttemptAt) || 0;
-    if (list.updateError && attempt) {
+    if (hasUpdateError(list) && attempt) {
       return now - attempt >= retryDelayMs(list);
     }
     return now - (Number(list.updatedAt) || 0) >= intervalMs(list);
@@ -59,7 +76,7 @@
     if (!list || !list.url || list.enabled === false) return 0;
     now = Number(now) || 0;
     var attempt = Number(list.lastAttemptAt) || 0;
-    if (list.updateError && attempt) {
+    if (hasUpdateError(list) && attempt) {
       var retryAt = attempt + retryDelayMs(list);
       return now < retryAt ? retryAt : now;
     }
@@ -88,9 +105,44 @@
     if (tabId >= 0) return "";
     host = String(host || "").toLowerCase();
     if (!host) return "";
-    if (directHosts && directHosts[host]) return "direct";
-    if (proxyHosts && proxyHosts[host]) return "proxy";
+    if (proxyHosts && (proxyHosts[host] || proxyHosts["*"])) return "proxy";
+    if (directHosts && (directHosts[host] || directHosts["*"])) return "direct";
     return "";
+  }
+
+  function canonListUrl(url) {
+    try {
+      var parsed = new URL(String(url || "").trim());
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "";
+      parsed.hash = "";
+      if (parsed.pathname !== "/") parsed.pathname = parsed.pathname.replace(/\/+$/, "");
+      return parsed.href;
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function validListUrl(url) {
+    return !!canonListUrl(url);
+  }
+
+  function findListByUrl(lists, url, exceptId) {
+    var c = canonListUrl(url);
+    if (!c) return undefined;
+    return (lists || []).find(function (l) {
+      return l && canonListUrl(l.url) === c && (exceptId == null || l.id !== exceptId);
+    });
+  }
+
+  function listMeta(src, current) {
+    src = src || {};
+    current = current || {};
+    var name = String(src.name !== undefined ? src.name : (current.name || "")).trim();
+    var hoursSrc = src.intervalHours !== undefined ? src.intervalHours : current.intervalHours;
+    var viaProxy = !!(src.viaProxy !== undefined ? src.viaProxy : current.viaProxy);
+    var enabled = src.enabled !== undefined ? src.enabled !== false
+      : (current.enabled !== undefined ? current.enabled !== false : true);
+    return { name: name, intervalHours: intervalHours({ intervalHours: hoursSrc }), viaProxy: viaProxy, enabled: enabled };
   }
 
   function commitFetchedList(lists, item, meta, url, existingId, now) {
@@ -102,7 +154,8 @@
     next.viaProxy = !!(meta && meta.viaProxy);
     next.updatedAt = Number(now) || 0;
     next.updateError = "";
-    next.lastError = "";
+    next.updateErrorCode = "";
+    delete next.lastError;
     next.updateFailCount = 0;
     next.lastAttemptAt = next.updatedAt;
     next.url = url;
@@ -127,6 +180,24 @@
     return next;
   }
 
+  function isStalePac(list) {
+    if (!list || list.format !== "pac" || !list.url) return false;
+    if (list.pacScript || list.pacIndex) return true;
+    if (list.packed && (list.domainCount || 0) >= 100) return false;
+    var domains = (list.domains && list.domains.length) || 0;
+    var ips = (list.ips && list.ips.length) || 0;
+    return (!domains && !ips) || (domains > 0 && domains < 100 && !ips);
+  }
+
+  function migrateList(list) {
+    if (!list) return list;
+    delete list.pacScript;
+    delete list.pacIndex;
+    if (!list.updateError && list.lastError) list.updateError = String(list.lastError);
+    delete list.lastError;
+    return list;
+  }
+
   var api = {
     RETRY_MS: RETRY_MS,
     RETRY_LIMIT: RETRY_LIMIT,
@@ -138,13 +209,21 @@
     failCount: failCount,
     retryDelayMs: retryDelayMs,
     clipError: clipError,
+    codedError: codedError,
+    hasUpdateError: hasUpdateError,
     markFailure: markFailure,
     isDue: isDue,
     nextCheckAt: nextCheckAt,
     soonestCheckAt: soonestCheckAt,
     alarmWhen: alarmWhen,
     fetchRouteOverride: fetchRouteOverride,
-    commitFetchedList: commitFetchedList
+    commitFetchedList: commitFetchedList,
+    canonListUrl: canonListUrl,
+    validListUrl: validListUrl,
+    findListByUrl: findListByUrl,
+    listMeta: listMeta,
+    isStalePac: isStalePac,
+    migrateList: migrateList
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = api;

@@ -45,4 +45,11 @@ try { api.ingestRemote("https://x.test/list.pac", "<!DOCTYPE html><html><body>IP
 catch (e) { htmlErr = e.message; }
 assert(/HTML/i.test(htmlErr), "html rejected");
 
-console.log("test-list-ingest: ok");
+api.ingestRemoteAsync("https://x.test/list.txt", "async.example\n").then(res => {
+  assert(res.format === "txt", "async fallback txt");
+  assert(res.domains.includes("async.example"), "async fallback domain");
+  console.log("test-list-ingest: ok");
+}).catch(err => {
+  console.error(err);
+  process.exit(1);
+});

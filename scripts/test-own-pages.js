@@ -1,29 +1,32 @@
 #!/usr/bin/env node
 "use strict";
 
-function isOwnPage(url, selfBase) {
-  const s = String(url || "");
-  if (!s) return false;
-  return !!(selfBase && s.indexOf(selfBase) === 0);
-}
+const fs = require("fs");
+const path = require("path");
+const vm = require("vm");
+
+const ROOT = path.resolve(__dirname, "..");
+const code = fs.readFileSync(path.join(ROOT, "src", "common", "host-rules.js"), "utf8");
+const sandbox = { console, module: { exports: {} }, self: {}, URL };
+sandbox.exports = sandbox.module.exports;
+vm.createContext(sandbox);
+vm.runInContext(code, sandbox, { filename: "host-rules.js" });
+const api = sandbox.HostRules || sandbox.self.HostRules || sandbox.module.exports;
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
 }
 
 const self = "moz-extension://abc-123/";
-assert(isOwnPage("moz-extension://abc-123/popup.html", self), "settings tab");
-assert(isOwnPage("moz-extension://abc-123/list.html", self), "rules editor tab");
-assert(!isOwnPage("https://rutor.info/", self), "regular site");
-assert(!isOwnPage("moz-extension://other-ext/popup.html", self), "other extension");
-assert(!isOwnPage("", self), "empty");
-assert(isOwnPage("moz-extension://abc-123/popup.html#foo", self), "settings hash");
+assert(api.isOwnPage("moz-extension://abc-123/popup.html", self), "settings tab");
+assert(api.isOwnPage("moz-extension://abc-123/list.html", self), "rules editor tab");
+assert(!api.isOwnPage("https://rutor.info/", self), "regular site");
+assert(!api.isOwnPage("moz-extension://other-ext/popup.html", self), "other extension");
+assert(!api.isOwnPage("", self), "empty");
+assert(api.isOwnPage("moz-extension://abc-123/popup.html#foo", self), "settings hash");
 
-function pickActiveTab(active, fallbackWeb) {
-  if (active && !isOwnPage(active.url, self) && /^https?:/.test(active.url || "")) return active;
-  return null;
-}
-assert(pickActiveTab({ url: "moz-extension://abc-123/list.html" }, { url: "https://rutor.info/" }) === null, "own page must not fall back to another site");
-assert(pickActiveTab({ url: "https://rutor.info/" }) && pickActiveTab({ url: "https://rutor.info/" }).url === "https://rutor.info/", "web tab kept");
+assert(!api.isWebTab({ url: "moz-extension://abc-123/list.html" }, self), "own page is not a web tab");
+assert(api.isWebTab({ url: "https://rutor.info/" }, self), "web tab kept");
+assert(!api.isWebTab({ url: "about:blank" }, self), "about blank");
 
 console.log("test-own-pages: ok");

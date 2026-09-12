@@ -10,7 +10,7 @@ const filePath = fs.existsSync(path.join(ROOT, "src", "common", "list-update.js"
   ? path.join(ROOT, "src", "common", "list-update.js")
   : path.join(ROOT, "list-update.js");
 const code = fs.readFileSync(filePath, "utf8");
-const sandbox = { console, module: { exports: {} }, self: {} };
+const sandbox = { console, module: { exports: {} }, self: {}, URL };
 sandbox.exports = sandbox.module.exports;
 vm.createContext(sandbox);
 vm.runInContext(code, sandbox, { filename: "list-update.js" });
@@ -84,6 +84,7 @@ assert(api.fetchRouteOverride("cdn.example", 3, { "cdn.example": 1 }, {}) === ""
 assert(api.fetchRouteOverride("cdn.example", -1, { "cdn.example": 1 }, {}) === "direct", "extension fetch can go direct");
 assert(api.fetchRouteOverride("cdn.example", -1, {}, { "cdn.example": 1 }) === "proxy", "extension fetch can go via proxy");
 assert(api.fetchRouteOverride("other.test", -1, { "cdn.example": 1 }, {}) === "", "other hosts stay on normal rules");
+assert(api.fetchRouteOverride("redirect.test", -1, {}, { "*": 1 }) === "proxy", "redirect fetch follows via-proxy route");
 
 const lists = [{
   id: 7,
@@ -106,5 +107,23 @@ assert(stored.packed == null, "old packed data is not kept");
 assert(stored.domains[0] === "new.example", "new domains are used");
 assert(stored.url === "https://example/list.txt", "url updated");
 assert(stored.id === 7, "id kept");
+
+assert(api.canonListUrl("https://X.test/list.txt/") === "https://x.test/list.txt", "canon url");
+assert(api.canonListUrl("httpx://x.test/list") === "", "invalid protocol rejected");
+assert(api.validListUrl("https://x.test/list"), "HTTPS URL accepted");
+assert(!api.validListUrl("file:///tmp/list"), "non-web URL rejected");
+assert(api.findListByUrl(lists, "https://example/list.txt/", 99), "find by trailing slash");
+assert(!api.findListByUrl(lists, "https://example/list.txt", 7), "exclude current id");
+const meta = api.listMeta({ intervalHours: 200, viaProxy: 1 }, { name: "old", intervalHours: 3 });
+assert(meta.intervalHours === 168, "listMeta caps hours");
+assert(meta.name === "old", "listMeta keeps existing name");
+assert(api.listMeta({ name: "" }, { name: "old" }).name === "", "explicit empty name wins");
+assert(meta.viaProxy === true, "viaProxy coerced");
+assert(api.listMeta({}, { intervalHours: 24 }).intervalHours === 24, "listMeta keeps existing hours");
+assert(api.listMeta({}).intervalHours === 12, "listMeta default hours");
+
+const legacy = api.migrateList({ format: "pac", pacScript: "old", lastError: "old error" });
+assert(legacy.pacScript == null && legacy.lastError == null, "legacy fields removed");
+assert(legacy.updateError === "old error", "legacy error migrated");
 
 console.log("test-list-update: ok");

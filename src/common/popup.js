@@ -2,29 +2,11 @@ const browser = globalThis.browser || globalThis.chrome;
 
 document.addEventListener("DOMContentLoaded", async () => {
   if (typeof I18n !== "undefined") await I18n.init(browser);
-  try {
-    const plat = await browser.runtime.getPlatformInfo();
-    if (plat && plat.os === "android") document.documentElement.classList.add("android");
-  } catch (_) {}
 
   function ownPageBase() {
     try { return browser.runtime.getURL(""); } catch (_) { return ""; }
   }
-  function isOwnPage(url) {
-    const s = String(url || "");
-    if (!s) return false;
-    const base = ownPageBase();
-    return !!(base && s.indexOf(base) === 0);
-  }
-  function isWebTab(tab) {
-    if (!tab || isOwnPage(tab.url)) return false;
-    try {
-      const p = new URL(tab.url).protocol;
-      return p === "http:" || p === "https:";
-    } catch (_) {
-      return false;
-    }
-  }
+  function isWebTab(tab) { return HostRules.isWebTab(tab, ownPageBase()); }
   async function queryActiveTab() {
     async function activeWeb(query) {
       const found = await browser.tabs.query(query);
@@ -59,7 +41,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     pType: document.getElementById("proxyType"), pHost: document.getElementById("proxyHost"),
     pPort: document.getElementById("proxyPort"), pUser: document.getElementById("proxyUser"),
     pPass: document.getElementById("proxyPass"), saveProxy: document.getElementById("saveProxyBtn"),
-    pStatus: document.getElementById("proxyStatus"), pFormStatus: document.getElementById("proxyFormStatus"),
     proxyMain: document.getElementById("proxyMain"), proxyForm: document.getElementById("proxyForm"),
     proxyEmpty: document.getElementById("proxyEmpty"), pCont: document.getElementById("proxyContainer"),
     proxySearch: document.getElementById("proxySearch"),
@@ -74,7 +55,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     showAddList: document.getElementById("showAddListBtn"), saveList: document.getElementById("saveListBtn"),
     deleteList: document.getElementById("deleteListBtn"), cancelList: document.getElementById("cancelListBtn"),
     refreshLists: document.getElementById("refreshListsBtn"), lCont: document.getElementById("listsContainer"),
-    lStatus: document.getElementById("listStatus"), lFormStatus: document.getElementById("listFormStatus"),
     powerBtn: document.getElementById("powerBtn"),
     infoBtn: document.getElementById("infoBtn"),
     infoModal: document.getElementById("infoModal"),
@@ -99,43 +79,34 @@ document.addEventListener("DOMContentLoaded", async () => {
   let extensionEnabled = false;
   let isConflictBlocked = false;
 
+  function activateTab(index, focus) {
+    tabs.forEach((tab, i) => {
+      const active = i === index;
+      tab.classList.toggle("active", active);
+      tab.setAttribute("aria-selected", active ? "true" : "false");
+      tab.tabIndex = active ? 0 : -1;
+      if (panels[i]) panels[i].classList.toggle("active", active);
+    });
+    if (focus && tabs[index]) tabs[index].focus();
+  }
   tabs.forEach((tab, i) => {
-    tab.addEventListener("click", () => {
-      tabs.forEach(t => t.classList.remove("active"));
-      panels.forEach(p => p.classList.remove("active"));
-      tab.classList.add("active");
-      panels[i].classList.add("active");
+    tab.addEventListener("click", () => activateTab(i, false));
+    tab.addEventListener("keydown", e => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+      e.preventDefault();
+      const next = e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1
+        : (i + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+      activateTab(next, true);
     });
   });
 
-  function isIpHost(h) {
-    h = String(h || "").replace(/^\*\./, "");
-    return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(h) || h.indexOf(":") >= 0;
-  }
+  const isIpHost = HostRules.isIpHost;
+  const normalize = HostRules.normalizeRule;
   function hasNonLatin(s) {
     return /[^\x00-\x7F]/.test(String(s || ""));
   }
   function stripNonLatin(s) {
     return String(s || "").replace(/[^\x00-\x7F]/g, "");
-  }
-  function isAcceptableHost(h) {
-    h = String(h || "");
-    if (!h || /\s/.test(h) || hasNonLatin(h)) return false;
-    if (isIpHost(h)) return true;
-    if (!/^[a-z0-9.:\[\]-]+$/i.test(h)) return false;
-    return h.indexOf(".") >= 0 && h.indexOf("..") < 0;
-  }
-  function normalize(v) {
-    const trimmed = String(v || "").trim();
-    if (!trimmed || /\s/.test(trimmed)) return "";
-    let s = trimmed.toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
-    if (/\s/.test(s)) return "";
-    const wild = s.startsWith("*.");
-    if (wild) s = s.slice(2);
-    s = s.replace(/^\.+|\.+$/g, "");
-    if (!s || !isAcceptableHost(s)) return "";
-    if (isIpHost(s)) return s;
-    return wild ? "*." + s : s;
   }
   function hostOfRule(rule) { return normalize(rule).replace(/^\*\./, ""); }
   function wildcardRule(host) {
@@ -143,21 +114,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!h) return "";
     return isIpHost(h) ? h : "*." + h;
   }
-  function toGuiRule(v) { return normalize(v); }
   function displayRuleForHost(host) {
     const h = hostOfRule(host);
     if (!h) return "";
     return isIpHost(h) ? h : wildcardRule(h);
   }
-  function matches(h, r) {
-    const hh = hostOfRule(h), rr = normalize(r);
-    if (!hh || !rr) return false;
-    if (rr.startsWith("*.")) {
-      const b = rr.slice(2);
-      return hh === b || hh.endsWith("." + b);
-    }
-    return hh === rr;
-  }
+  const matches = HostRules.ruleMatchesHost;
   function hasIn(list, rule) {
     const n = normalize(rule);
     return !!n && list.some(r => normalize(r) === n);
@@ -197,40 +159,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (action === "direct") currentDirect.push(n);
     else currentRules.push(n);
   }
-  const MULTI_SUFFIX = {
-    "ac.uk":1,"co.uk":1,"gov.uk":1,"ltd.uk":1,"me.uk":1,"net.uk":1,"org.uk":1,"plc.uk":1,"sch.uk":1,
-    "com.au":1,"net.au":1,"org.au":1,"edu.au":1,"gov.au":1,"asn.au":1,"id.au":1,
-    "co.nz":1,"net.nz":1,"org.nz":1,"co.jp":1,"ne.jp":1,"or.jp":1,"ac.jp":1,"go.jp":1,
-    "com.br":1,"net.br":1,"org.br":1,"com.tr":1,"com.ua":1,"co.ua":1,"org.ua":1,
-    "com.cn":1,"net.cn":1,"org.cn":1,"com.tw":1,"com.hk":1,"co.kr":1,"com.mx":1,
-    "co.za":1,"co.in":1,"net.in":1,"org.in":1,"co.il":1,"com.sg":1
-  };
-  function apexDomain(host) {
-    const h = normalize(host).replace(/^\*\./, "");
-    if (!h || isIpHost(h)) return h;
-    const parts = h.split(".").filter(Boolean);
-    if (parts.length <= 2) return h;
-    const last2 = parts.slice(-2).join(".");
-    if (MULTI_SUFFIX[last2] && parts.length >= 3) return parts.slice(-3).join(".");
-    return last2;
-  }
+  const apexDomain = HostRules.apexDomain;
   function coveringParent(host, proxyList, directList) {
-    const hostN = hostOfRule(host);
-    let bestLen = -1, bestAct = "", bestRule = "";
-    function consider(list, act) {
-      (list || []).forEach(r => {
-        if (hostOfRule(r) === hostN || !matches(host, r)) return;
-        const len = hostOfRule(r).length;
-        if (len > bestLen || (len === bestLen && act === "direct")) {
-          bestLen = len;
-          bestAct = act;
-          bestRule = normalize(r);
-        }
-      });
-    }
-    consider(proxyList || currentRules, "proxy");
-    consider(directList || currentDirect, "direct");
-    return { act: bestAct, rule: bestRule };
+    const result = HostRules.coveringRule(host, proxyList || currentRules, directList || currentDirect);
+    return { act: result.action, rule: result.rule };
   }
   function coveringParentAction(host, proxyList, directList) {
     return coveringParent(host, proxyList, directList).act;
@@ -431,7 +363,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function refreshToggleBtn() {
     const raw = els.domainInput.value;
     const trimmed = raw.trim();
-    const rule = toGuiRule(raw);
+    const rule = normalize(raw);
     const existing = existingUserRule(rule);
     const inList = !!existing;
     const direct = inList && isDirectRule(existing);
@@ -496,9 +428,19 @@ document.addEventListener("DOMContentLoaded", async () => {
       dismissToast(toast);
     }, 2200);
   }
-  function flash(el, t, c = "#57f287") {
+  function flash(t, c = "#57f287") {
     const isErr = c === "#ff6b6b" || (typeof c === "string" && (c.includes("da373c") || c.includes("ff6b6b")));
     showToast(t, isErr ? "error" : "success");
+  }
+  function flashError(err, code, fallbackKey) {
+    const errCode = code || (err && err.code) || "";
+    const text = String((err && err.message) || err || "").trim();
+    flash(errCode || text ? I18n.error(err, errCode) : I18n.t(fallbackKey || "msg_error"), "#ff6b6b");
+  }
+  function responseError(res) {
+    const err = new Error((res && res.error) || "");
+    err.code = (res && res.code) || "";
+    return err;
   }
   function foldSearch(s) {
     return String(s || "").toLowerCase().replace(/\s+/g, "");
@@ -611,12 +553,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       const line = document.createElement("div");
       line.className = `domain-line${existing ? " picked" : ""}`;
       line.innerHTML = `
-        <input type="checkbox" class="domain-pick" data-rule="${escapeHtml(rule)}" data-kind="${kind}" data-apex="${escapeHtml(apex)}" ${existing ? "checked" : ""}>
+        <input type="checkbox" class="domain-pick" aria-label="${escapeHtml(rule)}" data-rule="${escapeHtml(rule)}" data-kind="${kind}" data-apex="${escapeHtml(apex)}" ${existing ? "checked" : ""}>
         <span class="mini-status"></span>
         <span class="${bold ? "domain-name" : "domain-apex"}" title="${escapeHtml(rule)}">${escapeHtml(rule)}</span>
         <label class="mode-wrap" title="${escapeHtml(I18n.t("mode_proxy_direct"))}">
           <span class="switch mode-switch">
-            <input type="checkbox" class="mode-direct" ${isDirect ? "checked" : ""}>
+            <input type="checkbox" class="mode-direct" aria-label="${escapeHtml(I18n.t("mode_proxy_direct"))}" ${isDirect ? "checked" : ""}>
             <span class="switch-ui"></span>
           </span>
         </label>
@@ -665,7 +607,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       item.className = "domain-item";
       const searchBits = [apex];
       if (isIpHost(apex)) {
-        appendLine(item, toGuiRule(apex), "apex", apex, true);
+        appendLine(item, normalize(apex), "apex", apex, true);
       } else {
         appendLine(item, wildcardRule(apex), "apex", apex, true);
         hosts.forEach(host => {
@@ -764,14 +706,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     return "SOCKS5";
   }
 
-  function proxyKey(p) {
-    const host = String(p.host || "").trim().toLowerCase();
-    const port = Number(p.port) || 0;
-    const user = String(p.username || "");
-    const pass = String(p.password || "");
-    return `${host}|${port}|${user}|${pass}`;
-  }
-
   function proxyAddress(p) {
     const host = String((p && p.host) || "").trim();
     const port = Number(p && p.port);
@@ -779,26 +713,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     return port > 0 ? `${host}:${port}` : host;
   }
 
-  function configFromServers(list) {
-    const on = (list || []).find(p => p.enabled && p.host && Number(p.port) > 0);
-    if (!on) return { type: "socks", host: "", port: 0, username: "", password: "" };
-    return {
-      type: on.type || "socks",
-      host: String(on.host).trim(),
-      port: Number(on.port),
-      username: on.username || "",
-      password: on.password || ""
-    };
-  }
-
-  function withActiveProxy(list, activeId) {
-    const out = (list || []).map(p => Object.assign({}, p, { enabled: false }));
-    if (!out.length) return out;
-    const has = activeId != null && out.some(p => p.id === activeId);
-    const id = has ? activeId : (out[0].id);
-    out.forEach(p => { p.enabled = p.id === id; });
-    return out;
-  }
+  const configFromServers = ProxyConfig.configFromServers;
+  const withActiveProxy = ProxyConfig.withActiveProxy;
 
 
   async function persistProxies(list) {
@@ -834,10 +750,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function showProxyTab() {
-    tabs.forEach(t => t.classList.remove("active"));
-    panels.forEach(p => p.classList.remove("active"));
-    document.getElementById("tabProxy").classList.add("active");
-    document.getElementById("panelProxy").classList.add("active");
+    activateTab(Array.from(tabs).findIndex(t => t.id === "tabProxy"), false);
   }
 
   function renderProxies() {
@@ -858,7 +771,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         } else if (pingData.success && Number.isFinite(pingData.latency)) {
           pingHtml = `<span class="proxy-ping good" title="${pingData.latency} ms">${pingData.latency} ms</span>`;
         } else {
-          pingHtml = `<span class="proxy-ping bad" title="n/a">n/a</span>`;
+          pingHtml = `<span class="proxy-ping bad" title="${escapeHtml(I18n.t("not_available"))}">${escapeHtml(I18n.t("not_available"))}</span>`;
         }
       }
 
@@ -878,7 +791,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       card.addEventListener("click", async () => {
         if (p.enabled) return;
         await persistProxies(currentProxies.map(item => Object.assign({}, item, { enabled: item.id === p.id })));
-        flash(els.pStatus, I18n.t("msg_active_saved"));
+        flash(I18n.t("msg_active_saved"));
       });
 
       const editBtn = card.querySelector(".btn-edit");
@@ -913,13 +826,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     els.pPort.value = "";
     els.pUser.value = "";
     els.pPass.value = "";
-    els.pFormStatus.textContent = "";
   }
 
   function openProxyForm(item) {
     els.proxyMain.style.display = "none";
     els.proxyForm.style.display = "flex";
-    els.pFormStatus.textContent = "";
     if (item) {
       editingProxyId = item.id;
       els.pName.value = item.name || "";
@@ -966,6 +877,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         : (domains === 1 ? "domain" : "domains");
       const metaText = `${fmt} · ${domains} ${domLabel} / ${ips} IP`;
       const updatedText = `${I18n.t("lbl_updated")}: ${formatListUpdated(l.updatedAt)}`;
+      const updateError = ListUpdate.hasUpdateError(l) ? I18n.error(l.updateError, l.updateErrorCode) : "";
 
       card.innerHTML = `
         <div class="list-card-body">
@@ -973,11 +885,11 @@ document.addEventListener("DOMContentLoaded", async () => {
           <div class="${name ? "list-card-url" : "list-card-title"}" title="${escapeHtml(url)}">${escapeHtml(url)}</div>
           <div class="list-card-meta">${escapeHtml(metaText)}</div>
           <div class="list-card-updated">${escapeHtml(updatedText)}</div>
-          ${(l.updateError || l.lastError) ? `<div class="list-card-error" title="${escapeHtml(l.updateError || l.lastError)}">${escapeHtml(l.updateError || l.lastError)}</div>` : ""}
+          ${updateError ? `<div class="list-card-error" title="${escapeHtml(updateError)}">${escapeHtml(updateError)}</div>` : ""}
         </div>
         <div class="list-card-side">
           <label class="switch" title="${isEnabled ? escapeHtml(I18n.t("list_active")) : escapeHtml(I18n.t("list_inactive"))}">
-            <input type="checkbox" class="list-toggle" ${isEnabled ? "checked" : ""}>
+            <input type="checkbox" class="list-toggle" aria-label="${escapeHtml(isEnabled ? I18n.t("list_active") : I18n.t("list_inactive"))}" ${isEnabled ? "checked" : ""}>
             <span class="switch-ui"></span>
           </label>
           <div class="list-card-actions">
@@ -992,17 +904,20 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       toggle.addEventListener("change", async () => {
         const nextEnabled = toggle.checked;
-        l.enabled = nextEnabled;
-        card.classList.toggle("list-disabled", !nextEnabled);
-        toggle.closest(".switch").title = nextEnabled ? I18n.t("list_active") : I18n.t("list_inactive");
-        await browser.storage.local.set({ proxyLists: currentLists });
-        flash(els.lStatus, nextEnabled ? I18n.t("list_active") : I18n.t("list_inactive"));
-
-        if (nextEnabled) {
-          const due = typeof ListUpdate !== "undefined" && ListUpdate.isDue(l, Date.now());
-          if (due) {
-            refreshOneList(l.id, refreshBtn);
-          }
+        toggle.disabled = true;
+        try {
+          const result = await sendListMessage({ action: "setListEnabled", id: l.id, enabled: nextEnabled });
+          if (!result || !result.success) throw responseError(result);
+          l.enabled = nextEnabled;
+          card.classList.toggle("list-disabled", !nextEnabled);
+          toggle.closest(".switch").title = nextEnabled ? I18n.t("list_active") : I18n.t("list_inactive");
+          toggle.setAttribute("aria-label", nextEnabled ? I18n.t("list_active") : I18n.t("list_inactive"));
+          flash(nextEnabled ? I18n.t("list_active") : I18n.t("list_inactive"));
+        } catch (error) {
+          toggle.checked = !nextEnabled;
+          flashError(error);
+        } finally {
+          toggle.disabled = false;
         }
       });
 
@@ -1013,9 +928,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     filterLists();
   }
 
-  function canonListUrl(url) {
-    return String(url || "").trim().replace(/\/+$/, "").toLowerCase();
-  }
+  const canonListUrl = ListUpdate.canonListUrl;
 
   async function showListsMain() {
     editingListId = null;
@@ -1033,13 +946,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     els.lUrl.value = "";
     els.lInterval.value = "12";
     els.lViaProxy.checked = false;
-    els.lFormStatus.textContent = "";
   }
 
   function openListForm(item) {
     els.listsMain.style.display = "none";
     els.listsForm.style.display = "flex";
-    els.lFormStatus.textContent = "";
     if (item) {
       editingListId = item.id;
       els.lName.value = item.name || "";
@@ -1072,27 +983,32 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function sendListMessage(payload) {
-    return Promise.race([
-      browser.runtime.sendMessage(payload),
-      new Promise((_, reject) => setTimeout(() => reject(new Error(I18n.t("msg_timeout"))), 60000))
-    ]);
+    let timer = 0;
+    try {
+      return await Promise.race([
+        browser.runtime.sendMessage(payload),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(I18n.t("msg_timeout"))), 60000); })
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async function refreshOneList(id, btn) {
     if (btn) { btn.disabled = true; btn.classList.add("busy"); }
     try {
       const res = await sendListMessage({ action: "refreshList", id });
-      if (res && res.success) flash(els.lStatus, I18n.t("msg_updated"));
-      else flash(els.lStatus, (res && res.error) ? String(res.error).slice(0, 180) : I18n.t("msg_update_error"), "#ff6b6b");
+      if (res && res.success) flash(I18n.t("msg_updated"));
+      else flashError(res && res.error, res && res.code, "msg_update_error");
     } catch (e) {
-      flash(els.lStatus, String(e.message || e).slice(0, 180), "#ff6b6b");
+      flashError(e, null, "msg_update_error");
     } finally {
       if (btn) { btn.disabled = false; btn.classList.remove("busy"); }
     }
   }
 
   async function loadState() {
-    const res = await browser.storage.local.get(["proxyConfig", "proxyServers", "proxyRules", "directRules", "proxyLists", "extensionEnabled"]);
+    const res = await browser.storage.local.get(["proxyConfig", "proxyServers", "proxyRules", "directRules", "proxyLists", "extensionEnabled", "proxyApplyError", "proxyApplyErrorCode"]);
     currentRules = Array.isArray(res.proxyRules) ? res.proxyRules : [];
     currentDirect = Array.isArray(res.directRules) ? res.directRules : [];
     currentLists = Array.isArray(res.proxyLists) ? res.proxyLists : [];
@@ -1117,6 +1033,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     refreshScopeUI();
     refreshIcon();
     await checkProxyConflict();
+    if (res.proxyApplyError || res.proxyApplyErrorCode) flashError(res.proxyApplyError, res.proxyApplyErrorCode);
   }
 
   async function checkProxyConflict() {
@@ -1195,18 +1112,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   els.saveProxy.addEventListener("click", async () => {
     const form = collectProxyForm();
     if (!form.host || !(form.port > 0 && form.port < 65536)) {
-      return flash(els.pFormStatus, I18n.t("msg_fill_fields"), "#ff6b6b");
+      return flash(I18n.t("msg_fill_fields"), "#ff6b6b");
     }
-    const dup = currentProxies.find(p => proxyKey(p) === proxyKey(form) && p.id !== editingProxyId);
-    if (dup) return flash(els.pFormStatus, I18n.t("msg_proxy_exists"), "#ff6b6b");
+    const dup = currentProxies.find(p => ProxyConfig.proxyKey(p) === ProxyConfig.proxyKey(form) && p.id !== editingProxyId);
+    if (dup) return flash(I18n.t("msg_proxy_exists"), "#ff6b6b");
     if (editingProxyId != null) {
       const next = currentProxies.map(p => p.id === editingProxyId ? Object.assign({}, p, form) : p);
       await persistProxies(next);
-      flash(els.pStatus, I18n.t("msg_proxy_saved"));
+      flash(I18n.t("msg_proxy_saved"));
     } else {
-      const item = Object.assign({ id: Date.now(), enabled: !currentProxies.length }, form);
+      const item = Object.assign({ id: ProxyConfig.uniqueId(), enabled: !currentProxies.length }, form);
       await persistProxies(currentProxies.concat(item));
-      flash(els.pStatus, I18n.t("msg_proxy_added"));
+      flash(I18n.t("msg_proxy_added"));
     }
     showProxyMain();
   });
@@ -1215,17 +1132,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (editingProxyId == null) return;
     delete currentPingResults[editingProxyId];
     await persistProxies(currentProxies.filter(p => p.id !== editingProxyId));
-    flash(els.pStatus, I18n.t("msg_proxy_deleted"));
+    flash(I18n.t("msg_proxy_deleted"));
     showProxyMain();
   });
 
   els.toggleRule.addEventListener("click", async () => {
     const raw = els.domainInput.value;
     const trimmed = raw.trim();
-    const rule = toGuiRule(raw);
+    const rule = normalize(raw);
     if (!rule) {
       const msg = !trimmed ? I18n.t("hint_empty_rule") : /\s/.test(trimmed) ? I18n.t("hint_no_spaces") : hasNonLatin(trimmed) ? I18n.t("hint_latin_only") : I18n.t("hint_dot_required");
-      return flash(els.rulesStatus, msg, "#ff6b6b");
+      return flash(msg, "#ff6b6b");
     }
     const existing = existingUserRule(rule);
     els.domainInput.value = existing || rule;
@@ -1233,19 +1150,19 @@ document.addEventListener("DOMContentLoaded", async () => {
       removeUserRulesForHost(existing);
       await saveRules();
       refreshIcon();
-      flash(els.rulesStatus, I18n.t("msg_deleted"));
+      flash(I18n.t("msg_deleted"));
     } else {
       setUserRule(rule, "proxy");
       await saveRules();
       refreshIcon();
-      flash(els.rulesStatus, I18n.t("msg_rule_added"));
+      flash(I18n.t("msg_rule_added"));
     }
     syncOpenDomainLine(existing || rule);
     checkAutoReload(existing || rule);
   });
 
   els.domainDirect.addEventListener("change", async () => {
-    const typed = toGuiRule(els.domainInput.value);
+    const typed = normalize(els.domainInput.value);
     const existing = existingUserRule(typed);
     if (!typed || !existing) {
       els.domainDirect.checked = false;
@@ -1255,7 +1172,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     setUserRule(existing, els.domainDirect.checked ? "direct" : "proxy");
     await saveRules();
     refreshIcon();
-    flash(els.rulesStatus, els.domainDirect.checked ? I18n.t("rule_direct") : I18n.t("rule_proxy"));
+    flash(els.domainDirect.checked ? I18n.t("rule_direct") : I18n.t("rule_proxy"));
     syncOpenDomainLine(existing);
     checkAutoReload(existing);
   });
@@ -1285,7 +1202,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (added) parts.push(I18n.t("msg_added", { count: added }));
       if (removed) parts.push(I18n.t("msg_removed", { count: removed }));
       if (changed && !added && !removed) parts.push(I18n.t("msg_saved"));
-      flash(els.rulesStatus, parts.join(", ") || I18n.t("msg_saved"));
+      flash(parts.join(", ") || I18n.t("msg_saved"));
     }
     const shown = existingUserRule(els.domainInput.value);
     if (shown) els.domainInput.value = shown;
@@ -1303,9 +1220,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   els.saveList.addEventListener("click", async () => {
     const form = collectListForm();
-    if (!form.url.startsWith("http")) return flash(els.lFormStatus, I18n.t("msg_invalid_url"), "#ff6b6b");
+    if (!ListUpdate.validListUrl(form.url)) return flash(I18n.t("msg_invalid_url"), "#ff6b6b");
     const dup = currentLists.find(l => canonListUrl(l.url) === canonListUrl(form.url) && l.id !== editingListId);
-    if (dup) return flash(els.lFormStatus, I18n.t("msg_list_exists"), "#ff6b6b");
+    if (dup) return flash(I18n.t("msg_list_exists"), "#ff6b6b");
     els.saveList.disabled = true;
     els.saveList.classList.add("busy");
     els.saveList.textContent = I18n.t("btn_saving");
@@ -1313,7 +1230,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const existing = editingListId != null ? currentLists.find(l => l.id === editingListId) : null;
       const urlChanged = existing && canonListUrl(existing.url) !== canonListUrl(form.url);
       const proxyChanged = existing && !!existing.viaProxy !== form.viaProxy;
-      const hasError = existing && !!(existing.updateError || existing.lastError);
+      const hasError = !!(existing && ListUpdate.hasUpdateError(existing));
       const needFetch = !existing || urlChanged || proxyChanged || hasError;
       const res = await sendListMessage(needFetch
         ? { action: "fetchList", id: editingListId, url: form.url, name: form.name, intervalHours: form.intervalHours, viaProxy: form.viaProxy, enabled: form.enabled }
@@ -1323,11 +1240,11 @@ document.addEventListener("DOMContentLoaded", async () => {
           const st = await browser.storage.local.get("proxyLists");
           if (st && Array.isArray(st.proxyLists)) currentLists = st.proxyLists;
         } catch (_) {}
-        flash(els.lStatus, existing ? I18n.t("msg_saved") : I18n.t("msg_list_added"));
+        flash(existing ? I18n.t("msg_saved") : I18n.t("msg_list_added"));
         showListsMain();
-      } else flash(els.lFormStatus, (res && res.error) ? String(res.error).slice(0, 180) : I18n.t("msg_error"), "#ff6b6b");
+      } else flashError(res && res.error, res && res.code);
     } catch (e) {
-      flash(els.lFormStatus, String(e.message || e).slice(0, 180), "#ff6b6b");
+      flashError(e);
     } finally {
       els.saveList.disabled = false;
       els.saveList.classList.remove("busy");
@@ -1337,26 +1254,31 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   els.deleteList.addEventListener("click", async () => {
     if (editingListId == null) return;
-    currentLists = currentLists.filter(x => x.id !== editingListId);
-    await browser.storage.local.set({ proxyLists: currentLists });
-    flash(els.lStatus, I18n.t("msg_deleted"));
-    showListsMain();
+    try {
+      const result = await sendListMessage({ action: "deleteList", id: editingListId });
+      if (!result || !result.success) throw responseError(result);
+      currentLists = currentLists.filter(x => x.id !== editingListId);
+      flash(I18n.t("msg_deleted"));
+      showListsMain();
+    } catch (error) {
+      flashError(error);
+    }
   });
 
   els.refreshLists.addEventListener("click", async () => {
-    if (!currentLists.length) return flash(els.lStatus, I18n.t("msg_no_lists"), "#ff6b6b");
+    if (!currentLists.length) return flash(I18n.t("msg_no_lists"), "#ff6b6b");
     els.refreshLists.disabled = true;
     els.refreshLists.classList.add("busy");
     try {
       const res = await sendListMessage({ action: "refreshLists" });
       if (res && res.success) {
         const failed = Number(res.failed) || 0;
-        if (failed) flash(els.lStatus, I18n.t("msg_updated_failed", { updated: res.updated || 0, failed }), "#ff6b6b");
-        else flash(els.lStatus, I18n.t("msg_updated_count", { count: res.updated || 0 }));
+        if (failed) flash(I18n.t("msg_updated_failed", { updated: res.updated || 0, failed }), "#ff6b6b");
+        else flash(I18n.t("msg_updated_count", { count: res.updated || 0 }));
       }
-      else flash(els.lStatus, (res && res.error) ? String(res.error).slice(0, 180) : I18n.t("msg_update_error"), "#ff6b6b");
+      else flashError(res && res.error, res && res.code, "msg_update_error");
     } catch (e) {
-      flash(els.lStatus, String(e.message || e).slice(0, 180), "#ff6b6b");
+      flashError(e, null, "msg_update_error");
     } finally {
       els.refreshLists.disabled = false;
       els.refreshLists.classList.remove("busy");
@@ -1403,7 +1325,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     if (!hasConfiguredProxy()) {
       showProxyTab();
-      flash(els.pStatus, I18n.t("msg_setup_proxy_first"), "#ff6b6b");
+      flash(I18n.t("msg_setup_proxy_first"), "#ff6b6b");
       return;
     }
     extensionEnabled = !extensionEnabled;

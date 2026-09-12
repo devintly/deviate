@@ -23,15 +23,28 @@
     return Object.keys(domains);
   }
 
+  function fail(code, text) {
+    var err = new Error(text || code);
+    err.code = code;
+    return err;
+  }
+
+  function uniqueId() {
+    try {
+      if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+    } catch (e) {}
+    return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+  }
+
   function ingestRemote(url, text) {
     var PacParse = root.PacParse;
     if (PacParse.isHtmlDocument(text)) {
-      throw new Error("Сервер отдал HTML-страницу (часто IPFS-шлюз), а не PAC. Не сохраняйте файл через «Сохранить как» — добавьте URL списка в расширение, оно скачает PAC само.");
+      throw fail("error_html_response");
     }
     if (PacParse.isPacText(text)) {
       var lists = PacParse.parsePacToLists(text);
       return {
-        id: Date.now(),
+        id: uniqueId(),
         url: url,
         type: "proxy",
         format: "pac",
@@ -48,11 +61,10 @@
     }
     var domains = parseList(text);
     if (isPacUrl(url) && domains.length === 0) {
-      var preview = String(text || "").replace(/\s+/g, " ").trim().slice(0, 180);
-      throw new Error(preview ? "Ответ не похож на PAC-файл: " + preview : "Пустой ответ вместо PAC-файла");
+      throw fail(String(text || "").trim() ? "error_not_pac" : "error_empty_pac");
     }
     return {
-      id: Date.now(),
+      id: uniqueId(),
       url: url,
       type: "proxy",
       format: "txt",
@@ -64,7 +76,48 @@
     };
   }
 
-  var api = { isPacUrl: isPacUrl, parseList: parseList, ingestRemote: ingestRemote };
+  function ingestRemoteAsync(url, text, workerUrl) {
+    if (!workerUrl || typeof Worker === "undefined") {
+      return Promise.resolve(ingestRemote(url, text));
+    }
+    return new Promise(function (resolve, reject) {
+      var worker;
+      try {
+        worker = new Worker(workerUrl);
+      } catch (e) {
+        try { resolve(ingestRemote(url, text)); }
+        catch (err) { reject(err); }
+        return;
+      }
+      var timer = setTimeout(function () {
+        try { worker.terminate(); } catch (e) {}
+        reject(fail("error_parse_timeout"));
+      }, 60000);
+      var finish = function (fn) {
+        clearTimeout(timer);
+        try { worker.terminate(); } catch (e) {}
+        fn();
+      };
+      worker.onmessage = function (e) {
+        var data = e.data || {};
+        if (data.ok) finish(function () { resolve(data.item); });
+        else finish(function () { reject(fail(data.code || "error_parse", data.error)); });
+      };
+      worker.onerror = function (e) {
+        finish(function () { reject(fail("error_parse", e && e.message)); });
+      };
+      try {
+        worker.postMessage({ url: url, text: text });
+      } catch (e) {
+        finish(function () {
+          try { resolve(ingestRemote(url, text)); }
+          catch (err) { reject(err); }
+        });
+      }
+    });
+  }
+
+  var api = { isPacUrl: isPacUrl, parseList: parseList, ingestRemote: ingestRemote, ingestRemoteAsync: ingestRemoteAsync };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.ListIngest = api;
 })(typeof self !== "undefined" ? self : this);

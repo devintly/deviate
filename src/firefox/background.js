@@ -1,253 +1,47 @@
-let proxyConfig = { type: "socks", host: "", port: 0, username: "", password: "" };
+const ALL_WEB_URLS = ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"];
+
+let proxyConfig = ProxyConfig.emptyConfig();
 let proxyServers = [];
 let proxyRules = [];
 let directRules = [];
 let proxyLists = [];
 let extensionEnabled = false;
 let disabledByConflict = false;
-
-function configFromServers(list) {
-  const on = (list || []).find(p => p.enabled && p.host && Number(p.port) > 0);
-  if (!on) return { type: "socks", host: "", port: 0, username: "", password: "" };
-  return {
-    type: on.type || "socks",
-    host: String(on.host).trim(),
-    port: Number(on.port),
-    username: on.username || "",
-    password: on.password || ""
-  };
-}
-
-function withActiveProxy(list, activeId) {
-  const out = (list || []).map(p => Object.assign({}, p, { enabled: false }));
-  if (!out.length) return out;
-  const has = activeId != null && out.some(p => p.id === activeId);
-  const id = has ? activeId : out[0].id;
-  out.forEach(p => { p.enabled = p.id === id; });
-  return out;
-}
-
-function migrateProxyServers(servers, fallback) {
-  let list = Array.isArray(servers) ? servers.map(p => Object.assign({}, p)) : [];
-  if (!list.length && fallback && fallback.host) {
-    list = [{
-      id: Date.now(),
-      type: fallback.type || "socks",
-      host: fallback.host,
-      port: Number(fallback.port) || 1080,
-      username: fallback.username || "",
-      password: fallback.password || "",
-      enabled: true
-    }];
-  }
-  const keep = (list.find(p => p.enabled) || list[0] || {}).id;
-  return withActiveProxy(list, keep);
-}
-
-let pE = {}, pS = {}, dE = {}, dS = {};
-let pIp = {}, dIp = {}, pCidr = [];
-let pPac = [];
-let compiledLists = [];
-const ALL_WEB_URLS = ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"];
-const tabHosts = {};
-const tabProxied = {};
-
-function isAcceptableHost(h) {
-  h = String(h || "");
-  if (!h || /\s/.test(h) || /[^\x00-\x7F]/.test(h)) return false;
-  if (PacParse.IPV4_RE.test(h) || h.indexOf(":") >= 0) return true;
-  if (!/^[a-z0-9.:\[\]-]+$/i.test(h)) return false;
-  return h.indexOf(".") >= 0 && h.indexOf("..") < 0;
-}
-
-function normalizeRule(rule) {
-  const trimmed = String(rule || "").trim();
-  if (!trimmed || /\s/.test(trimmed)) return "";
-  let s = trimmed.toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
-  if (/\s/.test(s)) return "";
-  const wild = s.startsWith("*.");
-  if (wild) s = s.slice(2);
-  s = s.replace(/^\.+|\.+$/g, "");
-  if (!s || !isAcceptableHost(s)) return "";
-  if (PacParse.IPV4_RE.test(s) || s.indexOf(":") >= 0) return s;
-  return wild ? "*." + s : s;
-}
-
-function addListTargets(list, exact, suffix, ipMap, cidrs) {
-  (list.domains || []).forEach(d => {
-    d = normalizeRule(d);
-    if (!d) return;
-    if (d.startsWith("*.")) suffix["." + d.slice(2)] = 1;
-    else { exact[d] = 1; suffix["." + d] = 1; }
-  });
-  (list.ips || []).forEach(ip => {
-    if (PacParse.IPV4_RE.test(ip)) ipMap[ip] = 1;
-  });
-  const compiled = PacParse.compileCidrs(list.cidrs);
-  for (let i = 0; i < compiled.length; i++) cidrs.push(compiled[i]);
-}
-
+let maps = HostRules.rebuildMaps([], [], []);
 let hasIps = false;
 let ffProxy = { type: "direct" };
+
+const tabHosts = {};
+const tabProxied = {};
 const dnsCache = new Map();
+const pendingDns = new Map();
+const fetchProxyHosts = {};
+const fetchDirectHosts = {};
 const badgeWait = {};
-const badgeText = {};
+const badgeTextCache = {};
+const proxyAuthTried = new Set();
 let badgeColorsReady = false;
+let listUpdateQueue = Promise.resolve();
+let initialized = false;
+let badgeRecountGeneration = 0;
 
-function cacheProxy() {
+function applyMaps(next) {
+  maps = next;
   ffProxy = PacParse.userProxyToFirefox(proxyConfig);
-  hasIps = false;
-  for (const _ in pIp) { hasIps = true; break; }
-  if (!hasIps) for (const _ in dIp) { hasIps = true; break; }
-  if (!hasIps) hasIps = pCidr.length > 0;
-}
-
-function addHostRules(rules, exact, suffix, ipMap) {
-  (rules || []).forEach(r => {
-    r = normalizeRule(r);
-    if (!r) return;
-    const wild = r.startsWith("*.");
-    const host = wild ? r.slice(2) : r;
-    if (!host) return;
-    if (PacParse.IPV4_RE.test(host) || host.indexOf(":") >= 0) {
-      exact[host] = 1;
-      if (ipMap && PacParse.IPV4_RE.test(host)) ipMap[host] = 1;
-      return;
-    }
-    if (wild) suffix["." + host] = 1;
-    else exact[host] = 1;
-  });
+  hasIps = HostRules.hasIpRules(maps);
 }
 
 function rebuildMaps() {
-  const nextPE = {}, nextPS = {}, nextDE = {}, nextDS = {};
-  const nextPIp = {}, nextDIp = {}, nextPCidr = [];
-  const nextPPac = [];
-  const nextCompiledLists = [];
-
-  addHostRules(proxyRules, nextPE, nextPS, nextPIp);
-  addHostRules(directRules, nextDE, nextDS, nextDIp);
-
-  proxyLists.forEach(list => {
-    if (!list || list.enabled === false) return;
-    const lExact = {}, lSuffix = {}, lIp = {}, lCidr = [];
-    let lPac = null;
-    if (list.format === "pac" && list.packed) {
-      lPac = PacParse.compilePacList(list);
-      nextPPac.push(lPac);
-      addListTargets({ ips: list.ips, cidrs: list.cidrs, domains: list.extra || [] }, nextPE, nextPS, nextPIp, nextPCidr);
-      addListTargets({ ips: list.ips, cidrs: list.cidrs, domains: list.extra || [] }, lExact, lSuffix, lIp, lCidr);
-    } else {
-      addListTargets(list, nextPE, nextPS, nextPIp, nextPCidr);
-      addListTargets(list, lExact, lSuffix, lIp, lCidr);
-    }
-    nextCompiledLists.push({ list, pac: lPac, exact: lExact, suffix: lSuffix, ip: lIp, cidr: lCidr });
-  });
-
-  pE = nextPE; pS = nextPS; dE = nextDE; dS = nextDS;
-  pIp = nextPIp; dIp = nextDIp; pCidr = nextPCidr; pPac = nextPPac;
-  compiledLists = nextCompiledLists;
-  cacheProxy();
+  applyMaps(HostRules.rebuildMaps(proxyRules, directRules, proxyLists));
   recountTabProxied();
 }
 
-function matchMaps(host, exact, suffix) {
-  if (!host) return false;
-  host = host.toLowerCase();
-  if (exact[host]) return true;
-  if (host.startsWith("www.") && exact[host.slice(4)]) return true;
-  const parts = host.split(".");
-  let current = "";
-  for (let i = parts.length - 1; i >= 0; i--) {
-    current = "." + parts[i] + current;
-    if (suffix[current]) return true;
-  }
-  return false;
-}
-
-function isDirectHost(host) {
-  return matchMaps(host, dE, dS) || PacParse.matchIpLiteral(host, dIp, []);
-}
-
-function isProxiedHost(host) {
-  if (matchMaps(host, pE, pS) || PacParse.matchIpLiteral(host, pIp, pCidr)) return true;
-  for (let i = 0; i < pPac.length; i++) {
-    if (PacParse.matchPacHost(host, pPac[i])) return true;
-  }
-  return false;
+function ownPageBase() {
+  try { return browser.runtime.getURL(""); } catch (_) { return ""; }
 }
 
 function hostIsProxied(host) {
-  if (!extensionEnabled || !host) return false;
-  if (isDirectHost(host)) return false;
-  return isProxiedHost(host);
-}
-
-function listLabel(list) {
-  const name = String((list && list.name) || "").trim();
-  if (name) return name;
-  try { return new URL(list.url).hostname; } catch (e) {}
-  return String((list && list.url) || "список");
-}
-
-function findCoveringList(host) {
-  if (!host) return null;
-  host = String(host).toLowerCase();
-  for (let i = 0; i < compiledLists.length; i++) {
-    const entry = compiledLists[i];
-    if (entry.pac && PacParse.matchPacHost(host, entry.pac)) return entry.list;
-    if (matchMaps(host, entry.exact, entry.suffix) || PacParse.matchIpLiteral(host, entry.ip, entry.cidr)) return entry.list;
-  }
-  return null;
-}
-
-function listedParentHost(host) {
-  const parts = String(host || "").toLowerCase().split(".").filter(Boolean);
-  for (let i = 1; i <= parts.length - 2; i++) {
-    const parent = parts.slice(i).join(".");
-    if (findCoveringList(parent)) return parent;
-  }
-  return "";
-}
-
-function listedParentRule(host) {
-  const parent = listedParentHost(host);
-  if (!parent) return "";
-  if (PacParse.IPV4_RE.test(parent) || parent.indexOf(":") >= 0) return parent;
-  return "*." + parent;
-}
-
-function coverPayload(host) {
-  const parent = listedParentHost(host);
-  const list = findCoveringList(host) || (parent ? findCoveringList(parent) : null);
-  return {
-    listed: !!list,
-    listedParent: !!parent,
-    listedParentRule: parent ? listedParentRule(host) : "",
-    listName: list ? listLabel(list) : ""
-  };
-}
-
-const fetchProxyHosts = {};
-const fetchDirectHosts = {};
-
-function canonListUrl(url) {
-  return String(url || "").trim().replace(/\/+$/, "").toLowerCase();
-}
-
-function listMeta(msg, existing) {
-  const name = msg && msg.name != null ? String(msg.name).trim() : ((existing && existing.name) || "");
-  let hours = Number(msg && msg.intervalHours);
-  if (!(hours > 0)) hours = existing && Number(existing.intervalHours) > 0 ? Number(existing.intervalHours) : 12;
-  if (hours > 168) hours = 168;
-  const viaProxy = msg && msg.viaProxy != null ? !!msg.viaProxy : !!(existing && existing.viaProxy);
-  const enabled = msg && msg.enabled !== undefined ? msg.enabled !== false : (existing && existing.enabled !== undefined ? existing.enabled !== false : true);
-  return { name, intervalHours: hours, viaProxy, enabled };
-}
-
-function findListByUrl(url, exceptId) {
-  const c = canonListUrl(url);
-  return proxyLists.find(l => canonListUrl(l.url) === c && (exceptId == null || l.id !== exceptId));
+  return HostRules.hostIsProxied(host, extensionEnabled, maps, false);
 }
 
 function decideProxySync(host, tabId) {
@@ -255,19 +49,65 @@ function decideProxySync(host, tabId) {
   if (route === "direct") return { type: "direct" };
   if (route === "proxy") return ffProxy;
   if (!extensionEnabled) return { type: "direct" };
-  if (isDirectHost(host)) return { type: "direct" };
-  if (isProxiedHost(host)) return ffProxy;
+  if (HostRules.isDirectHost(host, maps)) return { type: "direct" };
+  if (HostRules.isProxiedHost(host, maps)) return ffProxy;
   return null;
 }
 
-const pendingDns = new Map();
+function rememberTabHost(tabId, host, proxied) {
+  const stored = HostRules.rememberHost(tabHosts, tabId, host);
+  if (!stored) return;
+  if (proxied || hostIsProxied(stored)) {
+    if (!tabProxied[tabId]) tabProxied[tabId] = new Set();
+    tabProxied[tabId].add(stored);
+  }
+  scheduleBadge(tabId);
+}
+
+function seedTabUrl(tabId, url) {
+  if (tabId == null || tabId < 0 || !url || HostRules.isOwnPage(url, ownPageBase())) return;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
+    rememberTabHost(tabId, parsed.hostname, false);
+  } catch (_) {}
+}
+
+function recountTabProxied() {
+  const generation = ++badgeRecountGeneration;
+  Object.keys(tabHosts).forEach(id => {
+    const tabId = Number(id);
+    const next = new Set();
+    const unresolved = [];
+    (tabHosts[tabId] || []).forEach(h => {
+      if (hostIsProxied(h)) next.add(h);
+      else if (extensionEnabled && hasIps && !HostRules.isDirectHost(h, maps)) unresolved.push(h);
+    });
+    tabProxied[tabId] = next;
+    delete badgeTextCache[tabId];
+    scheduleBadge(tabId);
+    unresolved.forEach(host => {
+      resolveDns(host).then(addresses => {
+        if (generation !== badgeRecountGeneration || !extensionEnabled || !tabHosts[tabId] || !tabHosts[tabId].has(host)) return;
+        const proxied = addresses.some(ip => {
+          const value = String(ip || "").replace(/^\[|\]$/g, "");
+          return !HostRules.isDirectHost(value, maps) && HostRules.isProxiedHost(value, maps);
+        });
+        if (proxied) {
+          tabProxied[tabId].add(host);
+          delete badgeTextCache[tabId];
+          scheduleBadge(tabId);
+        }
+      });
+    });
+  });
+}
 
 function resolveDns(host) {
   const now = Date.now();
   const hit = dnsCache.get(host);
   if (hit && now - hit.t < 60000) return Promise.resolve(hit.addrs);
   if (pendingDns.has(host)) return pendingDns.get(host);
-
   const promise = browser.dns.resolve(host).then(rec => {
     const addrs = (rec && rec.addresses) || [];
     if (dnsCache.size >= 512) dnsCache.delete(dnsCache.keys().next().value);
@@ -276,38 +116,25 @@ function resolveDns(host) {
   }).catch(() => {
     dnsCache.set(host, { t: Date.now(), addrs: [] });
     return [];
-  }).finally(() => {
-    pendingDns.delete(host);
-  });
-
+  }).finally(() => pendingDns.delete(host));
   pendingDns.set(host, promise);
   return promise;
 }
 
-function onProxyRequest(requestInfo) {
-  if (!initialized) {
-    return initPromise.then(() => handleProxyRequest(requestInfo));
-  }
-  return handleProxyRequest(requestInfo);
-}
-
 function handleProxyRequest(requestInfo) {
-  if (isOwnPage(requestInfo && requestInfo.url)) return { type: "direct" };
-  let host = "";
-  let u = null;
+  if (HostRules.isOwnPage(requestInfo && requestInfo.url, ownPageBase())) return { type: "direct" };
+  let host = "", u = null;
   try {
     u = new URL(requestInfo.url);
     host = u.hostname.toLowerCase();
-  } catch (e) { return { type: "direct" }; }
+  } catch (_) { return { type: "direct" }; }
   if (!host) return { type: "direct" };
 
   if (host === "cp.cloudflare.com") {
     const probeId = u.searchParams.get("__deviate_probe");
     if (probeId) {
       const target = proxyServers.find(p => String(p.id) === String(probeId));
-      if (target && target.host && target.port) {
-        return PacParse.userProxyToFirefox(target);
-      }
+      if (target && target.host && target.port) return PacParse.userProxyToFirefox(target);
       return { type: "http", host: "127.0.0.1", port: 0 };
     }
   }
@@ -316,7 +143,6 @@ function handleProxyRequest(requestInfo) {
   const sync = decideProxySync(host, tabId);
   if (sync) {
     rememberTabHost(tabId, host, sync.type !== "direct");
-    scheduleBadge(tabId);
     return sync;
   }
   if (!hasIps || PacParse.IPV4_RE.test(host) || host.indexOf(":") >= 0) {
@@ -328,7 +154,6 @@ function handleProxyRequest(requestInfo) {
       const hit = decideProxySync(String(addrs[i] || "").replace(/^\[|\]$/g, ""), tabId);
       if (hit) {
         rememberTabHost(tabId, host, hit.type !== "direct");
-        scheduleBadge(tabId);
         return hit;
       }
     }
@@ -337,64 +162,15 @@ function handleProxyRequest(requestInfo) {
   });
 }
 
-function rememberTabHost(tabId, host, proxied) {
-  if (tabId == null || tabId < 0 || !host) return;
-  if (!tabHosts[tabId]) tabHosts[tabId] = new Set();
-  tabHosts[tabId].add(host);
-  if (proxied || hostIsProxied(host)) {
-    if (!tabProxied[tabId]) tabProxied[tabId] = new Set();
-    tabProxied[tabId].add(host);
-  }
-  scheduleBadge(tabId);
-}
-
-function isOwnPage(url) {
-  const s = String(url || "");
-  if (!s) return false;
-  try {
-    const base = browser.runtime.getURL("");
-    return !!(base && s.indexOf(base) === 0);
-  } catch (e) {
-    return false;
-  }
-}
-
-function seedTabUrl(tabId, url) {
-  if (tabId == null || tabId < 0 || !url || isOwnPage(url)) return;
-  let host = "";
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
-    host = parsed.hostname.toLowerCase();
-  } catch (e) { return; }
-  rememberTabHost(tabId, host, false);
-}
-
-function recountTabProxied() {
-  Object.keys(tabHosts).forEach(id => {
-    const tabId = Number(id);
-    const next = new Set();
-    tabHosts[tabId].forEach(h => {
-      if (hostIsProxied(h)) next.add(h);
-    });
-    tabProxied[tabId] = next;
-    delete badgeText[tabId];
-    scheduleBadge(tabId);
-  });
-  browser.tabs.query({}).then(tabs => {
-    tabs.forEach(tab => seedTabUrl(tab.id, tab.url));
-  }).catch(() => {});
-}
-
-function toolbarIconOn() {
-  return !!(extensionEnabled && proxyConfig && proxyConfig.host);
+function onProxyRequest(requestInfo) {
+  if (!initialized) return initPromise.then(() => handleProxyRequest(requestInfo));
+  return handleProxyRequest(requestInfo);
 }
 
 async function syncToolbarIcon() {
-  const file = toolbarIconOn() ? "icons/icon_128.png" : "icons/icon_off_128.png";
   try {
-    await browser.action.setIcon({ path: file });
-  } catch (e) {}
+    await browser.action.setIcon({ path: ProxyConfig.iconPaths(ProxyConfig.toolbarIconOn(extensionEnabled, proxyConfig)) });
+  } catch (_) {}
 }
 
 function scheduleBadge(tabId) {
@@ -408,9 +184,9 @@ function scheduleBadge(tabId) {
 async function updateBadge(tabId) {
   if (tabId == null || tabId < 0) return;
   const n = extensionEnabled && tabProxied[tabId] ? tabProxied[tabId].size : 0;
-  const text = n ? (n > 99 ? "∞" : String(n)) : "";
-  if (badgeText[tabId] === text) return;
-  badgeText[tabId] = text;
+  const text = ProxyConfig.badgeText(n);
+  if (badgeTextCache[tabId] === text) return;
+  badgeTextCache[tabId] = text;
   try {
     if (!badgeColorsReady) {
       await browser.action.setBadgeBackgroundColor({ color: "#6d6f78" });
@@ -418,18 +194,18 @@ async function updateBadge(tabId) {
       badgeColorsReady = true;
     }
     await browser.action.setBadgeText({ tabId, text });
-  } catch (e) {}
+  } catch (_) {}
 }
 
 async function queryActiveTab() {
   try {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
     if (tabs && tabs[0]) return tabs[0];
-  } catch (e) {}
+  } catch (_) {}
   try {
     const tabs = await browser.tabs.query({ active: true });
     return (tabs && tabs[0]) || null;
-  } catch (e) {
+  } catch (_) {
     return null;
   }
 }
@@ -441,60 +217,48 @@ async function refreshActiveBadge() {
 
 browser.proxy.onRequest.addListener(onProxyRequest, { urls: ALL_WEB_URLS });
 
-const proxyAuthTried = new Set();
-
 try {
   browser.webRequest.onAuthRequired.addListener(
-    function (details) {
+    details => {
       if (!details.isProxy) return {};
-      const chHost = details.challenger && details.challenger.host;
-      const chPort = details.challenger && details.challenger.port;
-      const srv = (chHost && chPort && proxyServers.find(p =>
-        (p.host === chHost || String(p.host).toLowerCase() === String(chHost).toLowerCase()) &&
-        Number(p.port) === chPort
-      )) || (proxyConfig.username && proxyConfig.password ? proxyConfig : null);
-
-      if (!srv || !srv.username || !srv.password) return {};
+      const ch = details.challenger || {};
+      const srv = ProxyConfig.findAuthServer(proxyServers, proxyConfig, ch.host, ch.port);
+      if (!srv) return {};
       const id = details.requestId;
       if (proxyAuthTried.has(id)) return { cancel: true };
       if (proxyAuthTried.size > 200) proxyAuthTried.clear();
       proxyAuthTried.add(id);
-      return {
-        authCredentials: {
-          username: srv.username || "",
-          password: srv.password || ""
-        }
-      };
+      return { authCredentials: { username: srv.username, password: srv.password } };
     },
     { urls: ALL_WEB_URLS },
     ["blocking"]
   );
-} catch (e) {}
+} catch (_) {}
 
-browser.tabs.onRemoved.addListener((tabId) => {
+browser.tabs.onRemoved.addListener(tabId => {
   delete tabHosts[tabId];
   delete tabProxied[tabId];
-  delete badgeText[tabId];
+  delete badgeTextCache[tabId];
   if (badgeWait[tabId]) {
     clearTimeout(badgeWait[tabId]);
     delete badgeWait[tabId];
   }
 });
 
-browser.tabs.onActivated.addListener(async (info) => {
+browser.tabs.onActivated.addListener(async info => {
   try {
     const tab = await browser.tabs.get(info.tabId);
     seedTabUrl(info.tabId, tab && tab.url);
-  } catch (e) {}
+  } catch (_) {}
   updateBadge(info.tabId);
 });
+
 browser.tabs.onUpdated.addListener((tabId, change, tab) => {
   if (change.status === "loading") {
     tabHosts[tabId] = new Set();
     tabProxied[tabId] = new Set();
-    delete badgeText[tabId];
-    if (change.url) seedTabUrl(tabId, change.url);
-    else if (tab && tab.url) seedTabUrl(tabId, tab.url);
+    delete badgeTextCache[tabId];
+    seedTabUrl(tabId, change.url || (tab && tab.url));
     scheduleBadge(tabId);
     return;
   }
@@ -504,87 +268,28 @@ browser.tabs.onUpdated.addListener((tabId, change, tab) => {
 });
 
 async function withFetchRoute(url, viaProxy, fn) {
-  let host = "";
-  try { host = new URL(url).hostname.toLowerCase(); } catch (e) {}
+  if (viaProxy && (!proxyConfig.host || !(Number(proxyConfig.port) > 0))) {
+    throw new Error("Сначала добавьте прокси");
+  }
   const bucket = viaProxy ? fetchProxyHosts : fetchDirectHosts;
-  if (host) bucket[host] = (bucket[host] || 0) + 1;
+  bucket["*"] = (bucket["*"] || 0) + 1;
   try { return await fn(); }
   finally {
-    if (host) {
-      bucket[host]--;
-      if (bucket[host] <= 0) delete bucket[host];
-    }
+    bucket["*"]--;
+    if (bucket["*"] <= 0) delete bucket["*"];
   }
 }
 
-let listPersistSkipRebuild = 0;
-
-async function persistProxyLists(opts) {
-  if (opts && opts.skipRebuild) listPersistSkipRebuild++;
-  try {
-    await browser.storage.local.set({ proxyLists });
-  } catch (e) {
-    if (opts && opts.skipRebuild) listPersistSkipRebuild = Math.max(0, listPersistSkipRebuild - 1);
-    throw e;
-  }
-}
-
-async function persistListUpdateError(existingId, err) {
-  if (existingId == null) return;
-  const current = proxyLists.find(x => x.id === existingId);
-  if (!current) return;
-  markListUpdateError(current, err);
-  await persistProxyLists({ skipRebuild: true });
-}
-
-function ingestRemoteSync(url, text) {
-  return ListIngest.ingestRemote(url, text);
-}
-
-function ingestRemoteAsync(url, text) {
-  return new Promise((resolve, reject) => {
-    let worker;
-    try {
-      worker = new Worker(browser.runtime.getURL("list-ingest-worker.js"));
-    } catch (e) {
-      try { resolve(ingestRemoteSync(url, text)); }
-      catch (err) { reject(err); }
-      return;
-    }
-    const timer = setTimeout(() => {
-      try { worker.terminate(); } catch (e) {}
-      reject(new Error("Разбор списка превысил время ожидания"));
-    }, 60000);
-    const finish = fn => {
-      clearTimeout(timer);
-      try { worker.terminate(); } catch (e) {}
-      fn();
-    };
-    worker.onmessage = e => {
-      const data = e.data || {};
-      if (data.ok) finish(() => resolve(data.item));
-      else finish(() => reject(new Error(data.error || "Ошибка разбора списка")));
-    };
-    worker.onerror = e => {
-      finish(() => reject(new Error((e && e.message) || "Ошибка разбора списка")));
-    };
-    try {
-      worker.postMessage({ url, text });
-    } catch (e) {
-      finish(() => {
-        try { resolve(ingestRemoteSync(url, text)); }
-        catch (err) { reject(err); }
-      });
-    }
-  });
+async function persistLists() {
+  await browser.storage.local.set({ proxyLists });
 }
 
 async function fetchAndStoreList(url, existingId, msg) {
   url = String(url || "").trim();
-  if (!url.startsWith("http")) throw new Error("Введите корректный URL");
-  if (findListByUrl(url, existingId)) throw new Error("Список добавить нельзя, он уже существует");
+  if (!ListUpdate.validListUrl(url)) throw new Error("Введите корректный URL");
+  if (ListUpdate.findListByUrl(proxyLists, url, existingId)) throw new Error("Список добавить нельзя, он уже существует");
   const existing = existingId != null ? proxyLists.find(x => x.id === existingId) : null;
-  const meta = listMeta(msg || {}, existing);
+  const meta = ListUpdate.listMeta(msg || {}, existing);
   try {
     const text = await withFetchRoute(url, meta.viaProxy, async () => {
       const r = await fetch(url, {
@@ -596,13 +301,19 @@ async function fetchAndStoreList(url, existingId, msg) {
       if (!r.ok) throw new Error(`HTTP ${r.status}: ${body.replace(/\s+/g, " ").trim().slice(0, 160)}`);
       return body;
     });
-    const item = await ingestRemoteAsync(url, text);
+    const item = await ListIngest.ingestRemoteAsync(url, text, browser.runtime.getURL("list-ingest-worker.js"));
     const stored = ListUpdate.commitFetchedList(proxyLists, item, meta, url, existingId, Date.now());
     rebuildMaps();
-    await persistProxyLists({ skipRebuild: true });
+    await persistLists();
     return stored;
   } catch (e) {
-    await persistListUpdateError(existingId, e);
+    if (existingId != null) {
+      const current = proxyLists.find(x => x.id === existingId);
+      if (current) {
+        ListUpdate.markFailure(current, e, Date.now());
+        await persistLists();
+      }
+    }
     throw e;
   }
 }
@@ -611,30 +322,41 @@ async function saveListMeta(msg) {
   const idx = proxyLists.findIndex(x => x.id === msg.id);
   if (idx < 0) throw new Error("Список не найден");
   const url = String(msg.url || proxyLists[idx].url || "").trim();
-  if (!url.startsWith("http")) throw new Error("Введите корректный URL");
-  if (findListByUrl(url, msg.id)) throw new Error("Список добавить нельзя, он уже существует");
-  const meta = listMeta(msg, proxyLists[idx]);
-  proxyLists[idx].name = meta.name;
-  proxyLists[idx].intervalHours = meta.intervalHours;
-  proxyLists[idx].viaProxy = meta.viaProxy;
-  proxyLists[idx].enabled = meta.enabled;
-  proxyLists[idx].type = "proxy";
-  proxyLists[idx].url = url;
-  await browser.storage.local.set({ proxyLists });
+  if (!ListUpdate.validListUrl(url)) throw new Error("Введите корректный URL");
+  if (ListUpdate.findListByUrl(proxyLists, url, msg.id)) throw new Error("Список добавить нельзя, он уже существует");
+  const meta = ListUpdate.listMeta(msg, proxyLists[idx]);
+  Object.assign(proxyLists[idx], { name: meta.name, intervalHours: meta.intervalHours, viaProxy: meta.viaProxy, enabled: meta.enabled, type: "proxy", url });
+  await persistLists();
+  rebuildMaps();
 }
 
-let listUpdateBusy = false;
+async function setListEnabled(id, enabled) {
+  const list = proxyLists.find(item => item.id === id);
+  if (!list) throw new Error("Список не найден");
+  list.enabled = !!enabled;
+  await persistLists();
+  rebuildMaps();
+  await scheduleListUpdates();
+  if (list.enabled && list.url && ListUpdate.isDue(list, Date.now())) {
+    try {
+      await fetchAndStoreList(list.url, list.id, list);
+    } catch (_) {}
+  }
+}
 
-function markListUpdateError(list, err) {
-  ListUpdate.markFailure(list, err, Date.now());
+async function deleteList(id) {
+  const length = proxyLists.length;
+  proxyLists = proxyLists.filter(item => item.id !== id);
+  if (proxyLists.length === length) throw new Error("Список не найден");
+  await persistLists();
+  rebuildMaps();
+  await scheduleListUpdates();
 }
 
 async function updateListedLists(all) {
   if (!proxyLists.length) return { updated: 0, failed: 0 };
-  const now = Date.now();
-  const ids = proxyLists.filter(list => list.url && list.enabled !== false && (all || ListUpdate.isDue(list, now))).map(list => list.id);
-  let updated = 0;
-  let failed = 0;
+  const ids = proxyLists.filter(list => list.url && list.enabled !== false && (all || ListUpdate.isDue(list, Date.now()))).map(list => list.id);
+  let updated = 0, failed = 0;
   for (const id of ids) {
     const list = proxyLists.find(x => x.id === id);
     if (!list || !list.url || list.enabled === false) continue;
@@ -642,7 +364,7 @@ async function updateListedLists(all) {
     try {
       await fetchAndStoreList(list.url, list.id, list);
       updated++;
-    } catch (e) {
+    } catch (_) {
       failed++;
     }
   }
@@ -650,20 +372,14 @@ async function updateListedLists(all) {
   return { updated, failed };
 }
 
-async function withListUpdateLock(fn) {
-  if (listUpdateBusy) return { updated: 0, failed: 0, skipped: true };
-  listUpdateBusy = true;
-  try { return await fn(); }
-  finally { listUpdateBusy = false; }
+function enqueueListUpdate(fn) {
+  const task = listUpdateQueue.then(fn, fn);
+  listUpdateQueue = task.catch(() => {});
+  return task;
 }
 
-async function updateAllLists() {
-  return withListUpdateLock(() => updateListedLists(true));
-}
-
-async function updateDueLists() {
-  return withListUpdateLock(() => updateListedLists(false));
-}
+function updateAllLists() { return enqueueListUpdate(() => updateListedLists(true)); }
+function updateDueLists() { return enqueueListUpdate(() => updateListedLists(false)); }
 
 async function scheduleListUpdates() {
   try {
@@ -675,7 +391,7 @@ async function scheduleListUpdates() {
     const existing = await browser.alarms.get("updateLists");
     if (existing && !existing.periodInMinutes && Math.abs(existing.scheduledTime - when) < 15000) return;
     await browser.alarms.create("updateLists", { when });
-  } catch (e) {}
+  } catch (_) {}
 }
 
 async function pingServer(server) {
@@ -685,14 +401,9 @@ async function pingServer(server) {
   const probeUrl = `http://cp.cloudflare.com/generate_204?__deviate_probe=${server.id}&_t=${Date.now()}_${Math.random()}`;
   const start = performance.now();
   try {
-    await fetch(probeUrl, {
-      cache: "no-store",
-      mode: "no-cors",
-      signal: AbortSignal.timeout(5000)
-    });
-    const latency = Math.max(1, Math.round(performance.now() - start));
-    return { id: server.id, success: true, latency };
-  } catch (e) {
+    await fetch(probeUrl, { cache: "no-store", mode: "no-cors", signal: AbortSignal.timeout(5000) });
+    return { id: server.id, success: true, latency: Math.max(1, Math.round(performance.now() - start)) };
+  } catch (_) {
     return { id: server.id, success: false, latency: null };
   }
 }
@@ -701,11 +412,8 @@ async function pingAllServers(serversToPing) {
   const targets = (serversToPing && serversToPing.length ? serversToPing : proxyServers).filter(p => p && p.host && p.port);
   if (!targets.length) return {};
   const results = {};
-  const pings = await Promise.all(targets.map(p => pingServer(p)));
-  pings.forEach(res => {
-    if (res && res.id != null) {
-      results[res.id] = { success: res.success, latency: res.latency };
-    }
+  (await Promise.all(targets.map(pingServer))).forEach(res => {
+    if (res && res.id != null) results[res.id] = { success: res.success, latency: res.latency };
   });
   return results;
 }
@@ -722,11 +430,10 @@ async function handleConflictControl(level) {
     }
   } else if (disabledByConflict) {
     disabledByConflict = false;
-    if (proxyConfig && proxyConfig.host && Number(proxyConfig.port) > 0) {
+    if (proxyConfig.host && Number(proxyConfig.port) > 0) {
       extensionEnabled = true;
       await browser.storage.local.set({ extensionEnabled: true, disabledByConflict: false });
       rebuildMaps();
-      recountTabProxied();
       await syncToolbarIcon();
       await refreshActiveBadge();
     } else {
@@ -736,102 +443,98 @@ async function handleConflictControl(level) {
   return isBlocked;
 }
 
+function reply(sendResponse, task) {
+  Promise.resolve(task)
+    .then(res => sendResponse(res))
+    .catch(e => sendResponse({ success: false, error: String((e && e.message) || e) }));
+}
+
 browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.action === "pingAllProxies") {
-    pingAllServers(msg.servers)
-      .then(results => sendResponse({ success: true, results }))
-      .catch(e => sendResponse({ success: false, error: String(e.message || e), results: {} }));
-    return true;
-  }
-  if (msg.action === "fetchList") {
-    fetchAndStoreList(msg.url, msg.id, msg)
-      .then(() => sendResponse({ success: true }))
-      .catch(e => sendResponse({ success: false, error: String(e.message || e) }));
-    return true;
-  }
-  if (msg.action === "saveListMeta") {
-    saveListMeta(msg)
-      .then(() => rebuildMaps())
-      .then(() => sendResponse({ success: true }))
-      .catch(e => sendResponse({ success: false, error: String(e.message || e) }));
-    return true;
-  }
-  if (msg.action === "refreshList") {
-    const list = proxyLists.find(x => x.id === msg.id);
-    if (!list) {
-      sendResponse({ success: false, error: "Список не найден" });
-      return true;
+  initPromise.then(() => {
+    if (msg.action === "pingAllProxies") {
+      reply(sendResponse, pingAllServers(msg.servers).then(results => ({ success: true, results })));
+      return;
     }
-    fetchAndStoreList(list.url, list.id, list)
-      .then(() => sendResponse({ success: true }))
-      .catch(e => sendResponse({ success: false, error: String(e.message || e) }));
-    return true;
-  }
-  if (msg.action === "refreshLists") {
-    updateAllLists()
-      .then(res => sendResponse({ success: true, updated: res.updated, failed: res.failed }))
-      .catch(e => sendResponse({ success: false, error: String(e.message || e) }));
-    return true;
-  }
-  if (msg.action === "coverInfoMany") {
-    const hosts = Array.isArray(msg.hosts) ? msg.hosts : [];
-    const covers = {};
-    hosts.forEach(h => {
-      const host = normalizeRule(h).replace(/^\*\./, "");
-      if (!host || covers[host]) return;
-      covers[host] = coverPayload(host);
-    });
-    sendResponse({ covers });
-    return true;
-  }
-  if (msg.action === "coverInfo") {
-    const host = normalizeRule(msg.host || "").replace(/^\*\./, "");
-    sendResponse(coverPayload(host));
-    return true;
-  }
-  if (msg.action === "getTabDomains") {
-    const domains = tabHosts[msg.tabId] ? Array.from(tabHosts[msg.tabId]) : [];
-    sendResponse({ domains: domains.sort() });
-    return true;
-  }
-  if (msg.action === "checkProxyControl") {
-    if (browser.proxy && browser.proxy.settings && typeof browser.proxy.settings.get === "function") {
-      browser.proxy.settings.get({}).then(async details => {
-        const level = (details && details.levelOfControl) || "";
-        const isBlocked = await handleConflictControl(level);
-        sendResponse({ levelOfControl: level, isBlocked });
-      }).catch(() => {
+    if (msg.action === "fetchList") {
+      reply(sendResponse, enqueueListUpdate(() => fetchAndStoreList(msg.url, msg.id, msg)).then(() => ({ success: true })));
+      return;
+    }
+    if (msg.action === "saveListMeta") {
+      reply(sendResponse, enqueueListUpdate(() => saveListMeta(msg)).then(() => ({ success: true })));
+      return;
+    }
+    if (msg.action === "setListEnabled") {
+      reply(sendResponse, enqueueListUpdate(() => setListEnabled(msg.id, msg.enabled)).then(() => ({ success: true })));
+      return;
+    }
+    if (msg.action === "deleteList") {
+      reply(sendResponse, enqueueListUpdate(() => deleteList(msg.id)).then(() => ({ success: true })));
+      return;
+    }
+    if (msg.action === "refreshList") {
+      const list = proxyLists.find(x => x.id === msg.id);
+      if (!list) { sendResponse({ success: false, error: "Список не найден" }); return; }
+      reply(sendResponse, enqueueListUpdate(() => fetchAndStoreList(list.url, list.id, list)).then(() => ({ success: true })));
+      return;
+    }
+    if (msg.action === "refreshLists") {
+      reply(sendResponse, updateAllLists().then(res => ({ success: true, updated: res.updated, failed: res.failed })));
+      return;
+    }
+    if (msg.action === "coverInfoMany") {
+      sendResponse({ covers: HostRules.coverMany(msg.hosts, maps.compiledLists) });
+      return;
+    }
+    if (msg.action === "coverInfo") {
+      sendResponse(HostRules.coverPayload(msg.host || "", maps.compiledLists));
+      return;
+    }
+    if (msg.action === "getTabDomains") {
+      const domains = tabHosts[msg.tabId] ? Array.from(tabHosts[msg.tabId]) : [];
+      sendResponse({ domains: domains.sort() });
+      return;
+    }
+    if (msg.action === "checkProxyControl") {
+      if (browser.proxy.settings && typeof browser.proxy.settings.get === "function") {
+        browser.proxy.settings.get({}).then(async details => {
+          const level = (details && details.levelOfControl) || "";
+          sendResponse({ levelOfControl: level, isBlocked: await handleConflictControl(level) });
+        }).catch(() => sendResponse({ levelOfControl: "", isBlocked: false }));
+      } else {
         sendResponse({ levelOfControl: "", isBlocked: false });
-      });
-    } else {
-      sendResponse({ levelOfControl: "", isBlocked: false });
+      }
+      return;
     }
-    return true;
-  }
+    sendResponse({});
+  }).catch(e => sendResponse({ success: false, error: String((e && e.message) || e) }));
+  return true;
 });
 
 try {
-  if (browser.proxy && browser.proxy.settings && browser.proxy.settings.onChange) {
-    browser.proxy.settings.onChange.addListener(async (details) => {
-      const level = (details && details.levelOfControl) || "";
-      await handleConflictControl(level);
+  if (browser.proxy.settings && browser.proxy.settings.onChange) {
+    browser.proxy.settings.onChange.addListener(details => {
+      initPromise
+        .then(() => handleConflictControl((details && details.levelOfControl) || ""))
+        .catch(() => {});
     });
   }
 } catch (_) {}
 
-browser.alarms.onAlarm.addListener((alarm) => {
+browser.alarms.onAlarm.addListener(alarm => {
   if (alarm.name !== "updateLists") return;
-  updateDueLists().finally(scheduleListUpdates);
+  initPromise.then(updateDueLists).finally(scheduleListUpdates);
 });
 
-browser.storage.onChanged.addListener(async (changes) => {
+async function handleStorageChanges(changes) {
   let need = false;
-  if (changes.disabledByConflict) {
-    disabledByConflict = !!changes.disabledByConflict.newValue;
-  }
+  if (changes.disabledByConflict) disabledByConflict = !!changes.disabledByConflict.newValue;
   if (changes.proxyServers) {
     proxyServers = Array.isArray(changes.proxyServers.newValue) ? changes.proxyServers.newValue : [];
-    proxyConfig = configFromServers(migrateProxyServers(proxyServers, null));
+    proxyConfig = ProxyConfig.configFromServers(ProxyConfig.migrateProxyServers(proxyServers, null));
+    if (!proxyConfig.host && extensionEnabled) {
+      extensionEnabled = false;
+      browser.storage.local.set({ extensionEnabled: false });
+    }
     need = true;
   } else if (changes.proxyConfig) {
     proxyConfig = changes.proxyConfig.newValue || proxyConfig;
@@ -841,12 +544,11 @@ browser.storage.onChanged.addListener(async (changes) => {
   if (changes.directRules) { directRules = changes.directRules.newValue || []; need = true; }
   if (changes.proxyLists) {
     proxyLists = changes.proxyLists.newValue || [];
-    if (listPersistSkipRebuild > 0) listPersistSkipRebuild--;
-    else need = true;
+    need = true;
     scheduleListUpdates();
   }
   if (changes.extensionEnabled) {
-    extensionEnabled = !!changes.extensionEnabled.newValue && !!(proxyConfig && proxyConfig.host);
+    extensionEnabled = !!changes.extensionEnabled.newValue && !!proxyConfig.host;
     need = true;
   }
   if (need) {
@@ -854,33 +556,17 @@ browser.storage.onChanged.addListener(async (changes) => {
     await syncToolbarIcon();
     await refreshActiveBadge();
   }
+}
+
+browser.storage.onChanged.addListener(changes => {
+  initPromise.then(() => handleStorageChanges(changes)).catch(() => {});
 });
-
-function isStalePac(list) {
-  if (!list || list.format !== "pac" || !list.url) return false;
-  if (list.pacScript || list.pacIndex) return true;
-  if (list.packed && (list.domainCount || 0) >= 100) return false;
-  const n = (list.domains && list.domains.length) || 0;
-  const ips = (list.ips && list.ips.length) || 0;
-  if (!n && !ips) return true;
-  if (n > 0 && n < 100 && !ips) return true;
-  return false;
-}
-
-function stripLegacyPac(list) {
-  if (!list) return list;
-  delete list.pacScript;
-  delete list.pacIndex;
-  return list;
-}
-
-let initialized = false;
 
 async function initBackground() {
   const res = await browser.storage.local.get(["proxyConfig", "proxyServers", "proxyRules", "directRules", "proxyLists", "extensionEnabled", "disabledByConflict"]);
-  proxyServers = migrateProxyServers(res.proxyServers, res.proxyConfig);
-  proxyConfig = configFromServers(proxyServers);
-  extensionEnabled = (res.extensionEnabled == null ? !!(proxyConfig && proxyConfig.host) : !!res.extensionEnabled && !!(proxyConfig && proxyConfig.host));
+  proxyServers = ProxyConfig.migrateProxyServers(res.proxyServers, res.proxyConfig);
+  proxyConfig = ProxyConfig.configFromServers(proxyServers);
+  extensionEnabled = (res.extensionEnabled == null ? !!proxyConfig.host : !!res.extensionEnabled) && !!proxyConfig.host;
   disabledByConflict = !!res.disabledByConflict;
 
   const persist = {};
@@ -891,18 +577,24 @@ async function initBackground() {
   if (res.extensionEnabled !== extensionEnabled) persist.extensionEnabled = extensionEnabled;
   if (res.proxyRules) proxyRules = res.proxyRules;
   if (res.directRules) directRules = res.directRules;
-  if (res.proxyLists) proxyLists = res.proxyLists.map(stripLegacyPac);
+  const rawLists = Array.isArray(res.proxyLists) ? res.proxyLists : [];
+  const stale = rawLists.some(ListUpdate.isStalePac);
+  proxyLists = rawLists.map(list => ListUpdate.migrateList(Object.assign({}, list)));
+  if (JSON.stringify(rawLists) !== JSON.stringify(proxyLists)) persist.proxyLists = proxyLists;
   if (Object.keys(persist).length) await browser.storage.local.set(persist);
-  const stale = proxyLists.some(isStalePac);
-  rebuildMaps();
+
+  applyMaps(HostRules.rebuildMaps(proxyRules, directRules, proxyLists));
   await syncToolbarIcon();
   await refreshActiveBadge();
   initialized = true;
 
-  if (browser.proxy && browser.proxy.settings && typeof browser.proxy.settings.get === "function") {
+  browser.tabs.query({}).then(tabs => {
+    tabs.forEach(tab => seedTabUrl(tab.id, tab.url));
+  }).catch(() => {});
+
+  if (browser.proxy.settings && typeof browser.proxy.settings.get === "function") {
     browser.proxy.settings.get({}).then(async details => {
-      const level = (details && details.levelOfControl) || "";
-      await handleConflictControl(level);
+      await handleConflictControl((details && details.levelOfControl) || "");
     }).catch(() => {});
   }
 

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "default_locale": "ru",
-  "name": "DeviateProxy",
+  "name": "__MSG_extensionName__",
   "version": "1.0",
   "description": "__MSG_extensionDescription__",
   "minimum_chrome_version": "109.0",
@@ -13,6 +13,7 @@
     "alarms",
     "webRequest",
     "webRequestAuthProvider",
+    "offscreen",
     "unlimitedStorage"
   ],
   "host_permissions": [
