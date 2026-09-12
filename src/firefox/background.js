@@ -258,7 +258,7 @@ browser.tabs.onUpdated.addListener((tabId, change, tab) => {
     tabHosts[tabId] = new Set();
     tabProxied[tabId] = new Set();
     delete badgeTextCache[tabId];
-    seedTabUrl(tabId, change.url || (tab && tab.url));
+    seedTabUrl(tabId, change.url || (tab && (tab.pendingUrl || tab.url)));
     scheduleBadge(tabId);
     return;
   }
@@ -490,9 +490,17 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return;
     }
     if (msg.action === "getTabDomains") {
-      const domains = tabHosts[msg.tabId] ? Array.from(tabHosts[msg.tabId]) : [];
-      sendResponse({ domains: domains.sort() });
-      return;
+      (async () => {
+        if (!tabHosts[msg.tabId] && msg.tabId != null && msg.tabId >= 0) {
+          try {
+            const tab = await browser.tabs.get(msg.tabId);
+            seedTabUrl(msg.tabId, tab && (tab.pendingUrl || tab.url));
+          } catch (_) {}
+        }
+        const domains = tabHosts[msg.tabId] ? Array.from(tabHosts[msg.tabId]) : [];
+        sendResponse({ domains: domains.sort() });
+      })().catch(() => sendResponse({ domains: [] }));
+      return true;
     }
     if (msg.action === "checkProxyControl") {
       if (browser.proxy.settings && typeof browser.proxy.settings.get === "function") {

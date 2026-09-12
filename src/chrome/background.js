@@ -46,30 +46,80 @@ function ownPageBase() {
   try { return chrome.runtime.getURL(""); } catch (_) { return ""; }
 }
 
+function sessionAvailable() {
+  try {
+    return !!(chrome.storage && chrome.storage.session && typeof chrome.storage.session.get === "function");
+  } catch (_) {
+    return false;
+  }
+}
+
+let sessionSaveTimer = null;
+function persistTabHostsSession() {
+  if (!sessionAvailable()) return;
+  if (sessionSaveTimer) return;
+  sessionSaveTimer = setTimeout(async () => {
+    sessionSaveTimer = null;
+    try {
+      const obj = {};
+      Object.keys(tabHosts).forEach(id => {
+        const s = tabHosts[id];
+        if (s && s.size) obj[id] = Array.from(s);
+      });
+      await chrome.storage.session.set({ tabHosts: obj });
+    } catch (_) {}
+  }, 300);
+}
+
 function isHostProxied(host) {
   return HostRules.hostIsProxied(host, extensionEnabled, maps);
 }
 
+function seedTabUrl(tabId, url) {
+  if (tabId == null || tabId < 0 || !url || HostRules.isOwnPage(url, ownPageBase())) return;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
+    recordTabHost(tabId, parsed.hostname);
+  } catch (_) {}
+}
+
 function recordTabHost(tabId, host) {
-  const stored = HostRules.rememberHost(tabHosts, tabId, host);
+  if (tabId == null || tabId < 0 || !host) return;
+  const canon = HostRules.canonHost(host);
+  if (!canon) return;
+  const existingHosts = tabHosts[tabId];
+  const alreadyKnown = existingHosts && existingHosts.has(canon);
+  const stored = HostRules.rememberHost(tabHosts, tabId, canon);
   if (!stored) return;
+  let changed = !alreadyKnown;
   if (isHostProxied(stored)) {
     if (!tabProxied[tabId]) tabProxied[tabId] = new Set();
-    tabProxied[tabId].add(stored);
-    scheduleBadge(tabId);
+    if (!tabProxied[tabId].has(stored)) {
+      tabProxied[tabId].add(stored);
+      changed = true;
+    }
   }
+  if (changed) {
+    scheduleBadge(tabId);
+    persistTabHostsSession();
+  }
+}
+
+function recountTabProxiedForTab(tabId) {
+  const next = new Set();
+  const hosts = tabHosts[tabId];
+  if (hosts && extensionEnabled) {
+    hosts.forEach(h => { if (isHostProxied(h)) next.add(h); });
+  }
+  tabProxied[tabId] = next;
+  scheduleBadge(tabId);
+  return next;
 }
 
 function recountTabProxied() {
   Object.keys(tabHosts).forEach(id => {
-    const tabId = Number(id);
-    const next = new Set();
-    const hosts = tabHosts[tabId];
-    if (hosts && extensionEnabled) {
-      hosts.forEach(h => { if (isHostProxied(h)) next.add(h); });
-    }
-    tabProxied[tabId] = next;
-    scheduleBadge(tabId);
+    recountTabProxiedForTab(Number(id));
   });
 }
 
@@ -158,37 +208,79 @@ chrome.webRequest.onAuthRequired.addListener(
 chrome.webRequest.onBeforeRequest.addListener(
   details => {
     if (details.tabId == null || details.tabId < 0) return;
-    try { recordTabHost(details.tabId, new URL(details.url).hostname); } catch (_) {}
+    try {
+      const host = new URL(details.url).hostname;
+      if (!host) return;
+      ensureInit().then(() => {
+        recordTabHost(details.tabId, host);
+      }).catch(() => {});
+    } catch (_) {}
   },
   { urls: ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"] }
 );
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === "loading" && HostRules.isWebTab(tab, ownPageBase())) {
-    tabHosts[tabId] = new Set();
-    tabProxied[tabId] = new Set();
-    scheduleBadge(tabId);
-  }
+  ensureInit().then(() => {
+    if (changeInfo.status === "loading") {
+      tabHosts[tabId] = new Set();
+      tabProxied[tabId] = new Set();
+      const targetUrl = changeInfo.url || (tab && (tab.pendingUrl || tab.url));
+      if (targetUrl) seedTabUrl(tabId, targetUrl);
+      scheduleBadge(tabId);
+      persistTabHostsSession();
+      return;
+    }
+    if (changeInfo.url) {
+      seedTabUrl(tabId, changeInfo.url);
+      scheduleBadge(tabId);
+    } else if (changeInfo.status === "complete" && tab && tab.url) {
+      seedTabUrl(tabId, tab.url);
+      scheduleBadge(tabId);
+    }
+  }).catch(() => {});
 });
 
 chrome.tabs.onRemoved.addListener(tabId => {
   delete tabHosts[tabId];
   delete tabProxied[tabId];
-  delete badgeWait[tabId];
+  if (badgeWait[tabId]) {
+    clearTimeout(badgeWait[tabId]);
+    delete badgeWait[tabId];
+  }
+  persistTabHostsSession();
 });
 
-chrome.tabs.onActivated.addListener(info => scheduleBadge(info.tabId));
+chrome.tabs.onActivated.addListener(async info => {
+  if (info.tabId == null || info.tabId < 0) return;
+  await ensureInit();
+  try {
+    const tab = await chrome.tabs.get(info.tabId);
+    if (tab && tab.url) seedTabUrl(info.tabId, tab.url);
+  } catch (_) {}
+  scheduleBadge(info.tabId);
+});
 
 function scheduleBadge(tabId) {
-  if (tabId == null || tabId < 0 || badgeWait[tabId]) return;
-  badgeWait[tabId] = true;
-  setTimeout(() => {
+  if (tabId == null || tabId < 0) return;
+  if (badgeWait[tabId]) clearTimeout(badgeWait[tabId]);
+  badgeWait[tabId] = setTimeout(() => {
     delete badgeWait[tabId];
     flushBadge(tabId);
-  }, 100);
+  }, 80);
 }
 
 async function flushBadge(tabId) {
+  if (tabId == null || tabId < 0) return;
+  await ensureInit();
+  if (!tabHosts[tabId]) {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (tab && tab.url) seedTabUrl(tabId, tab.url);
+    } catch (_) {}
+  }
+  if (!tabProxied[tabId] && tabHosts[tabId]) {
+    recountTabProxiedForTab(tabId);
+  }
   const count = (extensionEnabled && tabProxied[tabId]) ? tabProxied[tabId].size : 0;
   try {
     if (!badgeColorsReady) {
@@ -202,8 +294,11 @@ async function flushBadge(tabId) {
 
 async function refreshActiveBadge() {
   try {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tabs && tabs[0]) scheduleBadge(tabs[0].id);
+    let tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tabs || !tabs.length) tabs = await chrome.tabs.query({ active: true });
+    if (tabs && tabs.length) {
+      tabs.forEach(tab => { if (tab && tab.id != null) scheduleBadge(tab.id); });
+    }
   } catch (_) {}
 }
 
@@ -512,8 +607,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return;
     }
     if (msg.action === "getTabDomains") {
-      const set = tabHosts[msg.tabId];
-      sendResponse({ domains: set ? Array.from(set).sort() : [] });
+      (async () => {
+        if (!tabHosts[msg.tabId] && msg.tabId != null && msg.tabId >= 0) {
+          try {
+            const tab = await chrome.tabs.get(msg.tabId);
+            if (tab && tab.url) seedTabUrl(msg.tabId, tab.url);
+          } catch (_) {}
+        }
+        const set = tabHosts[msg.tabId];
+        sendResponse({ domains: set ? Array.from(set).sort() : [] });
+      })().catch(() => sendResponse({ domains: [] }));
       return;
     }
     if (msg.action === "getProxyError") {
@@ -607,6 +710,37 @@ async function initBackground() {
   if (res.extensionEnabled !== extensionEnabled) persist.extensionEnabled = extensionEnabled;
   if (JSON.stringify(rawLists) !== JSON.stringify(proxyLists)) persist.proxyLists = proxyLists;
   if (Object.keys(persist).length) await chrome.storage.local.set(persist);
+
+  if (sessionAvailable()) {
+    try {
+      const s = await chrome.storage.session.get(["tabHosts"]);
+      if (s && s.tabHosts && typeof s.tabHosts === "object") {
+        Object.keys(s.tabHosts).forEach(id => {
+          const arr = s.tabHosts[id];
+          if (Array.isArray(arr)) {
+            tabHosts[Number(id)] = new Set(arr);
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
+  try {
+    await chrome.action.setBadgeBackgroundColor({ color: "#6d6f78" });
+    try { await chrome.action.setBadgeTextColor({ color: "#ffffff" }); } catch (_) {}
+    badgeColorsReady = true;
+  } catch (_) {}
+
+  try {
+    const tabs = await chrome.tabs.query({});
+    if (tabs && tabs.length) {
+      tabs.forEach(tab => {
+        if (tab && tab.id != null && tab.url) {
+          seedTabUrl(tab.id, tab.url);
+        }
+      });
+    }
+  } catch (_) {}
 
   rebuildMaps();
   recountTabProxied();

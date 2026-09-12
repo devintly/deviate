@@ -12,6 +12,13 @@
     "co.za":1,"co.in":1,"net.in":1,"org.in":1,"co.il":1,"com.sg":1
   };
 
+  function getPacParse() {
+    if (typeof PacParse !== "undefined") return PacParse;
+    if (root && root.PacParse) return root.PacParse;
+    if (typeof globalThis !== "undefined" && globalThis.PacParse) return globalThis.PacParse;
+    return null;
+  }
+
   function normalizeIpv6(value) {
     var raw = String(value || "").replace(/^\[|\]$/g, "");
     if (raw.indexOf(":") < 0 || /[^0-9a-f:.]/i.test(raw)) return "";
@@ -105,7 +112,8 @@
       ip = String(ip || "").trim();
       if (IPV4_RE.test(ip)) ipMap[ip] = 1;
     });
-    var compiled = root.PacParse ? root.PacParse.compileCidrs(list.cidrs) : [];
+    var PP = getPacParse();
+    var compiled = PP ? PP.compileCidrs(list.cidrs) : [];
     for (var i = 0; i < compiled.length; i++) cidrs.push(compiled[i]);
   }
 
@@ -198,8 +206,9 @@
       var lExact = {}, lSuffix = {}, lIp = {}, lCidr = [];
       var lPac = null;
       var targets = list;
-      if (list.format === "pac" && list.packed && root.PacParse) {
-        lPac = root.PacParse.compilePacList(list);
+      var PP = getPacParse();
+      if (list.format === "pac" && list.packed && PP) {
+        lPac = PP.compilePacList(list);
         pPac.push(lPac);
         targets = { ips: list.ips, cidrs: list.cidrs, domains: list.extra || [] };
       }
@@ -221,15 +230,17 @@
 
   function isDirectHost(host, maps) {
     if (matchMaps(host, maps.dE, maps.dS)) return true;
-    return !!(root.PacParse && root.PacParse.matchIpLiteral(host, maps.dIp, []));
+    var PP = getPacParse();
+    return !!(PP && PP.matchIpLiteral(host, maps.dIp, []));
   }
 
   function isProxiedHost(host, maps) {
     if (matchMaps(host, maps.pE, maps.pS)) return true;
-    if (root.PacParse && root.PacParse.matchIpLiteral(host, maps.pIp, maps.pCidr)) return true;
+    var PP = getPacParse();
+    if (PP && PP.matchIpLiteral(host, maps.pIp, maps.pCidr)) return true;
     var pacs = maps.pPac || [];
     for (var i = 0; i < pacs.length; i++) {
-      if (root.PacParse && root.PacParse.matchPacHost(host, pacs[i])) return true;
+      if (PP && PP.matchPacHost(host, pacs[i])) return true;
     }
     return false;
   }
@@ -252,10 +263,11 @@
   function findCoveringList(host, compiledLists) {
     if (!host) return null;
     host = String(host).toLowerCase();
+    var PP = getPacParse();
     for (var i = 0; i < (compiledLists || []).length; i++) {
       var entry = compiledLists[i];
-      if (entry.pac && root.PacParse && root.PacParse.matchPacHost(host, entry.pac)) return entry.list;
-      if (matchMaps(host, entry.exact, entry.suffix) || (root.PacParse && root.PacParse.matchIpLiteral(host, entry.ip, entry.cidr))) return entry.list;
+      if (entry.pac && PP && PP.matchPacHost(host, entry.pac)) return entry.list;
+      if (matchMaps(host, entry.exact, entry.suffix) || (PP && PP.matchIpLiteral(host, entry.ip, entry.cidr))) return entry.list;
     }
     return null;
   }

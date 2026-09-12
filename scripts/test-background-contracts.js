@@ -19,6 +19,11 @@ assert(/offscreen\.createDocument/.test(chrome) && /target:\s*"offscreen"/.test(
 assert(/listUpdateQueue\.then/.test(chrome) && /listUpdateQueue\.then/.test(firefox), "list updates must be serialized");
 assert(/initPromise\.then\(updateDueLists\)/.test(firefox), "Firefox alarms must await initialization");
 
+assert(/function seedTabUrl\(/.test(chrome) && /function seedTabUrl\(/.test(firefox), "Both Chrome and Firefox must implement seedTabUrl");
+assert(/pendingUrl/.test(chrome) && /pendingUrl/.test(firefox), "Both Chrome and Firefox must support pendingUrl in tabs.onUpdated");
+assert(/ensureInit\(\)\.then/.test(chrome), "Chrome webRequest must await initialization before recording hosts");
+assert(/sessionAvailable/.test(chrome), "Chrome must support session storage for tab hosts");
+
 const manifest = JSON.parse(read("src/chrome/manifest.json"));
 assert(manifest.permissions.includes("offscreen"), "Chrome offscreen permission missing");
 assert(fs.existsSync(path.join(root, "src/chrome/offscreen.html")), "offscreen document missing");
