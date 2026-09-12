@@ -8,6 +8,7 @@ let proxyRules = [];
 let directRules = [];
 let proxyLists = [];
 let extensionEnabled = false;
+let disabledByConflict = false;
 
 function configFromServers(list) {
   const on = (list || []).find(p => p.enabled && p.host && Number(p.port) > 0);
@@ -839,17 +840,40 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       refreshActiveBadge().then(() => sendResponse({ ok: true }));
       return;
     }
+async function handleConflictControl(level) {
+  const isBlocked = level === "controlled_by_other_extensions";
+  if (isBlocked) {
+    if (extensionEnabled) {
+      extensionEnabled = false;
+      disabledByConflict = true;
+      await chrome.storage.local.set({ extensionEnabled: false, disabledByConflict: true });
+      syncToolbarIcon();
+      refreshActiveBadge();
+    }
+  } else if (disabledByConflict) {
+    disabledByConflict = false;
+    if (proxyConfig && proxyConfig.host && Number(proxyConfig.port) > 0) {
+      extensionEnabled = true;
+      await chrome.storage.local.set({ extensionEnabled: true, disabledByConflict: false });
+      rebuildMaps();
+      recountTabProxied();
+      await applyProxySettings();
+      syncToolbarIcon();
+      refreshActiveBadge();
+    } else {
+      await chrome.storage.local.set({ disabledByConflict: false });
+    }
+  }
+  return isBlocked;
+}
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  ensureInit().then(async () => {
     if (msg.action === "checkProxyControl") {
       try {
         chrome.proxy.settings.get({ incognito: false }, async (details) => {
           const level = (details && details.levelOfControl) || "";
-          const isBlocked = level === "controlled_by_other_extensions";
-          if (isBlocked && extensionEnabled) {
-            extensionEnabled = false;
-            await chrome.storage.local.set({ extensionEnabled: false });
-            syncToolbarIcon();
-            refreshActiveBadge();
-          }
+          const isBlocked = await handleConflictControl(level);
           sendResponse({ levelOfControl: level, isBlocked });
         });
       } catch (e) {
@@ -868,15 +892,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 try {
   if (chrome.proxy && chrome.proxy.settings && chrome.proxy.settings.onChange) {
     chrome.proxy.settings.onChange.addListener(async (details) => {
-      if (details && details.levelOfControl === "controlled_by_other_extensions") {
-        await ensureInit();
-        if (extensionEnabled) {
-          extensionEnabled = false;
-          await chrome.storage.local.set({ extensionEnabled: false });
-          syncToolbarIcon();
-          refreshActiveBadge();
-        }
-      }
+      await ensureInit();
+      const level = (details && details.levelOfControl) || "";
+      await handleConflictControl(level);
     });
   }
 } catch (_) {}
@@ -886,6 +904,9 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
   await ensureInit();
   let needRebuild = false;
 
+  if (changes.disabledByConflict) {
+    disabledByConflict = !!changes.disabledByConflict.newValue;
+  }
   if (changes.proxyServers) {
     proxyServers = Array.isArray(changes.proxyServers.newValue) ? changes.proxyServers.newValue : [];
     proxyConfig = configFromServers(proxyServers);
@@ -929,7 +950,8 @@ async function initBackground() {
     "proxyRules",
     "directRules",
     "proxyLists",
-    "extensionEnabled"
+    "extensionEnabled",
+    "disabledByConflict"
   ]);
 
   const fallback = res.proxyConfig || { type: "socks", host: "", port: 0, username: "", password: "" };
@@ -939,6 +961,7 @@ async function initBackground() {
   directRules = Array.isArray(res.directRules) ? res.directRules : [];
   proxyLists = Array.isArray(res.proxyLists) ? res.proxyLists : [];
   extensionEnabled = res.extensionEnabled === undefined ? true : !!res.extensionEnabled;
+  disabledByConflict = !!res.disabledByConflict;
 
   const persist = {};
   if (!res.proxyServers || !res.proxyServers.length) persist.proxyServers = proxyServers;
@@ -949,6 +972,14 @@ async function initBackground() {
   recountTabProxied();
   await applyProxySettings();
   initialized = true;
+
+  try {
+    chrome.proxy.settings.get({ incognito: false }, async (details) => {
+      const level = (details && details.levelOfControl) || "";
+      await handleConflictControl(level);
+    });
+  } catch (_) {}
+
   await updateDueLists();
   await scheduleListUpdates();
 }

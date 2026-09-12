@@ -4,6 +4,7 @@ let proxyRules = [];
 let directRules = [];
 let proxyLists = [];
 let extensionEnabled = false;
+let disabledByConflict = false;
 
 function configFromServers(list) {
   const on = (list || []).find(p => p.enabled && p.host && Number(p.port) > 0);
@@ -706,6 +707,32 @@ async function pingAllServers(serversToPing) {
   return results;
 }
 
+async function handleConflictControl(level) {
+  const isBlocked = level === "controlled_by_other_extensions";
+  if (isBlocked) {
+    if (extensionEnabled) {
+      extensionEnabled = false;
+      disabledByConflict = true;
+      await browser.storage.local.set({ extensionEnabled: false, disabledByConflict: true });
+      await syncToolbarIcon();
+      await refreshActiveBadge();
+    }
+  } else if (disabledByConflict) {
+    disabledByConflict = false;
+    if (proxyConfig && proxyConfig.host && Number(proxyConfig.port) > 0) {
+      extensionEnabled = true;
+      await browser.storage.local.set({ extensionEnabled: true, disabledByConflict: false });
+      rebuildMaps();
+      recountTabProxied();
+      await syncToolbarIcon();
+      await refreshActiveBadge();
+    } else {
+      await browser.storage.local.set({ disabledByConflict: false });
+    }
+  }
+  return isBlocked;
+}
+
 browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === "pingAllProxies") {
     pingAllServers(msg.servers)
@@ -768,13 +795,7 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (browser.proxy && browser.proxy.settings && typeof browser.proxy.settings.get === "function") {
       browser.proxy.settings.get({}).then(async details => {
         const level = (details && details.levelOfControl) || "";
-        const isBlocked = level === "controlled_by_other_extensions";
-        if (isBlocked && extensionEnabled) {
-          extensionEnabled = false;
-          await browser.storage.local.set({ extensionEnabled: false });
-          await syncToolbarIcon();
-          await refreshActiveBadge();
-        }
+        const isBlocked = await handleConflictControl(level);
         sendResponse({ levelOfControl: level, isBlocked });
       }).catch(() => {
         sendResponse({ levelOfControl: "", isBlocked: false });
@@ -789,14 +810,8 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 try {
   if (browser.proxy && browser.proxy.settings && browser.proxy.settings.onChange) {
     browser.proxy.settings.onChange.addListener(async (details) => {
-      if (details && details.levelOfControl === "controlled_by_other_extensions") {
-        if (extensionEnabled) {
-          extensionEnabled = false;
-          await browser.storage.local.set({ extensionEnabled: false });
-          await syncToolbarIcon();
-          await refreshActiveBadge();
-        }
-      }
+      const level = (details && details.levelOfControl) || "";
+      await handleConflictControl(level);
     });
   }
 } catch (_) {}
@@ -808,6 +823,9 @@ browser.alarms.onAlarm.addListener((alarm) => {
 
 browser.storage.onChanged.addListener(async (changes) => {
   let need = false;
+  if (changes.disabledByConflict) {
+    disabledByConflict = !!changes.disabledByConflict.newValue;
+  }
   if (changes.proxyServers) {
     proxyServers = Array.isArray(changes.proxyServers.newValue) ? changes.proxyServers.newValue : [];
     proxyConfig = configFromServers(migrateProxyServers(proxyServers, null));
@@ -856,11 +874,12 @@ function stripLegacyPac(list) {
 let initialized = false;
 
 async function initBackground() {
-  const res = await browser.storage.local.get(["proxyConfig", "proxyServers", "proxyRules", "directRules", "proxyLists", "extensionEnabled"]);
+  const res = await browser.storage.local.get(["proxyConfig", "proxyServers", "proxyRules", "directRules", "proxyLists", "extensionEnabled", "disabledByConflict"]);
   proxyServers = migrateProxyServers(res.proxyServers, res.proxyConfig);
   proxyConfig = configFromServers(proxyServers);
-  if (res.extensionEnabled == null) extensionEnabled = !!(proxyConfig && proxyConfig.host);
-  else extensionEnabled = !!res.extensionEnabled && !!(proxyConfig && proxyConfig.host);
+  extensionEnabled = (res.extensionEnabled == null ? !!(proxyConfig && proxyConfig.host) : !!res.extensionEnabled && !!(proxyConfig && proxyConfig.host));
+  disabledByConflict = !!res.disabledByConflict;
+
   const persist = {};
   if (JSON.stringify(servers) !== JSON.stringify(res.proxyServers || [])) {
     persist.proxyServers = servers;
@@ -880,6 +899,14 @@ async function initBackground() {
   await syncToolbarIcon();
   await refreshActiveBadge();
   initialized = true;
+
+  if (browser.proxy && browser.proxy.settings && typeof browser.proxy.settings.get === "function") {
+    browser.proxy.settings.get({}).then(async details => {
+      const level = (details && details.levelOfControl) || "";
+      await handleConflictControl(level);
+    }).catch(() => {});
+  }
+
   if (stale) await updateAllLists();
   else await updateDueLists();
   await scheduleListUpdates();

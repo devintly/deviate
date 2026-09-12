@@ -1089,6 +1089,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       const res = await browser.runtime.sendMessage({ action: "checkProxyControl" });
       const blocked = !!(res && res.isBlocked);
+      const wasBlocked = isConflictBlocked;
       isConflictBlocked = blocked;
       if (els.conflictBanner) {
         els.conflictBanner.style.display = blocked ? "flex" : "none";
@@ -1096,9 +1097,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (blocked) {
         if (extensionEnabled) {
           extensionEnabled = false;
-          await browser.storage.local.set({ extensionEnabled: false });
         }
         refreshPowerBtn();
+      } else if (wasBlocked && !blocked) {
+        const st = await browser.storage.local.get(["extensionEnabled"]);
+        extensionEnabled = !!st.extensionEnabled && hasConfiguredProxy();
+        refreshPowerBtn();
+        refreshIcon();
       }
     } catch (_) {}
   }
@@ -1368,7 +1373,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
     extensionEnabled = !extensionEnabled;
-    await browser.storage.local.set({ extensionEnabled });
+    await browser.storage.local.set({ extensionEnabled, disabledByConflict: false });
     refreshPowerBtn();
     await checkProxyConflict();
   });
