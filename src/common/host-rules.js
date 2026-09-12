@@ -35,6 +35,14 @@
     return IPV4_RE.test(h) || !!normalizeIpv6(h);
   }
 
+  function isIgnoredHost(h) {
+    h = String(h || "").trim().toLowerCase().replace(/^\*\./, "").replace(/^\[|\]$/g, "");
+    if (!h) return true;
+    if (h === "localhost" || h === "0.0.0.0" || h === "::1" || h === "0:0:0:0:0:0:0:1") return true;
+    if (h === "127.0.0.1" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+    return false;
+  }
+
   function isAcceptableHost(h) {
     h = String(h || "");
     if (!h || /\s/.test(h) || /[^\x00-\x7F]/.test(h)) return false;
@@ -324,7 +332,7 @@
   function rememberHost(bucket, tabId, host, limit) {
     if (tabId == null || tabId < 0 || !host) return null;
     host = canonHost(host);
-    if (!host) return null;
+    if (!host || isIgnoredHost(host)) return null;
     var set = bucket[tabId];
     if (!set) {
       set = new Set();
@@ -338,6 +346,7 @@
   var api = {
     TAB_HOST_LIMIT: TAB_HOST_LIMIT,
     isIpHost: isIpHost,
+    isIgnoredHost: isIgnoredHost,
     isAcceptableHost: isAcceptableHost,
     normalizeRule: normalizeRule,
     canonHost: canonHost,

@@ -253,18 +253,24 @@ document.addEventListener("DOMContentLoaded", async () => {
     return covers[host] || covers[normalize(host)] || null;
   }
   function collectOverlayRules() {
-    const proxy = [];
-    const direct = [];
-    if (!els.domainsList) return { proxy, direct };
+    if (!els.domainsList) return { proxy: currentRules.slice(), direct: currentDirect.slice() };
+    const modalHosts = new Set();
+    const addProxy = [];
+    const addDirect = [];
     els.domainsList.querySelectorAll("input.domain-pick").forEach(cb => {
-      if (!cb.checked) return;
       const rule = cb.dataset.rule;
       if (!rule) return;
-      const line = cb.closest(".domain-line");
-      const mode = line && line.querySelector("input.mode-direct");
-      if (mode && mode.checked) direct.push(rule);
-      else proxy.push(rule);
+      const h = hostOfRule(rule);
+      if (h) modalHosts.add(h);
+      if (cb.checked) {
+        const line = cb.closest(".domain-line");
+        const mode = line && line.querySelector("input.mode-direct");
+        if (mode && mode.checked) addDirect.push(rule);
+        else addProxy.push(rule);
+      }
     });
+    const proxy = currentRules.filter(r => !modalHosts.has(hostOfRule(r))).concat(addProxy);
+    const direct = currentDirect.filter(r => !modalHosts.has(hostOfRule(r))).concat(addDirect);
     return { proxy, direct };
   }
   function statusForHost(host, covers, overlay) {
@@ -496,7 +502,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (isWebTab(activeTab)) {
       try {
         const host = new URL(activeTab.url).hostname;
-        if (host) set.add(host.toLowerCase());
+        if (host && !HostRules.isIgnoredHost(host)) set.add(host.toLowerCase());
       } catch (_) {}
     }
     if (activeTab) {
@@ -504,7 +510,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         const res = await browser.runtime.sendMessage({ action: "getTabDomains", tabId: activeTab.id });
         (res && res.domains ? res.domains : []).forEach(d => {
           const h = String(d || "").trim().toLowerCase();
-          if (h) set.add(h);
+          if (h && !HostRules.isIgnoredHost(h)) set.add(h);
         });
       } catch (_) {}
     }
@@ -516,7 +522,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const uniq = [];
     (domains || []).forEach(d => {
       const h = String(d || "").trim().toLowerCase();
-      if (h && uniq.indexOf(h) < 0) uniq.push(h);
+      if (h && !HostRules.isIgnoredHost(h) && uniq.indexOf(h) < 0) uniq.push(h);
     });
     uniq.sort();
     if (!uniq.length) {

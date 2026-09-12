@@ -89,16 +89,30 @@ function getUrlHost(url) {
   }
 }
 
+function resetTabForSite(tabId, apex, url) {
+  if (tabId == null || tabId < 0) return;
+  tabHosts[tabId] = new Set();
+  tabProxied[tabId] = new Set();
+  delete badgeTextCache[tabId];
+  if (apex) tabApex[tabId] = apex;
+  else delete tabApex[tabId];
+  if (url) seedTabUrl(tabId, url);
+  scheduleBadge(tabId);
+  persistTabHostsSession();
+}
+
 function seedTabUrl(tabId, url) {
   if (tabId == null || tabId < 0 || !url || HostRules.isOwnPage(url, ownPageBase())) return;
   const host = getUrlHost(url);
-  if (!host) return;
-  if (!tabApex[tabId]) tabApex[tabId] = HostRules.apexDomain(host);
+  if (!host || HostRules.isIgnoredHost(host)) return;
+  const apex = HostRules.apexDomain(host);
+  if (!tabApex[tabId]) tabApex[tabId] = apex;
+  else if (apex && tabApex[tabId] && apex !== tabApex[tabId]) return;
   recordTabHost(tabId, host);
 }
 
 function recordTabHost(tabId, host) {
-  if (tabId == null || tabId < 0 || !host) return;
+  if (tabId == null || tabId < 0 || !host || HostRules.isIgnoredHost(host)) return;
   const canon = HostRules.canonHost(host);
   if (!canon) return;
   const existingHosts = tabHosts[tabId];
@@ -223,8 +237,16 @@ chrome.webRequest.onBeforeRequest.addListener(
     if (details.tabId == null || details.tabId < 0) return;
     try {
       const host = new URL(details.url).hostname;
-      if (!host) return;
+      if (!host || HostRules.isIgnoredHost(host)) return;
       ensureInit().then(() => {
+        if (details.type === "main_frame") {
+          const navApex = HostRules.apexDomain(host);
+          if (navApex && tabApex[details.tabId] && navApex !== tabApex[details.tabId]) {
+            resetTabForSite(details.tabId, navApex, details.url);
+          } else if (!tabApex[details.tabId] && navApex) {
+            tabApex[details.tabId] = navApex;
+          }
+        }
         recordTabHost(details.tabId, host);
       }).catch(() => {});
     } catch (_) {}
@@ -234,30 +256,42 @@ chrome.webRequest.onBeforeRequest.addListener(
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   ensureInit().then(() => {
-    const targetUrl = changeInfo.url || (tab && (tab.pendingUrl || tab.url));
-    const targetHost = getUrlHost(targetUrl);
-    const targetApex = targetHost ? HostRules.apexDomain(targetHost) : "";
-
-    if (changeInfo.status === "loading") {
-      tabHosts[tabId] = new Set();
-      tabProxied[tabId] = new Set();
-      if (targetApex) tabApex[tabId] = targetApex;
-      if (targetUrl) seedTabUrl(tabId, targetUrl);
+    const explicitUrl = (changeInfo && changeInfo.url) || (tab && tab.pendingUrl) || "";
+    if (explicitUrl) {
+      const targetHost = getUrlHost(explicitUrl);
+      const targetApex = targetHost ? HostRules.apexDomain(targetHost) : "";
+      if (targetApex && tabApex[tabId] && targetApex !== tabApex[tabId]) {
+        resetTabForSite(tabId, targetApex, explicitUrl);
+        return;
+      }
+      if (changeInfo && changeInfo.status === "loading") {
+        resetTabForSite(tabId, targetApex || tabApex[tabId] || "", explicitUrl);
+        return;
+      }
+      seedTabUrl(tabId, explicitUrl);
       scheduleBadge(tabId);
-      persistTabHostsSession();
       return;
     }
-    if (changeInfo.url) {
-      if (targetApex && tabApex[tabId] && targetApex !== tabApex[tabId]) {
-        tabHosts[tabId] = new Set();
-        tabProxied[tabId] = new Set();
-        tabApex[tabId] = targetApex;
+
+    const status = changeInfo && changeInfo.status;
+    const tabUrl = (tab && tab.url) || "";
+    const tabHost = getUrlHost(tabUrl);
+    const tabApexVal = tabHost ? HostRules.apexDomain(tabHost) : "";
+
+    if (status === "loading") {
+      if (tabApexVal && tabApex[tabId] && tabApexVal !== tabApex[tabId]) {
+        return;
       }
-      seedTabUrl(tabId, changeInfo.url);
-      scheduleBadge(tabId);
-      persistTabHostsSession();
-    } else if (changeInfo.status === "complete" && tab && tab.url) {
-      seedTabUrl(tabId, tab.url);
+      resetTabForSite(tabId, tabApexVal || tabApex[tabId] || "", tabUrl);
+      return;
+    }
+
+    if (status === "complete") {
+      if (tabApexVal && tabApex[tabId] && tabApexVal !== tabApex[tabId]) {
+        resetTabForSite(tabId, tabApexVal, tabUrl);
+        return;
+      }
+      if (tabUrl) seedTabUrl(tabId, tabUrl);
       scheduleBadge(tabId);
     }
   }).catch(() => {});
@@ -639,7 +673,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           } catch (_) {}
         }
         const set = tabHosts[msg.tabId];
-        sendResponse({ domains: set ? Array.from(set).sort() : [] });
+        sendResponse({ domains: set ? Array.from(set).filter(d => !HostRules.isIgnoredHost(d)).sort() : [] });
       })().catch(() => sendResponse({ domains: [] }));
       return;
     }
