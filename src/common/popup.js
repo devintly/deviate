@@ -10,10 +10,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function getTabWebUrl(tab) {
     if (!tab) return "";
-    const pending = String(tab.pendingUrl || "");
-    if (pending.startsWith("http://") || pending.startsWith("https://")) return pending;
     const url = String(tab.url || "");
     if (url.startsWith("http://") || url.startsWith("https://")) return url;
+    const pending = String(tab.pendingUrl || "");
+    if (pending.startsWith("http://") || pending.startsWith("https://")) return pending;
     return "";
   }
 
