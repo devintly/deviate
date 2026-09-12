@@ -74,16 +74,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       return parsed;
     }
 
-    function scrollToFirstInvalid() {
-      if (!invalidSet.size) return;
-      const firstLine = Math.min(...Array.from(invalidSet));
-      const rootStyle = getComputedStyle(document.documentElement);
-      const lineHeight = parseFloat(rootStyle.getPropertyValue("--editor-line-height")) || 22;
-      textarea.scrollTop = Math.max(0, (firstLine - 1) * lineHeight - 22);
-      syncScroll();
-      textarea.focus();
-    }
-
     textarea.addEventListener("input", () => {
       if (rafId) cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
@@ -98,7 +88,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       validate,
       renderLines,
       setInvalidLines,
-      scrollToFirstInvalid,
       syncScroll
     };
   }
@@ -124,8 +113,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     const proxyParsed = proxyEditor.validate();
     const invalid = directParsed.invalid.concat(proxyParsed.invalid);
     if (invalid.length) {
-      if (proxyParsed.invalid.length) proxyEditor.scrollToFirstInvalid();
-      else if (directParsed.invalid.length) directEditor.scrollToFirstInvalid();
       flash(I18n.t("msg_invalid_rules", { lines: invalid.join(", ") }), true);
       return;
     }

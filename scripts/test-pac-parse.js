@@ -69,10 +69,18 @@ function run() {
   try { api.parsePacToLists(html); } catch (e) { threw = /HTML/i.test(String(e.message)); }
   assert(threw, "HTML document must not parse as PAC");
 
-  const tiny = 'function FindProxyForURL(url, host){ if(dnsDomainIs(host, "example.org")) return "PROXY 1:2"; return "DIRECT"; }';
+  const tiny = 'function FindProxyForURL(url, host){ if(dnsDomainIs(host, "example.org") || dnsDomainIs(host, "example.org") || dnsDomainIs(host, "*.example.org") || dnsDomainIs(host, "www.example.org") || dnsDomainIs(host, "second.net")) return "PROXY 1:2"; return "DIRECT"; }';
   const tinyLists = api.parsePacToLists(tiny);
   assert(tinyLists.extra.includes("example.org"), "quoted domain missing from tiny PAC");
+  assert(tinyLists.extra.includes("second.net"), "second.net missing from tiny PAC");
+  assert(tinyLists.domainCount === 2, "tiny PAC duplicate domains must be deduplicated: got " + tinyLists.domainCount);
+  assert(tinyLists.extra.length === 2, "tiny PAC extra list must contain exactly 2 unique domains: got " + tinyLists.extra.length);
   assert(api.matchPacHost("example.org", tinyLists), "tiny PAC host should match extra");
+  assert(api.matchPacHost("www.example.org", tinyLists), "www.example.org should match extra");
+
+  const packedWithExtra = 'var domains = {"org": {"7": "example"}}; function FindProxyForURL(url, host){ if(dnsDomainIs(host, "example.org") || dnsDomainIs(host, "newsite.org")) return "PROXY 1:2"; return "DIRECT"; }';
+  const parsedOverlap = api.parsePacToLists(packedWithExtra);
+  assert(parsedOverlap.domainCount === 2, "overlap between packed and extra must not count duplicate: got " + parsedOverlap.domainCount);
 
   const code = fs.readFileSync(PAC_PARSE, "utf8");
   assert(!/\bnew Function\b/.test(code), "pac-parse must not use new Function");

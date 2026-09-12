@@ -55,13 +55,22 @@ function decideProxySync(host, tabId) {
 }
 
 function rememberTabHost(tabId, host, proxied) {
-  const stored = HostRules.rememberHost(tabHosts, tabId, host);
+  if (tabId == null || tabId < 0 || !host) return;
+  const canon = HostRules.canonHost(host);
+  if (!canon) return;
+  const existing = tabHosts[tabId];
+  const alreadyKnown = existing && existing.has(canon);
+  const stored = HostRules.rememberHost(tabHosts, tabId, canon);
   if (!stored) return;
+  let changed = !alreadyKnown;
   if (proxied || hostIsProxied(stored)) {
     if (!tabProxied[tabId]) tabProxied[tabId] = new Set();
-    tabProxied[tabId].add(stored);
+    if (!tabProxied[tabId].has(stored)) {
+      tabProxied[tabId].add(stored);
+      changed = true;
+    }
   }
-  scheduleBadge(tabId);
+  if (changed) scheduleBadge(tabId);
 }
 
 function seedTabUrl(tabId, url) {

@@ -279,7 +279,16 @@
           leftover = leftover.slice(totalChars);
         }
         packed[zone][String(nameLen)] = chunk;
-        if (nameLen) count += Math.floor(chunk.length / nameLen);
+        if (nameLen && chunk) {
+          var seenChunk = Object.create(null);
+          for (var cp = 0; cp + nameLen <= chunk.length; cp += nameLen) {
+            var sub = chunk.substr(cp, nameLen);
+            if (!seenChunk[sub]) {
+              seenChunk[sub] = 1;
+              count++;
+            }
+          }
+        }
       }
     }
     return { packed: packed, count: count };
@@ -399,7 +408,42 @@
       if (IPV4_RE.test(ip) && ip.indexOf("0.") !== 0 && ip.indexOf("127.") !== 0) ips[ip] = 1;
     }
     var cidrs = parseSpecialCidrs(source);
-    var domainCount = expanded.count || extraList.length;
+    var uniqueExtraCount = 0;
+    if (expanded.count > 0 && extraList.length > 0) {
+      var patKeys = maps.domainPatterns ? Object.keys(maps.domainPatterns) : null;
+      for (var e = 0; e < extraList.length; e++) {
+        var exDom = extraList[e];
+        var dot = exDom.lastIndexOf(".");
+        if (dot < 1) {
+          uniqueExtraCount++;
+          continue;
+        }
+        var zone = exDom.slice(dot + 1);
+        var byLen = expanded.packed && expanded.packed[zone];
+        if (!byLen) {
+          uniqueExtraCount++;
+          continue;
+        }
+        var name = exDom.slice(0, dot);
+        if (maps.domainPatterns) name = applyPatterns(name, maps.domainPatterns, patKeys);
+        var chunk = byLen[String(name.length)];
+        if (!chunk) {
+          uniqueExtraCount++;
+          continue;
+        }
+        var found = false;
+        for (var p = 0; p < chunk.length; p += name.length) {
+          if (chunk.substr(p, name.length) === name) {
+            found = true;
+            break;
+          }
+        }
+        if (!found) uniqueExtraCount++;
+      }
+    } else if (!expanded.count) {
+      uniqueExtraCount = extraList.length;
+    }
+    var domainCount = (expanded.count || 0) + uniqueExtraCount;
     var ipList = Object.keys(ips);
 
     if (domainsLzp && domainCount < 100) {
