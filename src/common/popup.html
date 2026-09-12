@@ -46,7 +46,7 @@
     input[type="text"], input[type="password"], input[type="number"], select { width: 100%; box-sizing: border-box; border: 0; outline: 0; background: #1e1f22; color: #f2f3f5; padding: 10px 12px; border-radius: 10px; font-size: 13px; margin: 0 0 12px; height: 36px; }
 
     .inputWrap { position: relative; display: flex; align-items: center; background: #1e1f22; border-radius: 10px; margin: 0 0 12px; height: 32px; padding: 0 4px; box-sizing: border-box; }
-    .inputWrap .wildcard-btn { position: absolute; left: 4px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; min-width: 24px; max-width: 24px; min-height: 24px; max-height: 24px; font-size: 11px; font-weight: 700; border-radius: 5px; z-index: 2; padding: 0; box-sizing: border-box; }
+    .inputWrap .wildcard-btn { position: absolute; left: 4px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; min-width: 24px; max-width: 24px; min-height: 24px; max-height: 24px; font-size: 11px; font-weight: 800; border-radius: 5px; z-index: 2; padding: 0; box-sizing: border-box; }
     .inputWrap input[type="text"] { appearance: none; width: 100%; height: 32px; min-height: 32px; max-height: 32px; margin: 0; padding: 0 32px; background: transparent; font-size: 13px; font-weight: 700; text-align: center; line-height: 32px; border: 0; outline: 0; color: #f2f3f5; box-sizing: border-box; }
     .statusIcon { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; pointer-events: auto; cursor: default; user-select: none; }
     .status-mark { display: inline-flex; align-items: center; justify-content: center; gap: 3px; }
@@ -207,8 +207,8 @@
       padding: 0;
       margin: 0;
       box-sizing: border-box;
-      font-family: monospace, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      font-weight: 700;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-weight: 800;
       line-height: 1;
       border-radius: 4px;
       border: 0;
@@ -264,10 +264,12 @@
     .domain-line .domain-expander svg { width: 12px; height: 12px; display: block; transition: transform 0.15s ease; }
     .domain-node.expanded > .domain-line .domain-expander svg { transform: rotate(90deg); }
     .domain-line input.domain-pick { display: none; }
-    .domain-line .domain-wildcard-btn { display: none; width: 16px; height: 16px; min-width: 16px; max-width: 16px; min-height: 16px; max-height: 16px; padding: 0; font-size: 9px; font-weight: 700; line-height: 1; letter-spacing: -0.5px; border-radius: 3px; box-sizing: border-box; }
+    .domain-line .domain-wildcard-btn { display: none; width: 16px; height: 16px; min-width: 16px; max-width: 16px; min-height: 16px; max-height: 16px; padding: 0; font-size: 10px; font-weight: 800; line-height: 1; letter-spacing: -0.5px; border-radius: 3px; box-sizing: border-box; }
     .domain-line.picked .domain-wildcard-btn { display: inline-flex; }
-    .domain-line .domain-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; cursor: pointer; flex-shrink: 1; }
+    .domain-line .domain-name { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; cursor: pointer; flex-shrink: 1; }
     .domain-line .domain-apex { font-weight: 400; color: #b5bac1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; cursor: pointer; flex-shrink: 1; }
+    .domain-line.picked .domain-name,
+    .domain-line.picked .domain-apex { font-weight: 700; }
     .domain-line.has-children { cursor: pointer; }
     .domain-line .mini-status { flex: none; min-width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; }
     .domain-line .mini-status .mark-main { width: 14px; height: 14px; }
