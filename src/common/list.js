@@ -2,15 +2,13 @@ const browser = globalThis.browser || globalThis.chrome;
 
 document.addEventListener("DOMContentLoaded", async () => {
   if (typeof I18n !== "undefined") await I18n.init(browser);
-  const proxyEditor = document.getElementById("proxyEditor");
-  const directEditor = document.getElementById("directEditor");
   const saveBtn = document.getElementById("saveBtn");
   const status = document.getElementById("status");
 
   function parseRules(text) {
     const rules = [];
     const invalid = [];
-    String(text || "").split("\n").forEach((line, index) => {
+    String(text || "").replace(/\r\n/g, "\n").split("\n").forEach((line, index) => {
       const raw = line.trim();
       if (!raw) return;
       const normalized = HostRules.normalizeRule(raw);
@@ -19,35 +17,125 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     return { rules, invalid };
   }
+
   function dropOverlap(proxy, direct) {
     const d = new Set(direct.map(HostRules.normalizeRule));
     return proxy.filter(r => !d.has(HostRules.normalizeRule(r)));
   }
+
   function flash(text, error) {
     status.style.color = error ? "#ff6b6b" : "#57f287";
     status.textContent = text;
-    setTimeout(() => { if (status.textContent === text) status.textContent = ""; }, 1800);
+    setTimeout(() => { if (status.textContent === text) status.textContent = ""; }, 2500);
   }
+
+  function createEditor(textareaId, gutterId, backdropId, containerId) {
+    const textarea = document.getElementById(textareaId);
+    const gutter = document.getElementById(gutterId);
+    const backdrop = document.getElementById(backdropId);
+    const container = document.getElementById(containerId);
+    let invalidSet = new Set();
+    let rafId = null;
+
+    function renderLines() {
+      const lines = textarea.value.replace(/\r\n/g, "\n").split("\n");
+      const count = Math.max(lines.length, 1);
+      const gutterFrag = [];
+      const backdropFrag = [];
+
+      for (let i = 0; i < count; i++) {
+        const lineNum = i + 1;
+        const isInvalid = invalidSet.has(lineNum);
+        const cls = isInvalid ? " invalid" : "";
+        gutterFrag.push(`<div class="gutter-line${cls}">${lineNum}</div>`);
+        backdropFrag.push(`<div class="hl-line${cls}"></div>`);
+      }
+
+      gutter.innerHTML = gutterFrag.join("");
+      backdrop.innerHTML = backdropFrag.join("");
+      container.classList.toggle("has-error", invalidSet.size > 0);
+      syncScroll();
+    }
+
+    function syncScroll() {
+      backdrop.scrollTop = textarea.scrollTop;
+      backdrop.scrollLeft = textarea.scrollLeft;
+      gutter.scrollTop = textarea.scrollTop;
+    }
+
+    function setInvalidLines(lineNumbers) {
+      invalidSet = new Set(lineNumbers);
+      renderLines();
+    }
+
+    function validate() {
+      const parsed = parseRules(textarea.value);
+      setInvalidLines(parsed.invalid);
+      return parsed;
+    }
+
+    function scrollToFirstInvalid() {
+      if (!invalidSet.size) return;
+      const firstLine = Math.min(...Array.from(invalidSet));
+      const rootStyle = getComputedStyle(document.documentElement);
+      const lineHeight = parseFloat(rootStyle.getPropertyValue("--editor-line-height")) || 22;
+      textarea.scrollTop = Math.max(0, (firstLine - 1) * lineHeight - 22);
+      syncScroll();
+      textarea.focus();
+    }
+
+    textarea.addEventListener("input", () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        validate();
+      });
+    });
+
+    textarea.addEventListener("scroll", syncScroll, { passive: true });
+
+    return {
+      textarea,
+      validate,
+      renderLines,
+      setInvalidLines,
+      scrollToFirstInvalid,
+      syncScroll
+    };
+  }
+
+  const proxyEditor = createEditor("proxyEditor", "proxyGutter", "proxyBackdrop", "proxyContainer");
+  const directEditor = createEditor("directEditor", "directGutter", "directBackdrop", "directContainer");
 
   const res = await browser.storage.local.get(["proxyRules", "directRules"]);
   const direct = Array.isArray(res.directRules) ? res.directRules : [];
   const proxy = dropOverlap(Array.isArray(res.proxyRules) ? res.proxyRules : [], direct);
-  proxyEditor.value = proxy.join("\n");
-  directEditor.value = direct.join("\n");
+  proxyEditor.textarea.value = proxy.join("\n");
+  directEditor.textarea.value = direct.join("\n");
+  proxyEditor.renderLines();
+  directEditor.renderLines();
+
+  window.addEventListener("resize", () => {
+    proxyEditor.syncScroll();
+    directEditor.syncScroll();
+  });
 
   saveBtn.addEventListener("click", async () => {
-    const directParsed = parseRules(directEditor.value);
-    const proxyParsed = parseRules(proxyEditor.value);
+    const directParsed = directEditor.validate();
+    const proxyParsed = proxyEditor.validate();
     const invalid = directParsed.invalid.concat(proxyParsed.invalid);
     if (invalid.length) {
+      if (proxyParsed.invalid.length) proxyEditor.scrollToFirstInvalid();
+      else if (directParsed.invalid.length) directEditor.scrollToFirstInvalid();
       flash(I18n.t("msg_invalid_rules", { lines: invalid.join(", ") }), true);
       return;
     }
     const nextDirect = directParsed.rules;
     const nextProxy = dropOverlap(proxyParsed.rules, nextDirect);
     await browser.storage.local.set({ proxyRules: nextProxy, directRules: nextDirect });
-    proxyEditor.value = nextProxy.join("\n");
-    directEditor.value = nextDirect.join("\n");
+    proxyEditor.textarea.value = nextProxy.join("\n");
+    directEditor.textarea.value = nextDirect.join("\n");
+    proxyEditor.renderLines();
+    directEditor.renderLines();
     flash(typeof I18n !== "undefined" ? I18n.t("list_editor_saved") : "Сохранено");
   });
 
