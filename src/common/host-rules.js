@@ -391,11 +391,20 @@
         else roots.push(nodeMap[h]);
       }
     });
+    function isWww(h) {
+      return typeof h === "string" && (h.indexOf("www.") === 0 || h === "www");
+    }
+    function compareHosts(a, b) {
+      var aWww = isWww(a.host);
+      var bWww = isWww(b.host);
+      if (aWww !== bWww) return aWww ? -1 : 1;
+      return a.host.localeCompare(b.host);
+    }
     function sortNode(n) {
-      n.children.sort(function (a, b) { return a.host.localeCompare(b.host); });
+      n.children.sort(compareHosts);
       n.children.forEach(sortNode);
     }
-    roots.sort(function (a, b) { return a.host.localeCompare(b.host); });
+    roots.sort(compareHosts);
     roots.forEach(sortNode);
     return roots;
   }

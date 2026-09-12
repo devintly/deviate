@@ -88,6 +88,8 @@ function assert(cond, msg) {
     "www.google.com"
   ];
   const tree = api.buildDomainTree(hosts, "google.com");
+  assert(tree[0].host === "www.google.com", "www.google.com is first in 3rd level list");
+  assert(tree.map(t => t.host).join(",") === "www.google.com,accounts.google.com,clients6.google.com,ogs.google.com,play.google.com", "other 3rd level subdomains sorted alphabetically after www.");
   const clients6 = tree.find(t => t.host === "clients6.google.com");
   assert(clients6, "clients6.google.com synthesized as 3rd-level parent");
   assert(clients6.children.length === 2, "clients6 has 2 children of 4th level");
