@@ -266,10 +266,12 @@
     .domain-line input.domain-pick { display: none; }
     .domain-line .domain-wildcard-btn { display: none; width: 16px; height: 16px; min-width: 16px; max-width: 16px; min-height: 16px; max-height: 16px; padding: 0; font-size: 10px; font-weight: 800; line-height: 1; letter-spacing: -0.5px; border-radius: 3px; box-sizing: border-box; }
     .domain-line.picked .domain-wildcard-btn { display: inline-flex; }
-    .domain-line .domain-name { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; cursor: pointer; flex-shrink: 1; }
+    .domain-line .domain-name { font-weight: 400; color: #b5bac1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; cursor: pointer; flex-shrink: 1; }
     .domain-line .domain-apex { font-weight: 400; color: #b5bac1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; cursor: pointer; flex-shrink: 1; }
+    .domain-line:hover .domain-name,
+    .domain-line:hover .domain-apex { color: #dbdee1; }
     .domain-line.picked .domain-name,
-    .domain-line.picked .domain-apex { font-weight: 700; }
+    .domain-line.picked .domain-apex { font-weight: 700; color: #ffffff; }
     .domain-line.has-children { cursor: pointer; }
     .domain-line .mini-status { flex: none; min-width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; }
     .domain-line .mini-status .mark-main { width: 14px; height: 14px; }
