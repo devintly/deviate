@@ -624,14 +624,19 @@ document.addEventListener("DOMContentLoaded", async () => {
       nodeEl.dataset.host = host;
       nodeEl.dataset.level = String(level);
 
+      const expanderHtml = hasChildren
+        ? `<span class="domain-expander has-children">${SVGS.chevron}</span>`
+        : "";
+      const wildBtnHtml = isIp
+        ? ""
+        : `<button type="button" class="wildcard-btn domain-wildcard-btn ${isWild ? "active" : ""}" title="*.">*.</button>`;
+
       const line = document.createElement("div");
       line.className = `domain-line${existing ? " picked" : ""}${hasChildren ? " has-children" : ""}`;
       line.innerHTML = `
         <input type="checkbox" class="domain-pick" aria-label="${escapeHtml(host)}" data-host="${escapeHtml(host)}" data-kind="${kind}" data-apex="${escapeHtml(apex)}" ${existing ? "checked" : ""}>
-        <span class="domain-expander ${hasChildren ? "has-children" : "empty"}">
-          ${hasChildren ? SVGS.chevron : ""}
-        </span>
-        ${isIp ? '<span class="wildcard-btn empty"></span>' : `<button type="button" class="wildcard-btn domain-wildcard-btn ${isWild ? "active" : ""}" title="*.">*.</button>`}
+        ${expanderHtml}
+        ${wildBtnHtml}
         <span class="${isBold ? "domain-name" : "domain-apex"}" title="${escapeHtml(host)}">${escapeHtml(host)}</span>
         <span class="mini-status"></span>
         <span class="domain-spacer"></span>
@@ -719,16 +724,16 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (isIpHost(apex)) {
         renderDomainNode(item, normalize(apex), "apex", apex, 0, true, []);
       } else {
-        renderDomainNode(item, apex, "apex", apex, 0, true, []);
         const tree = buildDomainTree(hosts, apex);
         function addTreeSearchBits(node) {
           searchBits.push(node.host);
           node.children.forEach(addTreeSearchBits);
         }
-        tree.forEach(rootNode => {
-          addTreeSearchBits(rootNode);
-          renderDomainNode(item, rootNode.host, "host", apex, 1, false, rootNode.children);
-        });
+        tree.forEach(addTreeSearchBits);
+        const apexNode = renderDomainNode(item, apex, "apex", apex, 0, true, tree);
+        if (tree.length > 0) {
+          apexNode.classList.add("expanded");
+        }
       }
       hosts.forEach(h => { if (searchBits.indexOf(h) < 0) searchBits.push(h); });
       item.dataset.search = searchBits.join(" ");
