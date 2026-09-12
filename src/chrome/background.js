@@ -14,6 +14,7 @@ let maps = HostRules.rebuildMaps([], [], []);
 const tabHosts = {};
 const tabProxied = {};
 const tabApex = {};
+const tabTargetUrl = {};
 const badgeWait = {};
 let badgeColorsReady = false;
 let listUpdateQueue = Promise.resolve();
@@ -97,6 +98,9 @@ function resetTabForSite(tabId, apex, url) {
   if (apex) tabApex[tabId] = apex;
   else delete tabApex[tabId];
   if (url) {
+    if (url.startsWith("http:") || url.startsWith("https:")) {
+      tabTargetUrl[tabId] = url;
+    }
     const host = getUrlHost(url);
     if (host && !HostRules.isIgnoredHost(host)) {
       recordTabHost(tabId, host);
@@ -245,6 +249,9 @@ chrome.webRequest.onBeforeRequest.addListener(
   details => {
     if (details.tabId == null || details.tabId < 0) return;
     try {
+      if (details.type === "main_frame" && details.url && (details.url.startsWith("http:") || details.url.startsWith("https:"))) {
+        tabTargetUrl[details.tabId] = details.url;
+      }
       const host = new URL(details.url).hostname;
       if (!host || HostRules.isIgnoredHost(host)) return;
       ensureInit().then(() => {
@@ -266,6 +273,11 @@ chrome.webRequest.onBeforeRequest.addListener(
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   ensureInit().then(() => {
     const explicitUrl = (changeInfo && changeInfo.url) || (tab && tab.pendingUrl) || "";
+    if (explicitUrl && (explicitUrl.startsWith("http:") || explicitUrl.startsWith("https:"))) {
+      tabTargetUrl[tabId] = explicitUrl;
+    } else if (tab && tab.url && (tab.url.startsWith("http:") || tab.url.startsWith("https:"))) {
+      tabTargetUrl[tabId] = tab.url;
+    }
     if (explicitUrl) {
       const targetHost = getUrlHost(explicitUrl);
       const targetApex = targetHost ? HostRules.apexDomain(targetHost) : "";
@@ -312,6 +324,7 @@ chrome.tabs.onRemoved.addListener(tabId => {
   delete tabHosts[tabId];
   delete tabProxied[tabId];
   delete tabApex[tabId];
+  delete tabTargetUrl[tabId];
   if (badgeWait[tabId]) {
     clearTimeout(badgeWait[tabId]);
     delete badgeWait[tabId];
@@ -666,6 +679,13 @@ function reply(sendResponse, task) {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg && msg.target === "offscreen") return false;
+  if (msg && msg.action === "getTabTarget") {
+    const url = tabTargetUrl[msg.tabId] || "";
+    const host = getUrlHost(url);
+    const apex = host ? HostRules.apexDomain(host) : (tabApex[msg.tabId] || "");
+    sendResponse({ targetUrl: url, targetHost: host, targetApex: apex });
+    return true;
+  }
   if (msg && (msg.action === "getProxyStatus" || msg.action === "checkProxyControl")) {
     getProxyStatus().then(async status => {
       await handleConflictControl(status.levelOfControl);

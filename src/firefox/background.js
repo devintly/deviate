@@ -14,6 +14,7 @@ let ffProxy = { type: "direct" };
 const tabHosts = {};
 const tabProxied = {};
 const tabApex = {};
+const tabTargetUrl = {};
 const dnsCache = new Map();
 const pendingDns = new Map();
 const fetchProxyHosts = {};
@@ -90,6 +91,9 @@ function resetTabForSite(tabId, apex, url) {
   if (apex) tabApex[tabId] = apex;
   else delete tabApex[tabId];
   if (url) {
+    if (url.startsWith("http:") || url.startsWith("https:")) {
+      tabTargetUrl[tabId] = url;
+    }
     const host = getUrlHost(url);
     if (host && !HostRules.isIgnoredHost(host)) {
       rememberTabHost(tabId, host, false);
@@ -213,6 +217,9 @@ function handleProxyRequest(requestInfo) {
   }
 
   const tabId = requestInfo.tabId;
+  if (requestInfo.type === "main_frame" && tabId != null && tabId >= 0 && requestInfo.url && (requestInfo.url.startsWith("http:") || requestInfo.url.startsWith("https:"))) {
+    tabTargetUrl[tabId] = requestInfo.url;
+  }
   if (requestInfo.type === "main_frame" && tabId != null && tabId >= 0 && !HostRules.isIgnoredHost(host)) {
     const navApex = HostRules.apexDomain(host);
     if (navApex && tabApex[tabId] && navApex !== tabApex[tabId]) {
@@ -326,6 +333,7 @@ browser.tabs.onRemoved.addListener(tabId => {
   delete tabHosts[tabId];
   delete tabProxied[tabId];
   delete tabApex[tabId];
+  delete tabTargetUrl[tabId];
   delete badgeTextCache[tabId];
   if (badgeWait[tabId]) {
     clearTimeout(badgeWait[tabId]);
@@ -344,6 +352,11 @@ browser.tabs.onActivated.addListener(async info => {
 
 browser.tabs.onUpdated.addListener((tabId, change, tab) => {
   const explicitUrl = (change && change.url) || (tab && tab.pendingUrl) || "";
+  if (explicitUrl && (explicitUrl.startsWith("http:") || explicitUrl.startsWith("https:"))) {
+    tabTargetUrl[tabId] = explicitUrl;
+  } else if (tab && tab.url && (tab.url.startsWith("http:") || tab.url.startsWith("https:"))) {
+    tabTargetUrl[tabId] = tab.url;
+  }
   if (explicitUrl) {
     const targetHost = getUrlHost(explicitUrl);
     const targetApex = targetHost ? HostRules.apexDomain(targetHost) : "";
@@ -605,6 +618,13 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
     if (msg.action === "coverInfo") {
       sendResponse(HostRules.coverPayload(msg.host || "", maps.compiledLists));
+      return;
+    }
+    if (msg.action === "getTabTarget") {
+      const url = tabTargetUrl[msg.tabId] || "";
+      const host = getUrlHost(url);
+      const apex = host ? HostRules.apexDomain(host) : (tabApex[msg.tabId] || "");
+      sendResponse({ targetUrl: url, targetHost: host, targetApex: apex });
       return;
     }
     if (msg.action === "getTabDomains") {

@@ -609,7 +609,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     await new Promise(r => setTimeout(r, 120));
     try {
       if (activeTab && isErrorTab(activeTab)) {
-        const webUrl = getTabWebUrl(activeTab);
+        const webUrl = (activeTab && activeTab._targetUrl) || getTabWebUrl(activeTab);
         if (webUrl) {
           await browser.tabs.update(tabId, { url: webUrl });
           return;
@@ -1258,17 +1258,48 @@ document.addEventListener("DOMContentLoaded", async () => {
       const tab = await queryActiveTab();
       if (tab) {
         activeTab = tab;
-        const webUrl = getTabWebUrl(tab);
         let host = "";
-        if (webUrl) {
-          try { host = new URL(webUrl).hostname; } catch (_) {}
+        let currentUrl = "";
+
+        // 1. If tab has a valid loaded web URL (including after redirects like youtu.be -> youtube.com), use it!
+        const tabUrl = String(tab.url || "");
+        if (tabUrl.startsWith("http://") || tabUrl.startsWith("https://")) {
+          currentUrl = tabUrl;
+          try { host = new URL(tabUrl).hostname; } catch (_) {}
         }
-        if (!host && tab.title && !tab.title.includes(" ") && tab.title.includes(".")) {
+
+        // 2. If tab is navigating and has pendingUrl
+        if (!host) {
+          const pending = String(tab.pendingUrl || "");
+          if (pending.startsWith("http://") || pending.startsWith("https://")) {
+            currentUrl = pending;
+            try { host = new URL(pending).hostname; } catch (_) {}
+          }
+        }
+
+        // 3. If tab failed to load (chrome-error://, about:neterror, etc.), query background for target URL
+        if (!host && isErrorTab(tab)) {
           try {
-            const h = HostRules.canonHost(tab.title);
-            if (h && HostRules.isAcceptableHost(h) && !HostRules.isIgnoredHost(h)) host = h;
+            const res = await browser.runtime.sendMessage({ action: "getTabTarget", tabId: tab.id });
+            if (res && res.targetHost) {
+              host = res.targetHost;
+              currentUrl = res.targetUrl || currentUrl;
+            }
           } catch (_) {}
+
+          // 4. Fallback to tab.title if it looks like a domain
+          if (!host && tab.title && !tab.title.includes(" ") && tab.title.includes(".")) {
+            try {
+              const h = HostRules.canonHost(tab.title);
+              if (h && HostRules.isAcceptableHost(h) && !HostRules.isIgnoredHost(h)) host = h;
+            } catch (_) {}
+          }
         }
+
+        if (currentUrl) {
+          activeTab._targetUrl = currentUrl;
+        }
+
         if (host) {
           pageHost = normalize(host).replace(/^\*\./, "");
           pageApex = apexDomain(pageHost);
