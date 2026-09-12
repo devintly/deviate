@@ -215,20 +215,21 @@
       cursor: pointer;
       user-select: none;
       flex: none;
-      background: rgba(255, 255, 255, 0.08);
-      color: #80848e;
+      background: #4e5058;
+      color: #b5bac1;
       transition: background 0.15s ease, color 0.15s ease;
     }
     .wildcard-btn:hover {
-      background: rgba(255, 255, 255, 0.14);
-      color: #dbdee1;
+      background: #ffffff;
+      color: #1e1f22;
     }
     .wildcard-btn.active {
-      background: #4e5058;
-      color: #f2f3f5;
+      background: #017df1;
+      color: #ffffff;
     }
     .wildcard-btn.active:hover {
-      background: #5c5e66;
+      background: #ffffff;
+      color: #017df1;
     }
     .wildcard-btn.empty {
       display: none;
@@ -395,7 +396,7 @@
           <button id="scopeApexBtn" class="scope-btn" type="button" data-i18n="lbl_scope_apex">Основной</button>
         </div>
         <div class="inputWrap">
-          <button id="mainWildcardBtn" class="wildcard-btn active" type="button" title="*.">*.</button>
+          <button id="mainWildcardBtn" class="wildcard-btn active" type="button" data-i18n-title="wildcard_subdomains" title="Включая поддомены">*.</button>
           <input id="domainInput" type="text" data-i18n-placeholder="domain_placeholder" placeholder="example.com">
           <div id="statusIcon" class="statusIcon" title="Нет правил"></div>
         </div>

@@ -627,9 +627,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       const expanderHtml = hasChildren
         ? `<span class="domain-expander has-children">${SVGS.chevron}</span>`
         : "";
+      const wildBtnTitle = escapeHtml(I18n.t("wildcard_subdomains"));
       const wildBtnHtml = isIp
         ? ""
-        : `<button type="button" class="wildcard-btn domain-wildcard-btn ${isWild ? "active" : ""}" title="*.">*.</button>`;
+        : `<button type="button" class="wildcard-btn domain-wildcard-btn ${isWild ? "active" : ""}" title="${wildBtnTitle}">*.</button>`;
 
       const line = document.createElement("div");
       line.className = `domain-line${existing ? " picked" : ""}${hasChildren ? " has-children" : ""}`;
