@@ -491,6 +491,30 @@ document.addEventListener("DOMContentLoaded", async () => {
     err.code = (res && res.code) || "";
     return err;
   }
+  function copyToClipboard(text) {
+    if (!text) return Promise.resolve(false);
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      return navigator.clipboard.writeText(text).then(() => true).catch(() => fallbackCopy(text));
+    }
+    return Promise.resolve(fallbackCopy(text));
+  }
+  function fallbackCopy(text) {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      ta.style.top = "-9999px";
+      ta.setAttribute("readonly", "");
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch (_) {
+      return false;
+    }
+  }
   function foldSearch(s) {
     return String(s || "").toLowerCase().replace(/\s+/g, "");
   }
@@ -681,6 +705,20 @@ document.addEventListener("DOMContentLoaded", async () => {
         };
         line.addEventListener("click", toggleExp);
       }
+
+      line.addEventListener("contextmenu", e => {
+        e.preventDefault();
+        e.stopPropagation();
+        const textToCopy = hostOfRule(host) || String(host || "").replace(/^\*\./, "").trim();
+        if (!textToCopy) return;
+        copyToClipboard(textToCopy).then(ok => {
+          if (ok) {
+            flash(I18n.t("msg_copied"));
+          } else {
+            flash(I18n.t("msg_error"), "#ff6b6b");
+          }
+        });
+      });
 
       refreshDomainLine(line);
       nodeEl.appendChild(line);
