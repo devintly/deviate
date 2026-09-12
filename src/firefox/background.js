@@ -89,7 +89,12 @@ function resetTabForSite(tabId, apex, url) {
   delete badgeTextCache[tabId];
   if (apex) tabApex[tabId] = apex;
   else delete tabApex[tabId];
-  if (url) seedTabUrl(tabId, url);
+  if (url) {
+    const host = getUrlHost(url);
+    if (host && !HostRules.isIgnoredHost(host)) {
+      rememberTabHost(tabId, host, false);
+    }
+  }
   scheduleBadge(tabId);
   persistTabHostsSession();
 }
@@ -132,8 +137,12 @@ function seedTabUrl(tabId, url) {
   const host = getUrlHost(url);
   if (!host || HostRules.isIgnoredHost(host)) return;
   const apex = HostRules.apexDomain(host);
-  if (!tabApex[tabId]) tabApex[tabId] = apex;
-  else if (apex && tabApex[tabId] && apex !== tabApex[tabId]) return;
+  if (!tabApex[tabId]) {
+    tabApex[tabId] = apex;
+  } else if (apex && tabApex[tabId] && apex !== tabApex[tabId]) {
+    resetTabForSite(tabId, apex, url);
+    return;
+  }
   rememberTabHost(tabId, host, false);
 }
 
@@ -255,6 +264,12 @@ function scheduleBadge(tabId) {
 
 async function updateBadge(tabId) {
   if (tabId == null || tabId < 0) return;
+  if (!tabHosts[tabId] || tabHosts[tabId].size === 0) {
+    try {
+      const tab = await browser.tabs.get(tabId);
+      if (tab && tab.url) seedTabUrl(tabId, tab.url);
+    } catch (_) {}
+  }
   const n = extensionEnabled && tabProxied[tabId] ? tabProxied[tabId].size : 0;
   const text = ProxyConfig.badgeText(n);
   if (badgeTextCache[tabId] === text) return;
@@ -354,7 +369,9 @@ browser.tabs.onUpdated.addListener((tabId, change, tab) => {
     if (tabApexVal && tabApex[tabId] && tabApexVal !== tabApex[tabId]) {
       return;
     }
-    resetTabForSite(tabId, tabApexVal || tabApex[tabId] || "", tabUrl);
+    if (tabUrl && tabHost) {
+      seedTabUrl(tabId, tabUrl);
+    }
     return;
   }
 
@@ -592,7 +609,7 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
     if (msg.action === "getTabDomains") {
       (async () => {
-        if (!tabHosts[msg.tabId] && msg.tabId != null && msg.tabId >= 0) {
+        if ((!tabHosts[msg.tabId] || tabHosts[msg.tabId].size === 0) && msg.tabId != null && msg.tabId >= 0) {
           try {
             const tab = await browser.tabs.get(msg.tabId);
             seedTabUrl(msg.tabId, tab && (tab.pendingUrl || tab.url));

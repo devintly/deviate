@@ -96,7 +96,12 @@ function resetTabForSite(tabId, apex, url) {
   delete badgeTextCache[tabId];
   if (apex) tabApex[tabId] = apex;
   else delete tabApex[tabId];
-  if (url) seedTabUrl(tabId, url);
+  if (url) {
+    const host = getUrlHost(url);
+    if (host && !HostRules.isIgnoredHost(host)) {
+      recordTabHost(tabId, host);
+    }
+  }
   scheduleBadge(tabId);
   persistTabHostsSession();
 }
@@ -106,8 +111,12 @@ function seedTabUrl(tabId, url) {
   const host = getUrlHost(url);
   if (!host || HostRules.isIgnoredHost(host)) return;
   const apex = HostRules.apexDomain(host);
-  if (!tabApex[tabId]) tabApex[tabId] = apex;
-  else if (apex && tabApex[tabId] && apex !== tabApex[tabId]) return;
+  if (!tabApex[tabId]) {
+    tabApex[tabId] = apex;
+  } else if (apex && tabApex[tabId] && apex !== tabApex[tabId]) {
+    resetTabForSite(tabId, apex, url);
+    return;
+  }
   recordTabHost(tabId, host);
 }
 
@@ -282,7 +291,9 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       if (tabApexVal && tabApex[tabId] && tabApexVal !== tabApex[tabId]) {
         return;
       }
-      resetTabForSite(tabId, tabApexVal || tabApex[tabId] || "", tabUrl);
+      if (tabUrl && tabHost) {
+        seedTabUrl(tabId, tabUrl);
+      }
       return;
     }
 
@@ -330,13 +341,13 @@ function scheduleBadge(tabId) {
 async function flushBadge(tabId) {
   if (tabId == null || tabId < 0) return;
   await ensureInit();
-  if (!tabHosts[tabId]) {
+  if (!tabHosts[tabId] || tabHosts[tabId].size === 0) {
     try {
       const tab = await chrome.tabs.get(tabId);
       if (tab && tab.url) seedTabUrl(tabId, tab.url);
     } catch (_) {}
   }
-  if (!tabProxied[tabId] && tabHosts[tabId]) {
+  if ((!tabProxied[tabId] || tabProxied[tabId].size === 0) && tabHosts[tabId] && tabHosts[tabId].size > 0) {
     recountTabProxiedForTab(tabId);
   }
   const count = (extensionEnabled && tabProxied[tabId]) ? tabProxied[tabId].size : 0;
@@ -666,7 +677,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
     if (msg.action === "getTabDomains") {
       (async () => {
-        if (!tabHosts[msg.tabId] && msg.tabId != null && msg.tabId >= 0) {
+        if ((!tabHosts[msg.tabId] || tabHosts[msg.tabId].size === 0) && msg.tabId != null && msg.tabId >= 0) {
           try {
             const tab = await chrome.tabs.get(msg.tabId);
             if (tab && tab.url) seedTabUrl(msg.tabId, tab.url);
