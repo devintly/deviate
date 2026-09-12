@@ -197,16 +197,27 @@
     .domain-item:last-child { margin-bottom: 0; }
     .domain-line { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 12px; }
     .domain-line input.domain-pick { width: 16px; height: 16px; margin: 0; flex-shrink: 0; accent-color: #017df1; cursor: pointer; }
-    .domain-line .mini-status { flex: none; min-width: 34px; height: 18px; display: flex; align-items: center; justify-content: center; }
+    .domain-line .domain-expander { width: 16px; height: 16px; flex: none; display: flex; align-items: center; justify-content: center; color: #949ba4; border-radius: 4px; transition: color 0.15s; }
+    .domain-line .domain-expander.has-children { cursor: pointer; }
+    .domain-line .domain-expander.has-children:hover { color: #f2f3f5; background: rgba(255, 255, 255, 0.08); }
+    .domain-line .domain-expander.empty { visibility: hidden; pointer-events: none; }
+    .domain-line .domain-expander svg { width: 12px; height: 12px; display: block; transition: transform 0.15s ease; }
+    .domain-node.expanded > .domain-line .domain-expander svg { transform: rotate(90deg); }
+    .domain-line .domain-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; user-select: none; cursor: default; }
+    .domain-line .domain-apex { font-weight: 400; color: #b5bac1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; user-select: none; cursor: default; }
+    .domain-line.has-children { cursor: pointer; }
+    .domain-line.has-children .domain-name, .domain-line.has-children .domain-apex { cursor: pointer; }
+    .domain-line .mini-status { flex: none; min-width: 24px; height: 18px; display: flex; align-items: center; justify-content: center; }
     .domain-line .mini-status .mark-main { width: 14px; height: 14px; }
     .domain-line .mini-status .mark-list { width: 13px; height: 13px; }
-    .domain-line .domain-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; cursor: pointer; }
-    .domain-line .domain-apex { font-weight: 400; color: #b5bac1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; cursor: pointer; }
     .domain-line .mode-wrap { display: none; flex: none; align-items: center; margin-left: 2px; }
     .domain-line.picked .mode-wrap { display: flex; }
     .domain-line .mode-wrap .switch { width: 32px; height: 18px; }
     .domain-line .mode-wrap .switch-ui::after { width: 12px; height: 12px; left: 3px; top: 3px; }
     .domain-line .mode-wrap .switch input:checked + .switch-ui::after { left: 17px; }
+
+    .domain-children { display: none; padding-left: 18px; border-left: 1px solid rgba(255, 255, 255, 0.08); margin-left: 7px; margin-top: 2px; }
+    .domain-node.expanded > .domain-children { display: block; }
     .domains-actions { margin-top: 12px; flex: none; }
     .scope-row { display: flex; gap: 6px; margin: 0 0 8px; flex-shrink: 0; }
     .scope-btn { flex: 1; min-width: 0; min-height: 28px; padding: 5px 8px; font-size: 11px; background: #1e1f22; color: #b5bac1; overflow: hidden; }

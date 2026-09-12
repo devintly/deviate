@@ -160,6 +160,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     else currentRules.push(n);
   }
   const apexDomain = HostRules.apexDomain;
+  const buildDomainTree = HostRules.buildDomainTree;
   function coveringParent(host, proxyList, directList) {
     const result = HostRules.coveringRule(host, proxyList || currentRules, directList || currentDirect);
     return { act: result.action, rule: result.rule };
@@ -233,7 +234,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     dot: '<svg class="mark-main" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="6.4" fill="currentColor"/></svg>',
     list: '<svg class="mark-list" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4.5 8.4l7.5-3.4 7.5 3.4-7.5 3.4-7.5-3.4z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M4.5 12.4l7.5 3.4 7.5-3.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 16.4l7.5 3.4 7.5-3.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><polyline points="21 3 21 9 15 9"/></svg>',
-    edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>'
+    edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>',
+    chevron: '<svg class="expander-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg>'
   };
 
   function escapeHtml(s) {
@@ -476,7 +478,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     return shown;
   }
   function filterDomainsList() {
-    applySearchFilter(els.domainsList, ".domain-item", els.domainsSearch && els.domainsSearch.value, els.domainsEmpty, I18n.t("empty_domains"));
+    const q = (els.domainsSearch && els.domainsSearch.value || "").trim().toLowerCase();
+    applySearchFilter(els.domainsList, ".domain-item", q, els.domainsEmpty, I18n.t("empty_domains"));
+    if (q) {
+      els.domainsList.querySelectorAll(".domain-node").forEach(node => {
+        const h = (node.dataset.host || "").toLowerCase();
+        if (h.indexOf(q) >= 0) {
+          let p = node.parentElement ? node.parentElement.closest(".domain-node") : null;
+          while (p) {
+            p.classList.add("expanded");
+            p = p.parentElement ? p.parentElement.closest(".domain-node") : null;
+          }
+        }
+      });
+    }
   }
   function filterProxies() {
     applySearchFilter(els.pCont, ".list-card", els.proxySearch && els.proxySearch.value, els.proxyEmpty, I18n.t("empty_proxies"));
@@ -553,15 +568,27 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
       refreshAllDomainLines();
     }
-    function appendLine(parent, rule, kind, apex, bold) {
+
+    function renderDomainNode(parent, host, kind, apex, level, isBold, children) {
+      const hasChildren = Array.isArray(children) && children.length > 0;
+      const rule = isIpHost(host) ? normalize(host) : wildcardRule(host);
       const existing = existingUserRule(rule);
       const isDirect = existing && isDirectRule(existing);
+
+      const nodeEl = document.createElement("div");
+      nodeEl.className = "domain-node";
+      nodeEl.dataset.host = host;
+      nodeEl.dataset.level = String(level);
+
       const line = document.createElement("div");
-      line.className = `domain-line${existing ? " picked" : ""}`;
+      line.className = `domain-line${existing ? " picked" : ""}${hasChildren ? " has-children" : ""}`;
       line.innerHTML = `
         <input type="checkbox" class="domain-pick" aria-label="${escapeHtml(rule)}" data-rule="${escapeHtml(rule)}" data-kind="${kind}" data-apex="${escapeHtml(apex)}" ${existing ? "checked" : ""}>
+        <span class="domain-expander ${hasChildren ? "has-children" : "empty"}">
+          ${hasChildren ? SVGS.chevron : ""}
+        </span>
+        <span class="${isBold ? "domain-name" : "domain-apex"}" title="${escapeHtml(rule)}">${escapeHtml(rule)}</span>
         <span class="mini-status"></span>
-        <span class="${bold ? "domain-name" : "domain-apex"}" title="${escapeHtml(rule)}">${escapeHtml(rule)}</span>
         <label class="mode-wrap" title="${escapeHtml(I18n.t("mode_proxy_direct"))}">
           <span class="switch mode-switch">
             <input type="checkbox" class="mode-direct" aria-label="${escapeHtml(I18n.t("mode_proxy_direct"))}" ${isDirect ? "checked" : ""}>
@@ -572,11 +599,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const cb = line.querySelector("input.domain-pick");
       const mode = line.querySelector("input.mode-direct");
-      const text = line.querySelector(bold ? ".domain-name" : ".domain-apex");
       const modeWrap = line.querySelector(".mode-wrap");
+      const expander = line.querySelector(".domain-expander");
 
+      cb.addEventListener("click", e => e.stopPropagation());
       modeWrap.addEventListener("click", e => e.stopPropagation());
-      text.addEventListener("click", () => { cb.checked = !cb.checked; cb.dispatchEvent(new Event("change")); });
 
       const onToggle = () => {
         if (kind === "apex") syncApex(apex, cb.checked, mode.checked);
@@ -585,9 +612,31 @@ document.addEventListener("DOMContentLoaded", async () => {
       cb.addEventListener("change", onToggle);
       mode.addEventListener("change", onToggle);
 
+      if (hasChildren) {
+        const toggleExp = e => {
+          e.stopPropagation();
+          nodeEl.classList.toggle("expanded");
+        };
+        line.addEventListener("click", toggleExp);
+        expander.addEventListener("click", toggleExp);
+      }
+
       refreshDomainLine(line);
-      parent.appendChild(line);
+      nodeEl.appendChild(line);
+
+      if (hasChildren) {
+        const childrenEl = document.createElement("div");
+        childrenEl.className = "domain-children";
+        children.forEach(child => {
+          renderDomainNode(childrenEl, child.host, "host", apex, level + 1, false, child.children);
+        });
+        nodeEl.appendChild(childrenEl);
+      }
+
+      parent.appendChild(nodeEl);
+      return nodeEl;
     }
+
     const pageHostKey = (pageHost || "").toLowerCase();
     const pageApexKey = (pageApex || (pageHostKey ? apexDomain(pageHostKey) || pageHostKey : "")).toLowerCase();
     const groups = new Map();
@@ -613,15 +662,16 @@ document.addEventListener("DOMContentLoaded", async () => {
       item.className = "domain-item";
       const searchBits = [apex];
       if (isIpHost(apex)) {
-        appendLine(item, normalize(apex), "apex", apex, true);
+        renderDomainNode(item, normalize(apex), "apex", apex, 0, true, []);
       } else {
-        appendLine(item, wildcardRule(apex), "apex", apex, true);
-        hosts.forEach(host => {
-          if (host === apex) return;
-          searchBits.push(host);
-          appendLine(item, wildcardRule(host), "host", apex, false);
+        renderDomainNode(item, apex, "apex", apex, 0, true, []);
+        const tree = buildDomainTree(hosts, apex);
+        tree.forEach(rootNode => {
+          searchBits.push(rootNode.host);
+          renderDomainNode(item, rootNode.host, "host", apex, 1, false, rootNode.children);
         });
       }
+      hosts.forEach(h => { if (searchBits.indexOf(h) < 0) searchBits.push(h); });
       item.dataset.search = searchBits.join(" ");
       els.domainsList.appendChild(item);
     });

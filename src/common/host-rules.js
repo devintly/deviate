@@ -343,6 +343,57 @@
     return host;
   }
 
+  function buildDomainTree(hosts, apex) {
+    apex = String(apex || "").toLowerCase();
+    var subHosts = (hosts || []).map(function (h) {
+      return String(h || "").trim().toLowerCase();
+    }).filter(function (h) {
+      return h && h !== apex;
+    });
+    var uniqueSubs = [];
+    var seen = {};
+    subHosts.forEach(function (h) {
+      if (!seen[h]) {
+        seen[h] = true;
+        uniqueSubs.push(h);
+      }
+    });
+
+    var candidateParents = [apex].concat(uniqueSubs);
+    var nodeMap = {};
+    uniqueSubs.forEach(function (h) {
+      nodeMap[h] = { host: h, children: [] };
+    });
+    var roots = [];
+    uniqueSubs.forEach(function (h) {
+      var bestParent = apex;
+      var bestLen = apex.length;
+      candidateParents.forEach(function (p) {
+        if (p === h) return;
+        if (h.length > p.length && h.endsWith("." + p)) {
+          if (p.length > bestLen) {
+            bestParent = p;
+            bestLen = p.length;
+          }
+        }
+      });
+      if (bestParent === apex) {
+        roots.push(nodeMap[h]);
+      } else {
+        var parentNode = nodeMap[bestParent];
+        if (parentNode) parentNode.children.push(nodeMap[h]);
+        else roots.push(nodeMap[h]);
+      }
+    });
+    function sortNode(n) {
+      n.children.sort(function (a, b) { return a.host.localeCompare(b.host); });
+      n.children.forEach(sortNode);
+    }
+    roots.sort(function (a, b) { return a.host.localeCompare(b.host); });
+    roots.forEach(sortNode);
+    return roots;
+  }
+
   var api = {
     TAB_HOST_LIMIT: TAB_HOST_LIMIT,
     isIpHost: isIpHost,
@@ -367,7 +418,8 @@
     coverMany: coverMany,
     isOwnPage: isOwnPage,
     isWebTab: isWebTab,
-    rememberHost: rememberHost
+    rememberHost: rememberHost,
+    buildDomainTree: buildDomainTree
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = api;
