@@ -7,6 +7,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     try { return browser.runtime.getURL(""); } catch (_) { return ""; }
   }
   function isWebTab(tab) { return HostRules.isWebTab(tab, ownPageBase()); }
+  function isOwnPage(url, base) { return HostRules.isOwnPage(url, base); }
 
   function getTabWebUrl(tab) {
     if (!tab) return "";
@@ -1336,7 +1337,14 @@ document.addEventListener("DOMContentLoaded", async () => {
             });
           });
           level = (settings && settings.levelOfControl) || "";
+          const val = (settings && settings.value) || {};
+          const mode = (val && val.mode) || "";
+
           if (level === "controlled_by_other_extensions" || level === "not_controllable") {
+            blocked = true;
+          } else if (!extensionEnabled && mode && mode !== "system" && mode !== "direct") {
+            blocked = true;
+          } else if (extensionEnabled && level === "controllable_by_this_extension" && mode && mode !== "system" && mode !== "direct") {
             blocked = true;
           }
         } catch (_) {}

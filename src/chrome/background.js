@@ -619,13 +619,22 @@ async function pingAllServers(serversToPing) {
 async function getProxyStatus() {
   let settings = null;
   try {
-    settings = await new Promise(resolve => {
-      chrome.proxy.settings.get({ incognito: false }, s => {
-        const err = chrome.runtime.lastError;
-        resolve(err ? null : s);
+    settings = await chrome.proxy.settings.get({ incognito: false });
+  } catch (_) {
+    try {
+      settings = await chrome.proxy.settings.get({});
+    } catch (_) {}
+  }
+  if (!settings) {
+    try {
+      settings = await new Promise(resolve => {
+        chrome.proxy.settings.get({ incognito: false }, s => {
+          const err = chrome.runtime.lastError;
+          resolve(err ? null : s);
+        });
       });
-    });
-  } catch (_) {}
+    } catch (_) {}
+  }
   if (!settings) {
     try {
       settings = await new Promise(resolve => {
@@ -636,8 +645,20 @@ async function getProxyStatus() {
       });
     } catch (_) {}
   }
+
   const level = (settings && settings.levelOfControl) || "";
-  const isBlocked = level === "controlled_by_other_extensions" || level === "not_controllable";
+  const val = (settings && settings.value) || {};
+  const mode = (val && val.mode) || "";
+
+  let isBlocked = false;
+  if (level === "controlled_by_other_extensions" || level === "not_controllable") {
+    isBlocked = true;
+  } else if (!extensionEnabled && mode && mode !== "system" && mode !== "direct") {
+    isBlocked = true;
+  } else if (extensionEnabled && level === "controllable_by_this_extension" && mode && mode !== "system" && mode !== "direct") {
+    isBlocked = true;
+  }
+
   return {
     isActive: extensionEnabled,
     levelOfControl: level,
@@ -646,9 +667,9 @@ async function getProxyStatus() {
   };
 }
 
-async function handleConflictControl(level) {
-  const isBlocked = level === "controlled_by_other_extensions" || level === "not_controllable";
-  if (isBlocked) {
+async function handleConflictControl(isBlocked) {
+  const blocked = typeof isBlocked === "boolean" ? isBlocked : (isBlocked && isBlocked.isBlocked) || false;
+  if (blocked) {
     if (extensionEnabled) {
       extensionEnabled = false;
       disabledByConflict = true;
@@ -668,7 +689,7 @@ async function handleConflictControl(level) {
       await chrome.storage.local.set({ disabledByConflict: false });
     }
   }
-  return isBlocked;
+  return blocked;
 }
 
 function reply(sendResponse, task) {
@@ -688,7 +709,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg && (msg.action === "getProxyStatus" || msg.action === "checkProxyControl")) {
     getProxyStatus().then(async status => {
-      await handleConflictControl(status.levelOfControl);
+      await handleConflictControl(status.isBlocked);
       sendResponse(status);
     }).catch(err => {
       sendResponse({ levelOfControl: "", isBlocked: false, error: String(err) });
@@ -758,9 +779,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 try {
   if (chrome.proxy.settings.onChange) {
-    chrome.proxy.settings.onChange.addListener(details => {
+    chrome.proxy.settings.onChange.addListener(() => {
       ensureInit()
-        .then(() => handleConflictControl((details && details.levelOfControl) || ""))
+        .then(() => getProxyStatus())
+        .then(status => handleConflictControl(status.isBlocked))
         .catch(() => {});
     });
   }
