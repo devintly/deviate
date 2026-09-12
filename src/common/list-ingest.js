@@ -36,12 +36,19 @@
     return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
   }
 
+  function getPacParse() {
+    if (typeof PacParse !== "undefined") return PacParse;
+    if (root && root.PacParse) return root.PacParse;
+    if (typeof globalThis !== "undefined" && globalThis.PacParse) return globalThis.PacParse;
+    return null;
+  }
+
   function ingestRemote(url, text) {
-    var PacParse = root.PacParse;
-    if (PacParse.isHtmlDocument(text)) {
+    var PacParse = getPacParse();
+    if (PacParse && PacParse.isHtmlDocument(text)) {
       throw fail("error_html_response");
     }
-    if (PacParse.isPacText(text)) {
+    if (PacParse && PacParse.isPacText(text)) {
       var lists = PacParse.parsePacToLists(text);
       return {
         id: uniqueId(),
