@@ -311,16 +311,9 @@ browser.tabs.onUpdated.addListener((tabId, change, tab) => {
   const targetApex = targetHost ? HostRules.apexDomain(targetHost) : "";
 
   if (change.status === "loading") {
-    const prevApex = tabApex[tabId];
-    if (targetApex && prevApex && targetApex !== prevApex) {
-      tabHosts[tabId] = new Set();
-      tabProxied[tabId] = new Set();
-      delete badgeTextCache[tabId];
-    } else if (!tabHosts[tabId]) {
-      tabHosts[tabId] = new Set();
-      tabProxied[tabId] = new Set();
-      delete badgeTextCache[tabId];
-    }
+    tabHosts[tabId] = new Set();
+    tabProxied[tabId] = new Set();
+    delete badgeTextCache[tabId];
     if (targetApex) tabApex[tabId] = targetApex;
     if (targetUrl) seedTabUrl(tabId, targetUrl);
     scheduleBadge(tabId);
@@ -336,6 +329,7 @@ browser.tabs.onUpdated.addListener((tabId, change, tab) => {
     }
     seedTabUrl(tabId, change.url);
     scheduleBadge(tabId);
+    persistTabHostsSession();
   } else if (change.status === "complete" && tab && tab.url) {
     seedTabUrl(tabId, tab.url);
     scheduleBadge(tabId);

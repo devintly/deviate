@@ -239,14 +239,8 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     const targetApex = targetHost ? HostRules.apexDomain(targetHost) : "";
 
     if (changeInfo.status === "loading") {
-      const prevApex = tabApex[tabId];
-      if (targetApex && prevApex && targetApex !== prevApex) {
-        tabHosts[tabId] = new Set();
-        tabProxied[tabId] = new Set();
-      } else if (!tabHosts[tabId]) {
-        tabHosts[tabId] = new Set();
-        tabProxied[tabId] = new Set();
-      }
+      tabHosts[tabId] = new Set();
+      tabProxied[tabId] = new Set();
       if (targetApex) tabApex[tabId] = targetApex;
       if (targetUrl) seedTabUrl(tabId, targetUrl);
       scheduleBadge(tabId);
@@ -261,6 +255,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       }
       seedTabUrl(tabId, changeInfo.url);
       scheduleBadge(tabId);
+      persistTabHostsSession();
     } else if (changeInfo.status === "complete" && tab && tab.url) {
       seedTabUrl(tabId, tab.url);
       scheduleBadge(tabId);

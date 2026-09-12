@@ -41,17 +41,12 @@ function seedTabUrl(tabId, url) {
   } catch (_) {}
 }
 
-function simulateNavigation(tabId, url, subrequests) {
-  // Navigation starts: status loading with apex preservation
+function simulateFullLoadOrReload(tabId, url, subrequests) {
+  // Page entry, full navigation with reload, or tab reload: status === "loading"
   const host = new URL(url).hostname.toLowerCase();
   const apex = HostRules.apexDomain(host);
-  if (apex && tabApex[tabId] && apex !== tabApex[tabId]) {
-    tabHosts[tabId] = new Set();
-    tabProxied[tabId] = new Set();
-  } else if (!tabHosts[tabId]) {
-    tabHosts[tabId] = new Set();
-    tabProxied[tabId] = new Set();
-  }
+  tabHosts[tabId] = new Set();
+  tabProxied[tabId] = new Set();
   if (apex) tabApex[tabId] = apex;
   seedTabUrl(tabId, url);
 
@@ -67,15 +62,34 @@ function simulateNavigation(tabId, url, subrequests) {
   seedTabUrl(tabId, url);
 }
 
-// Case 1: Plain navigation with no subrequests
-simulateNavigation(1, "https://rutracker.org/forum/index.php", []);
+function simulateSpaNavigation(tabId, url, subrequests) {
+  // In-page SPA navigation: URL changes without status "loading"
+  const host = new URL(url).hostname.toLowerCase();
+  const apex = HostRules.apexDomain(host);
+  if (apex && tabApex[tabId] && apex !== tabApex[tabId]) {
+    tabHosts[tabId] = new Set();
+    tabProxied[tabId] = new Set();
+    tabApex[tabId] = apex;
+  }
+  seedTabUrl(tabId, url);
+
+  (subrequests || []).forEach(sub => {
+    try {
+      const u = new URL(sub);
+      recordTabHost(tabId, u.hostname);
+    } catch (_) {}
+  });
+}
+
+// Case 1: Page entry ("когда зашел на страницу")
+simulateFullLoadOrReload(1, "https://rutracker.org/forum/index.php", []);
 assert(tabHosts[1].has("rutracker.org"), "Main domain must be in tabHosts");
 assert(tabProxied[1].has("rutracker.org"), "Main domain must be in tabProxied");
 assert(tabProxied[1].size === 1, "Tab proxied count must be 1 for main domain alone");
 assert(ProxyConfig.badgeText(tabProxied[1].size) === "1", "Badge text must be '1'");
 
-// Case 2: Navigation with multiple subrequests (main domain + 2 proxied subdomains)
-simulateNavigation(2, "https://rutracker.org/", [
+// Case 2: Subrequests captured and proxied
+simulateFullLoadOrReload(2, "https://rutracker.org/", [
   "https://static.rutracker.org/logo.png",
   "https://api.rutracker.org/v1/ping",
   "https://google-analytics.com/collect"
@@ -91,16 +105,27 @@ assert(!tabProxied[2].has("google-analytics.com"), "Direct host must not be in t
 assert(tabProxied[2].size === 3, "Total proxied count must be 3 (main domain + 2 subdomains)");
 assert(ProxyConfig.badgeText(tabProxied[2].size) === "3", "Badge text must be '3'");
 
-// Case 4: Soft reload / background iframe reload on the SAME domain (rutracker.org)
-// All previously captured subdomains MUST remain and not disappear!
-simulateNavigation(2, "https://rutracker.org/forum/viewtopic.php?t=999", []);
-assert(tabHosts[2].has("static.rutracker.org"), "Subdomain static must NOT disappear on same-site navigation");
-assert(tabHosts[2].has("api.rutracker.org"), "Subdomain api must NOT disappear on same-site navigation");
-assert(tabProxied[2].size === 3, "Total proxied count must remain 3 after same-site navigation");
+// Case 3: SPA navigation ("страница меняется как бы без обновления")
+// Previously captured subdomains are PRESERVED and new ones accumulate
+simulateSpaNavigation(2, "https://rutracker.org/forum/viewtopic.php?t=123", [
+  "https://cdn.rutracker.org/player.js"
+]);
+assert(tabHosts[2].has("static.rutracker.org"), "Old subdomain static must remain on SPA navigation");
+assert(tabHosts[2].has("cdn.rutracker.org"), "New subdomain cdn must be added on SPA navigation");
+assert(tabHosts[2].has("google-analytics.com"), "Old direct host must remain on SPA navigation");
+assert(tabProxied[2].size === 4, "Proxied count should accumulate during SPA navigation");
 
-// Case 5: Navigating to a DIFFERENT domain (from rutracker to wikipedia)
-// Old subdomains MUST be cleared!
-simulateNavigation(2, "https://wikipedia.org/", []);
+// Case 4: Page reload or navigation where site reloads ("сайт обновляется" / "перезагружаю страницу")
+// Domains must be captured fresh for the reloaded page!
+simulateFullLoadOrReload(2, "https://rutracker.org/forum/viewtopic.php?t=123", [
+  "https://static.rutracker.org/logo.png"
+]);
+assert(tabHosts[2].has("static.rutracker.org"), "static.rutracker.org must be present");
+assert(!tabHosts[2].has("cdn.rutracker.org"), "Unused subdomain cdn must be cleared on full reload");
+assert(tabProxied[2].size === 2, "Proxied count should be fresh (main + static)");
+
+// Case 5: Cross-domain navigation (from rutracker to wikipedia)
+simulateFullLoadOrReload(2, "https://wikipedia.org/", []);
 assert(!tabHosts[2].has("static.rutracker.org"), "Old site subdomains must be cleared on cross-domain navigation");
 assert(!tabHosts[2].has("rutracker.org"), "Old site main domain must be cleared on cross-domain navigation");
 assert(tabHosts[2].has("wikipedia.org"), "New domain must be present");
