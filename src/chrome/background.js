@@ -603,8 +603,38 @@ async function pingAllServers(serversToPing) {
   return results;
 }
 
+async function getProxyStatus() {
+  let settings = null;
+  try {
+    settings = await new Promise(resolve => {
+      chrome.proxy.settings.get({ incognito: false }, s => {
+        const err = chrome.runtime.lastError;
+        resolve(err ? null : s);
+      });
+    });
+  } catch (_) {}
+  if (!settings) {
+    try {
+      settings = await new Promise(resolve => {
+        chrome.proxy.settings.get({}, s => {
+          const err = chrome.runtime.lastError;
+          resolve(err ? null : s);
+        });
+      });
+    } catch (_) {}
+  }
+  const level = (settings && settings.levelOfControl) || "";
+  const isBlocked = level === "controlled_by_other_extensions" || level === "not_controllable";
+  return {
+    isActive: extensionEnabled,
+    levelOfControl: level,
+    isBlocked,
+    settings: settings || {}
+  };
+}
+
 async function handleConflictControl(level) {
-  const isBlocked = level === "controlled_by_other_extensions";
+  const isBlocked = level === "controlled_by_other_extensions" || level === "not_controllable";
   if (isBlocked) {
     if (extensionEnabled) {
       extensionEnabled = false;
@@ -636,6 +666,15 @@ function reply(sendResponse, task) {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg && msg.target === "offscreen") return false;
+  if (msg && (msg.action === "getProxyStatus" || msg.action === "checkProxyControl")) {
+    getProxyStatus().then(async status => {
+      await handleConflictControl(status.levelOfControl);
+      sendResponse(status);
+    }).catch(err => {
+      sendResponse({ levelOfControl: "", isBlocked: false, error: String(err) });
+    });
+    return true;
+  }
   ensureInit().then(() => {
     if (msg.action === "pingAllProxies") {
       reply(sendResponse, enqueueListUpdate(() => pingAllServers(msg.servers)).then(results => ({ success: true, results })));
@@ -690,24 +729,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
     if (msg.action === "getProxyError") {
       sendResponse({ error: proxyApplyError });
-      return;
-    }
-    if (msg.action === "checkProxyControl") {
-      try {
-        chrome.proxy.settings.get({ incognito: false }, details => {
-          const error = chrome.runtime.lastError;
-          if (error) {
-            sendResponse({ levelOfControl: "", isBlocked: false, error: error.message || String(error) });
-            return;
-          }
-          const level = (details && details.levelOfControl) || "";
-          handleConflictControl(level)
-            .then(isBlocked => sendResponse({ levelOfControl: level, isBlocked }))
-            .catch(() => sendResponse({ levelOfControl: level, isBlocked: false }));
-        });
-      } catch (_) {
-        sendResponse({ levelOfControl: "", isBlocked: false });
-      }
       return;
     }
     sendResponse({});
@@ -819,9 +840,8 @@ async function initBackground() {
   try { await applyProxySettings(); } catch (_) {}
 
   try {
-    chrome.proxy.settings.get({ incognito: false }, async details => {
-      await handleConflictControl((details && details.levelOfControl) || "");
-    });
+    const status = await getProxyStatus();
+    await handleConflictControl(status.levelOfControl);
   } catch (_) {}
 
   if (stale) await updateAllLists();

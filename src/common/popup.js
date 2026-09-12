@@ -7,21 +7,59 @@ document.addEventListener("DOMContentLoaded", async () => {
     try { return browser.runtime.getURL(""); } catch (_) { return ""; }
   }
   function isWebTab(tab) { return HostRules.isWebTab(tab, ownPageBase()); }
+
+  function getTabWebUrl(tab) {
+    if (!tab) return "";
+    const pending = String(tab.pendingUrl || "");
+    if (pending.startsWith("http://") || pending.startsWith("https://")) return pending;
+    const url = String(tab.url || "");
+    if (url.startsWith("http://") || url.startsWith("https://")) return url;
+    return "";
+  }
+
+  function isErrorTab(tab) {
+    if (!tab) return false;
+    const url = String(tab.url || "");
+    return url.startsWith("chrome-error://") || url.startsWith("about:neterror");
+  }
+
+  function isEligibleTab(tab) {
+    if (!tab) return false;
+    if (isOwnPage(tab.url, ownPageBase()) || isOwnPage(tab.pendingUrl, ownPageBase())) return false;
+    return !!getTabWebUrl(tab) || isErrorTab(tab);
+  }
+
   async function queryActiveTab() {
-    async function activeWeb(query) {
-      const found = await browser.tabs.query(query);
-      const tab = (found && found[0]) || null;
-      return isWebTab(tab) ? tab : null;
+    function pickEligible(tabs) {
+      if (!Array.isArray(tabs)) return null;
+      for (let i = 0; i < tabs.length; i++) {
+        const t = tabs[i];
+        if (t && isEligibleTab(t)) return t;
+      }
+      return null;
     }
+
     try {
-      const tab = await activeWeb({ active: true, currentWindow: true });
+      const tabs = await browser.tabs.query({ active: true, lastFocusedWindow: true });
+      const tab = pickEligible(tabs);
       if (tab) return tab;
     } catch (_) {}
+
     try {
-      return await activeWeb({ active: true });
+      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+      const tab = pickEligible(tabs);
+      if (tab) return tab;
     } catch (_) {}
+
+    try {
+      const tabs = await browser.tabs.query({ active: true });
+      const tab = pickEligible(tabs);
+      if (tab) return tab;
+    } catch (_) {}
+
     return null;
   }
+
 
   const tabs = document.querySelectorAll(".tab");
   const panels = document.querySelectorAll(".panel");
@@ -565,11 +603,45 @@ document.addEventListener("DOMContentLoaded", async () => {
     applySearchFilter(els.lCont, ".list-card", els.listsSearch && els.listsSearch.value, els.listsEmpty, I18n.t("empty_lists"));
   }
 
-  async function checkAutoReload(rule) {
-    if (!activeTab || activeTab.id == null || !isWebTab(activeTab)) return;
+  async function triggerTabReload(tabId) {
+    if (tabId == null || tabId < 0) return;
+    // Allow background proxy settings (PAC script) to be committed before reloading tab
+    await new Promise(r => setTimeout(r, 120));
     try {
-      const url = new URL(activeTab.url);
-      if (matches(url.hostname, rule)) await browser.tabs.reload(activeTab.id);
+      if (activeTab && isErrorTab(activeTab)) {
+        const webUrl = getTabWebUrl(activeTab);
+        if (webUrl) {
+          await browser.tabs.update(tabId, { url: webUrl });
+          return;
+        }
+      }
+      await browser.tabs.reload(tabId, { bypassCache: true });
+    } catch (_) {
+      try { await browser.tabs.reload(tabId); } catch (_) {}
+    }
+  }
+
+  async function checkAutoReload(rule) {
+    if (!activeTab || activeTab.id == null) return;
+    try {
+      const tabWebUrl = getTabWebUrl(activeTab);
+      let shouldReload = false;
+      const targetRuleHost = hostOfRule(rule) || String(rule || "").replace(/^\*\./, "").toLowerCase();
+
+      if (tabWebUrl) {
+        const host = new URL(tabWebUrl).hostname.toLowerCase();
+        if (matches(host, rule) || (pageHost && matches(pageHost, rule)) || (pageApex && matches(pageApex, rule))) {
+          shouldReload = true;
+        }
+      } else if (isErrorTab(activeTab)) {
+        if (!targetRuleHost || targetRuleHost === pageHost || targetRuleHost === pageApex || (activeTab.title && activeTab.title.toLowerCase().includes(targetRuleHost))) {
+          shouldReload = true;
+        }
+      }
+
+      if (shouldReload) {
+        await triggerTabReload(activeTab.id);
+      }
     } catch (_) {}
   }
 
@@ -579,13 +651,16 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function fetchTabDomains() {
     const set = new Set();
-    if (isWebTab(activeTab)) {
+    const webUrl = getTabWebUrl(activeTab);
+    if (webUrl) {
       try {
-        const host = new URL(activeTab.url).hostname;
+        const host = new URL(webUrl).hostname;
         if (host && !HostRules.isIgnoredHost(host)) set.add(host.toLowerCase());
       } catch (_) {}
+    } else if (pageHost && !HostRules.isIgnoredHost(pageHost)) {
+      set.add(pageHost.toLowerCase());
     }
-    if (activeTab) {
+    if (activeTab && activeTab.id != null && activeTab.id >= 0) {
       try {
         const res = await browser.runtime.sendMessage({ action: "getTabDomains", tabId: activeTab.id });
         (res && res.domains ? res.domains : []).forEach(d => {
@@ -825,8 +900,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function reloadActiveTab() {
-    if (activeTab && activeTab.id != null && isWebTab(activeTab)) {
-      try { await browser.tabs.reload(activeTab.id); } catch (_) {}
+    if (activeTab && activeTab.id != null) {
+      await triggerTabReload(activeTab.id);
     }
   }
 
@@ -1181,9 +1256,19 @@ document.addEventListener("DOMContentLoaded", async () => {
     renderLists();
     try {
       const tab = await queryActiveTab();
-      if (tab && isWebTab(tab)) {
+      if (tab) {
         activeTab = tab;
-        const host = new URL(activeTab.url).hostname;
+        const webUrl = getTabWebUrl(tab);
+        let host = "";
+        if (webUrl) {
+          try { host = new URL(webUrl).hostname; } catch (_) {}
+        }
+        if (!host && tab.title && !tab.title.includes(" ") && tab.title.includes(".")) {
+          try {
+            const h = HostRules.canonHost(tab.title);
+            if (h && HostRules.isAcceptableHost(h) && !HostRules.isIgnoredHost(h)) host = h;
+          } catch (_) {}
+        }
         if (host) {
           pageHost = normalize(host).replace(/^\*\./, "");
           pageApex = apexDomain(pageHost);
@@ -1208,8 +1293,34 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function checkProxyConflict() {
     try {
-      const res = await browser.runtime.sendMessage({ action: "checkProxyControl" });
-      const blocked = !!(res && res.isBlocked);
+      let blocked = false;
+      let level = "";
+
+      if (browser.proxy && browser.proxy.settings && typeof browser.proxy.settings.get === "function") {
+        try {
+          const settings = await new Promise(resolve => {
+            browser.proxy.settings.get({ incognito: false }, s => {
+              const err = browser.runtime && browser.runtime.lastError;
+              resolve(err ? null : s);
+            });
+          });
+          level = (settings && settings.levelOfControl) || "";
+          if (level === "controlled_by_other_extensions" || level === "not_controllable") {
+            blocked = true;
+          }
+        } catch (_) {}
+      }
+
+      if (!blocked) {
+        try {
+          const res = await browser.runtime.sendMessage({ action: "checkProxyControl" });
+          if (res && res.isBlocked) {
+            blocked = true;
+            level = res.levelOfControl || level;
+          }
+        } catch (_) {}
+      }
+
       const wasBlocked = isConflictBlocked;
       isConflictBlocked = blocked;
       if (els.conflictBanner) {

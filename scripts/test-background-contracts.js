@@ -24,6 +24,9 @@ assert(/pendingUrl/.test(chrome) && /pendingUrl/.test(firefox), "Both Chrome and
 assert(/ensureInit\(\)\.then/.test(chrome), "Chrome webRequest must await initialization before recording hosts");
 assert(/sessionAvailable/.test(chrome), "Chrome must support session storage for tab hosts");
 
+assert(/function getProxyStatus\(/.test(chrome), "Chrome background must implement getProxyStatus");
+assert(/controlled_by_other_extensions/.test(chrome) && /controlled_by_other_extensions/.test(firefox), "Both Chrome and Firefox must check controlled_by_other_extensions");
+
 const manifest = JSON.parse(read("src/chrome/manifest.json"));
 assert(manifest.permissions.includes("offscreen"), "Chrome offscreen permission missing");
 assert(fs.existsSync(path.join(root, "src/chrome/offscreen.html")), "offscreen document missing");
