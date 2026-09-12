@@ -75,8 +75,6 @@
       msg_added: "добавлено: {count}",
       msg_removed: "удалено: {count}",
       msg_setup_proxy_first: "Сначала добавьте прокси",
-      footer_source: "Исходный код: ",
-      footer_inspired: " · Вдохновлено MeguProxy: ",
       updated_ago_min: "{n} мин. назад",
       updated_ago_hr: "{n} ч. назад",
       updated_ago_day: "{n} дн. назад",
@@ -109,8 +107,7 @@
       info_version: "Версия {version}",
       info_desc: "Проксирование сайтов через SOCKS/HTTP/HTTPS по пользовательским правилам с поддержкой импорта TXT/PAC списков.",
       info_source_link: "Исходный код (GitHub)",
-      info_inspired_link: "Вдохновлено MeguProxy",
-      btn_close: "Закрыть"
+      info_inspired_link: "Вдохновлено MeguProxy"
     },
     en: {
       tabs_proxy: "Proxy",
@@ -185,8 +182,6 @@
       msg_added: "added: {count}",
       msg_removed: "removed: {count}",
       msg_setup_proxy_first: "Configure proxy first",
-      footer_source: "Source code: ",
-      footer_inspired: " · Inspired by MeguProxy: ",
       updated_ago_min: "{n} min ago",
       updated_ago_hr: "{n} hr ago",
       updated_ago_day: "{n} d ago",
@@ -219,8 +214,7 @@
       info_version: "Version {version}",
       info_desc: "Website proxying via SOCKS/HTTP/HTTPS using custom rules with support for importing TXT/PAC lists.",
       info_source_link: "Source Code (GitHub)",
-      info_inspired_link: "Inspired by MeguProxy",
-      btn_close: "Close"
+      info_inspired_link: "Inspired by MeguProxy"
     }
   };
 

@@ -1335,7 +1335,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       try { window.close(); } catch (_) {}
     });
   });
-  document.querySelectorAll(".footer a[href]").forEach(a => {
+  document.querySelectorAll(".info-link").forEach(a => {
     a.addEventListener("click", (e) => {
       e.preventDefault();
       const url = a.href;

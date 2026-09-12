@@ -10,8 +10,7 @@
   function isHtmlDocument(text) {
     var t = String(text || "").replace(/^\uFEFF/, "").trim();
     if (!t) return false;
-    if (/^<!DOCTYPE\s+html/i.test(t) || /^<html[\s>]/i.test(t)) return true;
-    return /IPFS Service Worker Gateway/i.test(t) && /<html[\s>]/i.test(t);
+    return /^<!DOCTYPE\s+html/i.test(t) || /<html[\s>]/i.test(t) || /IPFS Service Worker Gateway/i.test(t);
   }
 
   function isPacText(text) {

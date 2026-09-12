@@ -881,18 +881,14 @@ async function initBackground() {
   disabledByConflict = !!res.disabledByConflict;
 
   const persist = {};
-  if (JSON.stringify(servers) !== JSON.stringify(res.proxyServers || [])) {
-    persist.proxyServers = servers;
+  if (JSON.stringify(proxyServers) !== JSON.stringify(res.proxyServers || [])) {
+    persist.proxyServers = proxyServers;
     persist.proxyConfig = proxyConfig;
   }
   if (res.extensionEnabled !== extensionEnabled) persist.extensionEnabled = extensionEnabled;
   if (res.proxyRules) proxyRules = res.proxyRules;
   if (res.directRules) directRules = res.directRules;
   if (res.proxyLists) proxyLists = res.proxyLists.map(stripLegacyPac);
-  if (proxyLists.some(l => l.type === "block")) {
-    proxyLists = proxyLists.map(l => Object.assign({}, l, { type: "proxy" }));
-    persist.proxyLists = proxyLists;
-  }
   if (Object.keys(persist).length) await browser.storage.local.set(persist);
   const stale = proxyLists.some(isStalePac);
   rebuildMaps();

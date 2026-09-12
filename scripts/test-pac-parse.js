@@ -26,7 +26,12 @@ function assert(cond, msg) {
 
 function run() {
   const api = loadPacParse();
-  const orig = fs.readFileSync(path.join(SAMPLES, "orig.pac"), "utf8");
+  const origPath = path.join(SAMPLES, "orig.pac");
+  if (!fs.existsSync(origPath)) {
+    console.log("test-pac-parse: skipped (sample orig.pac not found at " + origPath + ")");
+    return;
+  }
+  const orig = fs.readFileSync(origPath, "utf8");
 
   const t0 = Date.now();
   const lists = api.parsePacToLists(orig);

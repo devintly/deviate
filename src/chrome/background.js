@@ -265,9 +265,8 @@ function ipToInt(ip) {
 }
 
 function matchCidrs(ipInt, cidrs) {
-  for (var i = 0; i < cidrs.length; i++) {
-    var c = cidrs[i];
-    if ((ipInt & c[1]) === c[0]) return true;
+  for (var i = 0; i < cidrs.length; i += 2) {
+    if ((ipInt & cidrs[i + 1]) === cidrs[i]) return true;
   }
   return false;
 }
@@ -425,7 +424,7 @@ function isHostProxied(host) {
   if (pE[host] || pIp[host] || matchSuffixInMap(host, pS)) return true;
 
   if (pCidr && pCidr.length && PacParse.IPV4_RE.test(host)) {
-    if (PacParse.matchIpLiteral(host, pCidr)) return true;
+    if (PacParse.matchIpLiteral(host, pIp, pCidr)) return true;
   }
 
   for (let i = 0; i < compiledLists.length; i++) {
@@ -778,8 +777,35 @@ function FindProxyForURL(url, host) {
   return results;
 }
 
+async function handleConflictControl(level) {
+  const isBlocked = level === "controlled_by_other_extensions";
+  if (isBlocked) {
+    if (extensionEnabled) {
+      extensionEnabled = false;
+      disabledByConflict = true;
+      await chrome.storage.local.set({ extensionEnabled: false, disabledByConflict: true });
+      syncToolbarIcon();
+      refreshActiveBadge();
+    }
+  } else if (disabledByConflict) {
+    disabledByConflict = false;
+    if (proxyConfig && proxyConfig.host && Number(proxyConfig.port) > 0) {
+      extensionEnabled = true;
+      await chrome.storage.local.set({ extensionEnabled: true, disabledByConflict: false });
+      rebuildMaps();
+      recountTabProxied();
+      await applyProxySettings();
+      syncToolbarIcon();
+      refreshActiveBadge();
+    } else {
+      await chrome.storage.local.set({ disabledByConflict: false });
+    }
+  }
+  return isBlocked;
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  ensureInit().then(() => {
+  ensureInit().then(async () => {
     if (msg.action === "pingAllProxies") {
       pingAllServers(msg.servers)
         .then(results => sendResponse({ success: true, results }))
@@ -840,35 +866,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       refreshActiveBadge().then(() => sendResponse({ ok: true }));
       return;
     }
-async function handleConflictControl(level) {
-  const isBlocked = level === "controlled_by_other_extensions";
-  if (isBlocked) {
-    if (extensionEnabled) {
-      extensionEnabled = false;
-      disabledByConflict = true;
-      await chrome.storage.local.set({ extensionEnabled: false, disabledByConflict: true });
-      syncToolbarIcon();
-      refreshActiveBadge();
-    }
-  } else if (disabledByConflict) {
-    disabledByConflict = false;
-    if (proxyConfig && proxyConfig.host && Number(proxyConfig.port) > 0) {
-      extensionEnabled = true;
-      await chrome.storage.local.set({ extensionEnabled: true, disabledByConflict: false });
-      rebuildMaps();
-      recountTabProxied();
-      await applyProxySettings();
-      syncToolbarIcon();
-      refreshActiveBadge();
-    } else {
-      await chrome.storage.local.set({ disabledByConflict: false });
-    }
-  }
-  return isBlocked;
-}
-
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  ensureInit().then(async () => {
     if (msg.action === "checkProxyControl") {
       try {
         chrome.proxy.settings.get({ incognito: false }, async (details) => {
