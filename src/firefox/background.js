@@ -766,9 +766,16 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.action === "checkProxyControl") {
     if (browser.proxy && browser.proxy.settings && typeof browser.proxy.settings.get === "function") {
-      browser.proxy.settings.get({}).then(details => {
+      browser.proxy.settings.get({}).then(async details => {
         const level = (details && details.levelOfControl) || "";
-        sendResponse({ levelOfControl: level, isBlocked: level === "controlled_by_other_extensions" });
+        const isBlocked = level === "controlled_by_other_extensions";
+        if (isBlocked && extensionEnabled) {
+          extensionEnabled = false;
+          await browser.storage.local.set({ extensionEnabled: false });
+          await syncToolbarIcon();
+          await refreshActiveBadge();
+        }
+        sendResponse({ levelOfControl: level, isBlocked });
       }).catch(() => {
         sendResponse({ levelOfControl: "", isBlocked: false });
       });
@@ -778,6 +785,21 @@ browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 });
+
+try {
+  if (browser.proxy && browser.proxy.settings && browser.proxy.settings.onChange) {
+    browser.proxy.settings.onChange.addListener(async (details) => {
+      if (details && details.levelOfControl === "controlled_by_other_extensions") {
+        if (extensionEnabled) {
+          extensionEnabled = false;
+          await browser.storage.local.set({ extensionEnabled: false });
+          await syncToolbarIcon();
+          await refreshActiveBadge();
+        }
+      }
+    });
+  }
+} catch (_) {}
 
 browser.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== "updateLists") return;

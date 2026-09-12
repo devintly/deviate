@@ -841,9 +841,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
     if (msg.action === "checkProxyControl") {
       try {
-        chrome.proxy.settings.get({ incognito: false }, (details) => {
+        chrome.proxy.settings.get({ incognito: false }, async (details) => {
           const level = (details && details.levelOfControl) || "";
-          sendResponse({ levelOfControl: level, isBlocked: level === "controlled_by_other_extensions" });
+          const isBlocked = level === "controlled_by_other_extensions";
+          if (isBlocked && extensionEnabled) {
+            extensionEnabled = false;
+            await chrome.storage.local.set({ extensionEnabled: false });
+            syncToolbarIcon();
+            refreshActiveBadge();
+          }
+          sendResponse({ levelOfControl: level, isBlocked });
         });
       } catch (e) {
         sendResponse({ levelOfControl: "", isBlocked: false });
@@ -857,6 +864,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   return true;
 });
+
+try {
+  if (chrome.proxy && chrome.proxy.settings && chrome.proxy.settings.onChange) {
+    chrome.proxy.settings.onChange.addListener(async (details) => {
+      if (details && details.levelOfControl === "controlled_by_other_extensions") {
+        await ensureInit();
+        if (extensionEnabled) {
+          extensionEnabled = false;
+          await chrome.storage.local.set({ extensionEnabled: false });
+          syncToolbarIcon();
+          refreshActiveBadge();
+        }
+      }
+    });
+  }
+} catch (_) {}
 
 chrome.storage.onChanged.addListener(async (changes, area) => {
   if (area !== "local") return;

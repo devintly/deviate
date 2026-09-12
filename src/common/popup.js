@@ -97,6 +97,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   let editingListId = null;
   let editingProxyId = null;
   let extensionEnabled = false;
+  let isConflictBlocked = false;
 
   tabs.forEach((tab, i) => {
     tab.addEventListener("click", () => {
@@ -821,10 +822,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function refreshPowerBtn() {
-    const on = extensionEnabled && hasConfiguredProxy();
+    const on = extensionEnabled && hasConfiguredProxy() && !isConflictBlocked;
     els.powerBtn.classList.toggle("on", on);
     els.powerBtn.classList.toggle("off", !on);
-    const label = !hasConfiguredProxy() ? I18n.t("power_setup") : (on ? I18n.t("power_off") : I18n.t("power_on"));
+    const label = isConflictBlocked
+      ? I18n.t("conflict_warning_title")
+      : (!hasConfiguredProxy() ? I18n.t("power_setup") : (on ? I18n.t("power_off") : I18n.t("power_on")));
     els.powerBtn.title = label;
     els.powerBtn.setAttribute("aria-label", label);
     els.powerBtn.setAttribute("aria-pressed", on ? "true" : "false");
@@ -1085,8 +1088,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function checkProxyConflict() {
     try {
       const res = await browser.runtime.sendMessage({ action: "checkProxyControl" });
+      const blocked = !!(res && res.isBlocked);
+      isConflictBlocked = blocked;
       if (els.conflictBanner) {
-        els.conflictBanner.style.display = (res && res.isBlocked) ? "flex" : "none";
+        els.conflictBanner.style.display = blocked ? "flex" : "none";
+      }
+      if (blocked) {
+        if (extensionEnabled) {
+          extensionEnabled = false;
+          await browser.storage.local.set({ extensionEnabled: false });
+        }
+        refreshPowerBtn();
       }
     } catch (_) {}
   }
@@ -1346,6 +1358,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   els.powerBtn.addEventListener("click", async () => {
+    if (isConflictBlocked) {
+      showToast(I18n.t("conflict_warning_desc"), "error");
+      return;
+    }
     if (!hasConfiguredProxy()) {
       showProxyTab();
       flash(els.pStatus, I18n.t("msg_setup_proxy_first"), "#ff6b6b");
@@ -1408,7 +1424,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       refreshPowerBtn();
     }
     if (c.extensionEnabled) {
-      extensionEnabled = !!c.extensionEnabled.newValue && hasConfiguredProxy();
+      extensionEnabled = !!c.extensionEnabled.newValue && hasConfiguredProxy() && !isConflictBlocked;
       refreshPowerBtn();
     }
   });
