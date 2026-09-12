@@ -67,12 +67,32 @@ function assert(cond, msg) {
   assert(tree[0].children[1].host === "beta.clients6.google.com", "beta sorted second");
 }
 
-// 4. Missing intermediate parent: direct root under apex
+// 4. Intermediate parents synthesized between apex and deep subdomains
 {
   const hosts = ["deep.missing.google.com"];
   const tree = api.buildDomainTree(hosts, "google.com");
-  assert(tree.length === 1, "deep.missing roots under google.com directly");
-  assert(tree[0].host === "deep.missing.google.com" && tree[0].children.length === 0, "deep.missing is leaf");
+  assert(tree.length === 1, "1 root: missing.google.com");
+  assert(tree[0].host === "missing.google.com", "missing.google.com is intermediate parent");
+  assert(tree[0].children.length === 1 && tree[0].children[0].host === "deep.missing.google.com", "deep.missing is child");
+}
+
+// 6. User screenshot scenario: ogads-pa and waa-pa under clients6.google.com
+{
+  const hosts = [
+    "google.com",
+    "accounts.google.com",
+    "ogads-pa.clients6.google.com",
+    "ogs.google.com",
+    "play.google.com",
+    "waa-pa.clients6.google.com",
+    "www.google.com"
+  ];
+  const tree = api.buildDomainTree(hosts, "google.com");
+  const clients6 = tree.find(t => t.host === "clients6.google.com");
+  assert(clients6, "clients6.google.com synthesized as 3rd-level parent");
+  assert(clients6.children.length === 2, "clients6 has 2 children of 4th level");
+  assert(clients6.children[0].host === "ogads-pa.clients6.google.com", "ogads-pa is child");
+  assert(clients6.children[1].host === "waa-pa.clients6.google.com", "waa-pa is child");
 }
 
 // 5. Edge cases: empty, null, apex duplicates with different cases

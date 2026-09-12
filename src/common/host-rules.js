@@ -345,20 +345,27 @@
 
   function buildDomainTree(hosts, apex) {
     apex = String(apex || "").toLowerCase();
-    var subHosts = (hosts || []).map(function (h) {
+    var rawHosts = (hosts || []).map(function (h) {
       return String(h || "").trim().toLowerCase();
     }).filter(function (h) {
       return h && h !== apex;
     });
-    var uniqueSubs = [];
-    var seen = {};
-    subHosts.forEach(function (h) {
-      if (!seen[h]) {
-        seen[h] = true;
-        uniqueSubs.push(h);
+
+    var subHostsSet = new Set();
+    rawHosts.forEach(function (h) {
+      subHostsSet.add(h);
+      if (apex && h.length > apex.length && h.endsWith("." + apex)) {
+        var prefix = h.slice(0, -(apex.length + 1));
+        var parts = prefix.split(".");
+        var curr = apex;
+        for (var i = parts.length - 1; i > 0; i--) {
+          curr = parts[i] + "." + curr;
+          subHostsSet.add(curr);
+        }
       }
     });
 
+    var uniqueSubs = Array.from(subHostsSet);
     var candidateParents = [apex].concat(uniqueSubs);
     var nodeMap = {};
     uniqueSubs.forEach(function (h) {

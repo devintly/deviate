@@ -27,6 +27,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const panels = document.querySelectorAll(".panel");
   const els = {
     domainInput: document.getElementById("domainInput"), statusIcon: document.getElementById("statusIcon"),
+    mainWildcard: document.getElementById("mainWildcardBtn"),
     toggleRule: document.getElementById("toggleRuleBtn"), viewDomains: document.getElementById("viewDomainsBtn"),
     domainActionRow: document.getElementById("domainActionRow"), domainMode: document.getElementById("domainModeSwitch"),
     domainDirect: document.getElementById("domainDirect"),
@@ -117,7 +118,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function displayRuleForHost(host) {
     const h = hostOfRule(host);
     if (!h) return "";
-    return isIpHost(h) ? h : wildcardRule(h);
+    return h;
   }
   const matches = HostRules.ruleMatchesHost;
   function hasIn(list, rule) {
@@ -133,12 +134,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   function hasUserRule(rule) { return hasIn(currentRules, rule) || hasIn(currentDirect, rule); }
   function isDirectRule(rule) { return hasIn(currentDirect, rule); }
   function existingUserRule(host) {
-    const typed = normalize(host);
-    if (typed && hasUserRule(typed)) return typed;
     const h = hostOfRule(host);
     if (!h) return "";
-    if (!isIpHost(h) && hasUserRule("*." + h)) return "*." + h;
-    if (hasUserRule(h)) return h;
+    if (hasIn(currentRules, h)) return h;
+    if (hasIn(currentDirect, h)) return h;
+    if (!isIpHost(h)) {
+      const w = "*." + h;
+      if (hasIn(currentRules, w)) return w;
+      if (hasIn(currentDirect, w)) return w;
+    }
     return "";
   }
   function removeUserRule(rule) {
@@ -168,9 +172,22 @@ document.addEventListener("DOMContentLoaded", async () => {
   function coveringParentAction(host, proxyList, directList) {
     return coveringParent(host, proxyList, directList).act;
   }
+  function effectiveInputRule() {
+    const raw = (els.domainInput && els.domainInput.value || "").trim();
+    if (!raw) return "";
+    const n = normalize(raw);
+    if (!n) return "";
+    const h = hostOfRule(n) || n;
+    if (isIpHost(h)) return h;
+    const isWild = els.mainWildcard ? els.mainWildcard.classList.contains("active") : true;
+    return isWild ? "*." + h : h;
+  }
   function currentTargetRule() {
-    if (scopeMode === "apex" && pageApex) return wildcardRule(pageApex);
-    return displayRuleForHost(pageHost || els.domainInput.value);
+    if (scopeMode === "apex" && pageApex) {
+      const isWild = els.mainWildcard ? els.mainWildcard.classList.contains("active") : true;
+      return isWild ? "*." + pageApex : pageApex;
+    }
+    return effectiveInputRule();
   }
   let coverSeq = 0;
   let lastCover = { host: "", listed: false, listedParent: false, listedParentRule: "", listName: "" };
@@ -222,8 +239,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   function setScope(mode, writeInput) {
     scopeMode = mode === "apex" ? "apex" : "host";
     if (writeInput) {
-      const rule = currentTargetRule();
-      if (rule) els.domainInput.value = rule;
+      const target = scopeMode === "apex" && pageApex ? pageApex : pageHost;
+      if (target) {
+        els.domainInput.value = target;
+        if (els.mainWildcard && !isIpHost(target)) {
+          const existing = existingUserRule(target);
+          if (existing) {
+            els.mainWildcard.classList.toggle("active", existing.startsWith("*."));
+          } else {
+            els.mainWildcard.classList.add("active");
+          }
+        }
+      }
     }
     refreshScopeUI();
     refreshIcon();
@@ -259,14 +286,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     const modalHosts = new Set();
     const addProxy = [];
     const addDirect = [];
-    els.domainsList.querySelectorAll("input.domain-pick").forEach(cb => {
-      const rule = cb.dataset.rule;
-      if (!rule) return;
-      const h = hostOfRule(rule);
-      if (h) modalHosts.add(h);
+    els.domainsList.querySelectorAll(".domain-line").forEach(line => {
+      const cb = line.querySelector("input.domain-pick");
+      if (!cb) return;
+      const host = cb.dataset.host || hostOfRule(cb.dataset.rule);
+      if (!host) return;
+      modalHosts.add(host);
       if (cb.checked) {
-        const line = cb.closest(".domain-line");
-        const mode = line && line.querySelector("input.mode-direct");
+        const wildBtn = line.querySelector(".domain-wildcard-btn");
+        const isWild = isIpHost(host) ? false : (wildBtn && wildBtn.classList.contains("active"));
+        const rule = isIpHost(host) ? normalize(host) : (isWild ? "*." + host : host);
+        const mode = line.querySelector("input.mode-direct");
         if (mode && mode.checked) addDirect.push(rule);
         else addProxy.push(rule);
       }
@@ -339,19 +369,24 @@ document.addEventListener("DOMContentLoaded", async () => {
     return { text: "", kind: "" };
   }
   function paintStatusIcon() {
-    const host = hostOfRule(els.domainInput.value);
+    const host = hostOfRule(els.domainInput.value) || normalize(els.domainInput.value);
     paintHostStatus(els.statusIcon, host, null, null);
   }
   function syncOpenDomainLine(rule) {
     if (!domainsPanelOpen) return;
     const host = hostOfRule(rule);
     els.domainsList.querySelectorAll("input.domain-pick").forEach(box => {
-      if (hostOfRule(box.dataset.rule) !== host) return;
-      const existing = existingUserRule(box.dataset.rule);
+      const bHost = box.dataset.host || hostOfRule(box.dataset.rule);
+      if (bHost !== host) return;
+      const existing = existingUserRule(bHost);
       box.checked = !!existing;
       const line = box.closest(".domain-line");
       const mode = line && line.querySelector("input.mode-direct");
       if (mode) mode.checked = !!(existing && isDirectRule(existing));
+      const wildBtn = line && line.querySelector(".domain-wildcard-btn");
+      if (wildBtn && !isIpHost(bHost)) {
+        if (existing) wildBtn.classList.toggle("active", existing.startsWith("*."));
+      }
       if (line) line.classList.toggle("picked", box.checked);
     });
     const overlay = collectOverlayRules();
@@ -360,7 +395,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       const mark = line.querySelector(".mini-status");
       if (!pick) return;
       line.classList.toggle("picked", !!pick.checked);
-      paintHostStatus(mark, hostOfRule(pick.dataset.rule), domainCovers, overlay);
+      const h = pick.dataset.host || hostOfRule(pick.dataset.rule);
+      paintHostStatus(mark, h, domainCovers, overlay);
     });
   }
   function refreshIcon() {
@@ -371,7 +407,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   function refreshToggleBtn() {
     const raw = els.domainInput.value;
     const trimmed = raw.trim();
-    const rule = normalize(raw);
+    const h = hostOfRule(trimmed) || normalize(trimmed);
+    const isIp = isIpHost(h);
+    if (els.mainWildcard) {
+      els.mainWildcard.style.display = isIp || !h ? "none" : "inline-flex";
+    }
+    const rule = effectiveInputRule();
     const existing = existingUserRule(rule);
     const inList = !!existing;
     const direct = inList && isDirectRule(existing);
@@ -551,29 +592,32 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!pick) return;
       const picked = !!pick.checked;
       line.classList.toggle("picked", picked);
-      const host = hostOfRule(pick.dataset.rule);
+      const host = pick.dataset.host || hostOfRule(pick.dataset.rule);
       paintHostStatus(mark, host, covers, overlay || collectOverlayRules());
     }
     function refreshAllDomainLines() {
       const overlay = collectOverlayRules();
       els.domainsList.querySelectorAll(".domain-line").forEach(line => refreshDomainLine(line, overlay));
     }
-    function syncApex(apex, checked, direct) {
+    function syncApex(apex, checked, direct, wild) {
       els.domainsList.querySelectorAll("input.domain-pick").forEach(box => {
         if (box.dataset.kind !== "apex" || box.dataset.apex !== apex) return;
         box.checked = checked;
         const line = box.closest(".domain-line");
         const mode = line && line.querySelector("input.mode-direct");
         if (mode && direct != null) mode.checked = direct;
+        const wildBtn = line && line.querySelector(".domain-wildcard-btn");
+        if (wildBtn && wild != null) wildBtn.classList.toggle("active", wild);
       });
       refreshAllDomainLines();
     }
 
     function renderDomainNode(parent, host, kind, apex, level, isBold, children) {
       const hasChildren = Array.isArray(children) && children.length > 0;
-      const rule = isIpHost(host) ? normalize(host) : wildcardRule(host);
-      const existing = existingUserRule(rule);
+      const isIp = isIpHost(host);
+      const existing = existingUserRule(host);
       const isDirect = existing && isDirectRule(existing);
+      const isWild = isIp ? false : (existing ? existing.startsWith("*.") : true);
 
       const nodeEl = document.createElement("div");
       nodeEl.className = "domain-node";
@@ -583,12 +627,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       const line = document.createElement("div");
       line.className = `domain-line${existing ? " picked" : ""}${hasChildren ? " has-children" : ""}`;
       line.innerHTML = `
-        <input type="checkbox" class="domain-pick" aria-label="${escapeHtml(rule)}" data-rule="${escapeHtml(rule)}" data-kind="${kind}" data-apex="${escapeHtml(apex)}" ${existing ? "checked" : ""}>
         <span class="domain-expander ${hasChildren ? "has-children" : "empty"}">
           ${hasChildren ? SVGS.chevron : ""}
         </span>
-        <span class="${isBold ? "domain-name" : "domain-apex"}" title="${escapeHtml(rule)}">${escapeHtml(rule)}</span>
+        <input type="checkbox" class="domain-pick" aria-label="${escapeHtml(host)}" data-host="${escapeHtml(host)}" data-kind="${kind}" data-apex="${escapeHtml(apex)}" ${existing ? "checked" : ""}>
+        ${isIp ? '<span class="wildcard-btn empty"></span>' : `<button type="button" class="wildcard-btn domain-wildcard-btn ${isWild ? "active" : ""}" title="*.">*.</button>`}
+        <span class="${isBold ? "domain-name" : "domain-apex"}" title="${escapeHtml(host)}">${escapeHtml(host)}</span>
         <span class="mini-status"></span>
+        <span class="domain-spacer"></span>
         <label class="mode-wrap" title="${escapeHtml(I18n.t("mode_proxy_direct"))}">
           <span class="switch mode-switch">
             <input type="checkbox" class="mode-direct" aria-label="${escapeHtml(I18n.t("mode_proxy_direct"))}" ${isDirect ? "checked" : ""}>
@@ -598,16 +644,26 @@ document.addEventListener("DOMContentLoaded", async () => {
       `;
 
       const cb = line.querySelector("input.domain-pick");
+      const wildBtn = line.querySelector(".domain-wildcard-btn");
       const mode = line.querySelector("input.mode-direct");
       const modeWrap = line.querySelector(".mode-wrap");
-      const expander = line.querySelector(".domain-expander");
 
       cb.addEventListener("click", e => e.stopPropagation());
+      if (wildBtn) {
+        wildBtn.addEventListener("click", e => {
+          e.stopPropagation();
+          wildBtn.classList.toggle("active");
+          const isW = wildBtn.classList.contains("active");
+          if (kind === "apex") syncApex(apex, cb.checked, mode.checked, isW);
+          else refreshAllDomainLines();
+        });
+      }
       modeWrap.addEventListener("click", e => e.stopPropagation());
 
       const onToggle = () => {
-        if (kind === "apex") syncApex(apex, cb.checked, mode.checked);
-        else refreshDomainLine(line);
+        const isW = wildBtn ? wildBtn.classList.contains("active") : false;
+        if (kind === "apex") syncApex(apex, cb.checked, mode.checked, isW);
+        else refreshAllDomainLines();
       };
       cb.addEventListener("change", onToggle);
       mode.addEventListener("change", onToggle);
@@ -618,7 +674,6 @@ document.addEventListener("DOMContentLoaded", async () => {
           nodeEl.classList.toggle("expanded");
         };
         line.addEventListener("click", toggleExp);
-        expander.addEventListener("click", toggleExp);
       }
 
       refreshDomainLine(line);
@@ -666,8 +721,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       } else {
         renderDomainNode(item, apex, "apex", apex, 0, true, []);
         const tree = buildDomainTree(hosts, apex);
+        function addTreeSearchBits(node) {
+          searchBits.push(node.host);
+          node.children.forEach(addTreeSearchBits);
+        }
         tree.forEach(rootNode => {
-          searchBits.push(rootNode.host);
+          addTreeSearchBits(rootNode);
           renderDomainNode(item, rootNode.host, "host", apex, 1, false, rootNode.children);
         });
       }
@@ -690,18 +749,21 @@ document.addEventListener("DOMContentLoaded", async () => {
   function applyDomainDraft() {
     let added = 0, removed = 0, changed = 0;
     const listed = new Map();
-    els.domainsList.querySelectorAll("input.domain-pick").forEach(cb => {
-      const rule = cb.dataset.rule;
-      if (!rule) return;
-      const n = hostOfRule(rule) || normalize(rule);
-      const line = cb.closest(".domain-line");
-      const mode = line && line.querySelector("input.mode-direct");
+    els.domainsList.querySelectorAll(".domain-line").forEach(line => {
+      const cb = line.querySelector("input.domain-pick");
+      if (!cb) return;
+      const host = cb.dataset.host;
+      if (!host) return;
+      const wildBtn = line.querySelector(".domain-wildcard-btn");
+      const isWild = isIpHost(host) ? false : (wildBtn && wildBtn.classList.contains("active"));
+      const rule = isIpHost(host) ? normalize(host) : (isWild ? "*." + host : host);
+      const mode = line.querySelector("input.mode-direct");
       const direct = !!(mode && mode.checked);
-      const prev = listed.get(n);
-      listed.set(n, { rule, want: cb.checked || (prev && prev.want), direct: cb.checked ? direct : (prev && prev.direct) });
+      const prev = listed.get(host);
+      listed.set(host, { rule, host, want: cb.checked || (prev && prev.want), direct: cb.checked ? direct : (prev && prev.direct) });
     });
-    listed.forEach(({ rule, want, direct }) => {
-      const existing = existingUserRule(rule);
+    listed.forEach(({ rule, host, want, direct }) => {
+      const existing = existingUserRule(host);
       const act = direct ? "direct" : "proxy";
       if (want) {
         const wasDirect = existing && isDirectRule(existing);
@@ -711,7 +773,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           changed++;
         }
       } else if (existing) {
-        removeUserRulesForHost(rule);
+        removeUserRulesForHost(host);
         removed++;
       }
     });
@@ -1082,7 +1144,15 @@ document.addEventListener("DOMContentLoaded", async () => {
           pageHost = normalize(host).replace(/^\*\./, "");
           pageApex = apexDomain(pageHost);
           scopeMode = "host";
-          els.domainInput.value = displayRuleForHost(pageHost);
+          els.domainInput.value = pageHost;
+          if (els.mainWildcard && !isIpHost(pageHost)) {
+            const existing = existingUserRule(pageHost);
+            if (existing) {
+              els.mainWildcard.classList.toggle("active", existing.startsWith("*."));
+            } else {
+              els.mainWildcard.classList.add("active");
+            }
+          }
         }
       }
     } catch (_) {}
@@ -1195,13 +1265,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   els.toggleRule.addEventListener("click", async () => {
     const raw = els.domainInput.value;
     const trimmed = raw.trim();
-    const rule = normalize(raw);
+    const rule = effectiveInputRule();
     if (!rule) {
       const msg = !trimmed ? I18n.t("hint_empty_rule") : /\s/.test(trimmed) ? I18n.t("hint_no_spaces") : hasNonLatin(trimmed) ? I18n.t("hint_latin_only") : I18n.t("hint_dot_required");
       return flash(msg, "#ff6b6b");
     }
     const existing = existingUserRule(rule);
-    els.domainInput.value = existing || rule;
     if (existing) {
       removeUserRulesForHost(existing);
       await saveRules();
@@ -1218,13 +1287,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   els.domainDirect.addEventListener("change", async () => {
-    const typed = normalize(els.domainInput.value);
-    const existing = existingUserRule(typed);
-    if (!typed || !existing) {
+    const rule = effectiveInputRule();
+    const existing = existingUserRule(rule);
+    if (!rule || !existing) {
       els.domainDirect.checked = false;
       return;
     }
-    els.domainInput.value = existing;
     setUserRule(existing, els.domainDirect.checked ? "direct" : "proxy");
     await saveRules();
     refreshIcon();
@@ -1260,8 +1328,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (changed && !added && !removed) parts.push(I18n.t("msg_saved"));
       flash(parts.join(", ") || I18n.t("msg_saved"));
     }
-    const shown = existingUserRule(els.domainInput.value);
-    if (shown) els.domainInput.value = shown;
+    const target = hostOfRule(els.domainInput.value) || normalize(els.domainInput.value);
+    const shown = existingUserRule(target);
+    if (shown) {
+      els.domainInput.value = hostOfRule(shown) || shown;
+      if (els.mainWildcard && !isIpHost(shown)) {
+        els.mainWildcard.classList.toggle("active", shown.startsWith("*."));
+      }
+    }
     refreshIcon();
     closeDomainsPanel();
     if (added || removed || changed) await reloadActiveTab();
@@ -1358,9 +1432,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   });
   els.domainInput.addEventListener("input", () => {
-    const blockedLatin = hasNonLatin(els.domainInput.value);
-    if (blockedLatin) els.domainInput.value = stripNonLatin(els.domainInput.value);
-    const h = hostOfRule(els.domainInput.value);
+    let val = els.domainInput.value;
+    const blockedLatin = hasNonLatin(val);
+    if (blockedLatin) val = stripNonLatin(val);
+    if (val.startsWith("*.")) {
+      if (els.mainWildcard) els.mainWildcard.classList.add("active");
+      val = val.slice(2);
+    }
+    els.domainInput.value = val;
+    const h = hostOfRule(val);
     if (h) {
       pageHost = h;
       pageApex = apexDomain(h);
@@ -1373,6 +1453,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       els.rulesStatus.textContent = I18n.t("hint_latin_only");
     }
   });
+
+  if (els.mainWildcard) {
+    els.mainWildcard.addEventListener("click", () => {
+      els.mainWildcard.classList.toggle("active");
+      refreshIcon();
+    });
+  }
 
   els.powerBtn.addEventListener("click", async () => {
     if (isConflictBlocked) {
