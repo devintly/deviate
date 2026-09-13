@@ -313,11 +313,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!svgString) return null;
     let template = svgTemplateCache.get(svgString);
     if (!template) {
-      const doc = new DOMParser().parseFromString(svgString, "image/svg+xml");
-      template = doc.documentElement;
-      svgTemplateCache.set(svgString, template);
+      const doc = new DOMParser().parseFromString(svgString, "text/html");
+      template = doc.body ? doc.body.firstElementChild : null;
+      if (template) svgTemplateCache.set(svgString, template);
     }
-    return document.importNode(template, true);
+    return template ? template.cloneNode(true) : null;
   }
 
   function escapeHtml(s) {
@@ -872,6 +872,12 @@ document.addEventListener("DOMContentLoaded", async () => {
           nodeEl.classList.toggle("expanded");
         };
         line.addEventListener("click", toggleExp);
+      } else {
+        line.addEventListener("click", e => {
+          if (e.target.closest(".domain-expander") || e.target.closest(".wildcard-btn") || e.target.closest(".mode-wrap")) return;
+          cb.checked = !cb.checked;
+          cb.dispatchEvent(new Event("change"));
+        });
       }
 
       line.addEventListener("contextmenu", e => {
@@ -1125,6 +1131,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const addr = proxyAddress(p);
       card.dataset.search = [name, addr, p.host || ""].filter(Boolean).join(" ");
       const metaBits = [proxyTypeLabel(p.type)];
+      const pingData = currentPingResults[p.id];
       const cardBody = document.createElement("div");
       cardBody.className = "list-card-body";
 
