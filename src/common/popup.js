@@ -308,6 +308,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     globe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>'
   };
 
+  const svgTemplateCache = new Map();
+  function createSvg(svgString) {
+    if (!svgString) return null;
+    let template = svgTemplateCache.get(svgString);
+    if (!template) {
+      const doc = new DOMParser().parseFromString(svgString, "image/svg+xml");
+      template = doc.documentElement;
+      svgTemplateCache.set(svgString, template);
+    }
+    return document.importNode(template, true);
+  }
+
   function escapeHtml(s) {
     return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
@@ -365,8 +377,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
   function paintStatusEl(el, st, title) {
     if (!el || !st) return;
-    const icons = (st.icons || []).map(name => SVGS[name] || "").join("");
-    el.innerHTML = `<span class="status-mark ${st.tone || ""}">${icons}</span>`;
+    el.textContent = "";
+    const mark = document.createElement("span");
+    mark.className = `status-mark ${st.tone || ""}`;
+    (st.icons || []).forEach(name => {
+      const svg = createSvg(SVGS[name]);
+      if (svg) mark.appendChild(svg);
+    });
+    el.appendChild(mark);
     const label = title || st.title;
     el.title = label;
     el.setAttribute("aria-label", label);
@@ -753,39 +771,80 @@ document.addEventListener("DOMContentLoaded", async () => {
       nodeEl.dataset.host = host;
       nodeEl.dataset.level = String(level);
 
-      const expanderHtml = hasChildren
-        ? `<span class="domain-expander has-children">${SVGS.chevron}</span>`
-        : "";
-      const wildBtnTitle = escapeHtml(I18n.t("wildcard_subdomains"));
-      const wildBtnHtml = isIp
-        ? ""
-        : `<button type="button" class="wildcard-btn domain-wildcard-btn ${isWild ? "active" : ""}" title="${wildBtnTitle}">*.</button>`;
-      const loadedBadgeHtml = isLoaded
-        ? `<span class="loaded-globe" title="${escapeHtml(I18n.t("loaded_domain"))}">${SVGS.globe}</span>`
-        : "";
-
       const line = document.createElement("div");
       line.className = `domain-line${existing ? " picked" : ""}${hasChildren ? " has-children" : ""}${isLoaded ? " loaded" : ""}`;
-      line.innerHTML = `
-        <input type="checkbox" class="domain-pick" aria-label="${escapeHtml(host)}" data-host="${escapeHtml(host)}" data-kind="${kind}" data-apex="${escapeHtml(apex)}" ${existing ? "checked" : ""}>
-        ${expanderHtml}
-        ${wildBtnHtml}
-        <span class="${isBold ? "domain-name" : "domain-apex"}" title="${escapeHtml(host)}">${escapeHtml(host)}</span>
-        ${loadedBadgeHtml}
-        <span class="mini-status"></span>
-        <span class="domain-spacer"></span>
-        <label class="mode-wrap" title="${escapeHtml(I18n.t("mode_proxy_direct"))}">
-          <span class="switch mode-switch">
-            <input type="checkbox" class="mode-direct" aria-label="${escapeHtml(I18n.t("mode_proxy_direct"))}" ${isDirect ? "checked" : ""}>
-            <span class="switch-ui"></span>
-          </span>
-        </label>
-      `;
 
-      const cb = line.querySelector("input.domain-pick");
-      const wildBtn = line.querySelector(".domain-wildcard-btn");
-      const mode = line.querySelector("input.mode-direct");
-      const modeWrap = line.querySelector(".mode-wrap");
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.className = "domain-pick";
+      cb.setAttribute("aria-label", host);
+      cb.dataset.host = host;
+      cb.dataset.kind = kind;
+      cb.dataset.apex = apex;
+      if (existing) cb.checked = true;
+      line.appendChild(cb);
+
+      if (hasChildren) {
+        const expander = document.createElement("span");
+        expander.className = "domain-expander has-children";
+        const chevronSvg = createSvg(SVGS.chevron);
+        if (chevronSvg) expander.appendChild(chevronSvg);
+        line.appendChild(expander);
+      }
+
+      let wildBtn = null;
+      if (!isIp) {
+        wildBtn = document.createElement("button");
+        wildBtn.type = "button";
+        wildBtn.className = `wildcard-btn domain-wildcard-btn${isWild ? " active" : ""}`;
+        wildBtn.title = I18n.t("wildcard_subdomains");
+        wildBtn.textContent = "*.";
+        line.appendChild(wildBtn);
+      }
+
+      const nameSpan = document.createElement("span");
+      nameSpan.className = isBold ? "domain-name" : "domain-apex";
+      nameSpan.title = host;
+      nameSpan.textContent = host;
+      line.appendChild(nameSpan);
+
+      if (isLoaded) {
+        const loadedBadge = document.createElement("span");
+        loadedBadge.className = "loaded-globe";
+        loadedBadge.title = I18n.t("loaded_domain");
+        const globeSvg = createSvg(SVGS.globe);
+        if (globeSvg) loadedBadge.appendChild(globeSvg);
+        line.appendChild(loadedBadge);
+      }
+
+      const miniStatus = document.createElement("span");
+      miniStatus.className = "mini-status";
+      line.appendChild(miniStatus);
+
+      const spacer = document.createElement("span");
+      spacer.className = "domain-spacer";
+      line.appendChild(spacer);
+
+      const modeWrap = document.createElement("label");
+      modeWrap.className = "mode-wrap";
+      modeWrap.title = I18n.t("mode_proxy_direct");
+
+      const switchSpan = document.createElement("span");
+      switchSpan.className = "switch mode-switch";
+
+      const mode = document.createElement("input");
+      mode.type = "checkbox";
+      mode.className = "mode-direct";
+      mode.setAttribute("aria-label", I18n.t("mode_proxy_direct"));
+      if (isDirect) mode.checked = true;
+
+      const switchUi = document.createElement("span");
+      switchUi.className = "switch-ui";
+
+      switchSpan.appendChild(mode);
+      switchSpan.appendChild(switchUi);
+      modeWrap.appendChild(switchSpan);
+      line.appendChild(modeWrap);
 
       cb.addEventListener("click", e => e.stopPropagation());
       if (wildBtn) {
@@ -1066,30 +1125,69 @@ document.addEventListener("DOMContentLoaded", async () => {
       const addr = proxyAddress(p);
       card.dataset.search = [name, addr, p.host || ""].filter(Boolean).join(" ");
       const metaBits = [proxyTypeLabel(p.type)];
-      const pingData = currentPingResults[p.id];
-      let pingHtml = "";
-      if (pingData) {
-        if (pingData.checking) {
-          pingHtml = `<span class="proxy-ping checking" title="${escapeHtml(I18n.t("msg_pinging"))}">...</span>`;
-        } else if (pingData.success && Number.isFinite(pingData.latency)) {
-          pingHtml = `<span class="proxy-ping good" title="${pingData.latency} ms">${pingData.latency} ms</span>`;
-        } else {
-          pingHtml = `<span class="proxy-ping bad" title="${escapeHtml(I18n.t("not_available"))}">${escapeHtml(I18n.t("not_available"))}</span>`;
-        }
+      const cardBody = document.createElement("div");
+      cardBody.className = "list-card-body";
+
+      if (name) {
+        const titleEl = document.createElement("div");
+        titleEl.className = "list-card-title";
+        titleEl.title = name;
+        titleEl.textContent = name;
+        cardBody.appendChild(titleEl);
       }
 
-      card.innerHTML = `
-        <div class="list-card-body">
-          ${name ? `<div class="list-card-title" title="${escapeHtml(name)}">${escapeHtml(name)}</div>` : ""}
-          <div class="${name ? "list-card-url" : "list-card-title"}" title="${escapeHtml(addr)}">${escapeHtml(addr)}</div>
-          <div class="list-card-meta">${escapeHtml(metaBits.join(" · "))}</div>
-        </div>
-        <div class="list-card-side">
-          ${pingHtml}
-          ${p.enabled ? `<span class="proxy-active-badge">${escapeHtml(I18n.t("badge_active"))}</span>` : ""}
-          <button type="button" class="btn-edit" title="${escapeHtml(I18n.t("btn_edit"))}" aria-label="${escapeHtml(I18n.t("btn_edit"))}">${SVGS.edit}</button>
-        </div>
-      `;
+      const addrEl = document.createElement("div");
+      addrEl.className = name ? "list-card-url" : "list-card-title";
+      addrEl.title = addr;
+      addrEl.textContent = addr;
+      cardBody.appendChild(addrEl);
+
+      const metaEl = document.createElement("div");
+      metaEl.className = "list-card-meta";
+      metaEl.textContent = metaBits.join(" · ");
+      cardBody.appendChild(metaEl);
+
+      const cardSide = document.createElement("div");
+      cardSide.className = "list-card-side";
+
+      let pingEl = null;
+      if (pingData) {
+        pingEl = document.createElement("span");
+        if (pingData.checking) {
+          pingEl.className = "proxy-ping checking";
+          pingEl.title = I18n.t("msg_pinging");
+          pingEl.textContent = "...";
+        } else if (pingData.success && Number.isFinite(pingData.latency)) {
+          pingEl.className = "proxy-ping good";
+          pingEl.title = `${pingData.latency} ms`;
+          pingEl.textContent = `${pingData.latency} ms`;
+        } else {
+          pingEl.className = "proxy-ping bad";
+          pingEl.title = I18n.t("not_available");
+          pingEl.textContent = I18n.t("not_available");
+        }
+        cardSide.appendChild(pingEl);
+      }
+
+      if (p.enabled) {
+        const activeBadge = document.createElement("span");
+        activeBadge.className = "proxy-active-badge";
+        activeBadge.textContent = I18n.t("badge_active");
+        cardSide.appendChild(activeBadge);
+      }
+
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className = "btn-edit";
+      const editTitle = I18n.t("btn_edit");
+      editBtn.title = editTitle;
+      editBtn.setAttribute("aria-label", editTitle);
+      const editSvg = createSvg(SVGS.edit);
+      if (editSvg) editBtn.appendChild(editSvg);
+      cardSide.appendChild(editBtn);
+
+      card.appendChild(cardBody);
+      card.appendChild(cardSide);
 
       card.addEventListener("click", async () => {
         if (p.enabled) return;
@@ -1097,15 +1195,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         flash(I18n.t("msg_active_saved"));
       });
 
-      const editBtn = card.querySelector(".btn-edit");
-      if (editBtn) {
-        editBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          openProxyForm(p);
-        });
-      }
+      editBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openProxyForm(p);
+      });
 
-      const pingEl = card.querySelector(".proxy-ping");
       if (pingEl) {
         pingEl.addEventListener("click", (e) => e.stopPropagation());
       }
@@ -1182,28 +1276,89 @@ document.addEventListener("DOMContentLoaded", async () => {
       const updatedText = `${I18n.t("lbl_updated")}: ${formatListUpdated(l.updatedAt)}`;
       const updateError = ListUpdate.hasUpdateError(l) ? I18n.error(l.updateError, l.updateErrorCode) : "";
 
-      card.innerHTML = `
-        <div class="list-card-body">
-          ${name ? `<div class="list-card-title" title="${escapeHtml(name)}">${escapeHtml(name)}</div>` : ""}
-          <div class="${name ? "list-card-url" : "list-card-title"}" title="${escapeHtml(url)}">${escapeHtml(url)}</div>
-          <div class="list-card-meta">${escapeHtml(metaText)}</div>
-          <div class="list-card-updated">${escapeHtml(updatedText)}</div>
-          ${updateError ? `<div class="list-card-error" title="${escapeHtml(updateError)}">${escapeHtml(updateError)}</div>` : ""}
-        </div>
-        <div class="list-card-side">
-          <label class="switch" title="${isEnabled ? escapeHtml(I18n.t("list_active")) : escapeHtml(I18n.t("list_inactive"))}">
-            <input type="checkbox" class="list-toggle" aria-label="${escapeHtml(isEnabled ? I18n.t("list_active") : I18n.t("list_inactive"))}" ${isEnabled ? "checked" : ""}>
-            <span class="switch-ui"></span>
-          </label>
-          <div class="list-card-actions">
-            <button type="button" class="btn-refresh" title="${escapeHtml(I18n.t("btn_refresh"))}" aria-label="${escapeHtml(I18n.t("btn_refresh"))}">${SVGS.refresh}</button>
-            <button type="button" class="btn-edit" title="${escapeHtml(I18n.t("btn_edit"))}" aria-label="${escapeHtml(I18n.t("btn_edit"))}">${SVGS.edit}</button>
-          </div>
-        </div>
-      `;
+      const cardBody = document.createElement("div");
+      cardBody.className = "list-card-body";
 
-      const toggle = card.querySelector(".list-toggle");
-      const refreshBtn = card.querySelector(".btn-refresh");
+      if (name) {
+        const titleEl = document.createElement("div");
+        titleEl.className = "list-card-title";
+        titleEl.title = name;
+        titleEl.textContent = name;
+        cardBody.appendChild(titleEl);
+      }
+
+      const urlEl = document.createElement("div");
+      urlEl.className = name ? "list-card-url" : "list-card-title";
+      urlEl.title = url;
+      urlEl.textContent = url;
+      cardBody.appendChild(urlEl);
+
+      const metaEl = document.createElement("div");
+      metaEl.className = "list-card-meta";
+      metaEl.textContent = metaText;
+      cardBody.appendChild(metaEl);
+
+      const updatedEl = document.createElement("div");
+      updatedEl.className = "list-card-updated";
+      updatedEl.textContent = updatedText;
+      cardBody.appendChild(updatedEl);
+
+      if (updateError) {
+        const errEl = document.createElement("div");
+        errEl.className = "list-card-error";
+        errEl.title = updateError;
+        errEl.textContent = updateError;
+        cardBody.appendChild(errEl);
+      }
+
+      const cardSide = document.createElement("div");
+      cardSide.className = "list-card-side";
+
+      const toggleWrap = document.createElement("label");
+      toggleWrap.className = "switch";
+      const switchTitle = isEnabled ? I18n.t("list_active") : I18n.t("list_inactive");
+      toggleWrap.title = switchTitle;
+
+      const toggle = document.createElement("input");
+      toggle.type = "checkbox";
+      toggle.className = "list-toggle";
+      toggle.setAttribute("aria-label", switchTitle);
+      if (isEnabled) toggle.checked = true;
+
+      const switchUi = document.createElement("span");
+      switchUi.className = "switch-ui";
+
+      toggleWrap.appendChild(toggle);
+      toggleWrap.appendChild(switchUi);
+      cardSide.appendChild(toggleWrap);
+
+      const actions = document.createElement("div");
+      actions.className = "list-card-actions";
+
+      const refreshBtn = document.createElement("button");
+      refreshBtn.type = "button";
+      refreshBtn.className = "btn-refresh";
+      const refreshTitle = I18n.t("btn_refresh");
+      refreshBtn.title = refreshTitle;
+      refreshBtn.setAttribute("aria-label", refreshTitle);
+      const refreshSvg = createSvg(SVGS.refresh);
+      if (refreshSvg) refreshBtn.appendChild(refreshSvg);
+      actions.appendChild(refreshBtn);
+
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className = "btn-edit";
+      const editTitle = I18n.t("btn_edit");
+      editBtn.title = editTitle;
+      editBtn.setAttribute("aria-label", editTitle);
+      const editSvg = createSvg(SVGS.edit);
+      if (editSvg) editBtn.appendChild(editSvg);
+      actions.appendChild(editBtn);
+
+      cardSide.appendChild(actions);
+
+      card.appendChild(cardBody);
+      card.appendChild(cardSide);
 
       toggle.addEventListener("change", async () => {
         const nextEnabled = toggle.checked;
@@ -1213,7 +1368,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           if (!result || !result.success) throw responseError(result);
           l.enabled = nextEnabled;
           card.classList.toggle("list-disabled", !nextEnabled);
-          toggle.closest(".switch").title = nextEnabled ? I18n.t("list_active") : I18n.t("list_inactive");
+          toggleWrap.title = nextEnabled ? I18n.t("list_active") : I18n.t("list_inactive");
           toggle.setAttribute("aria-label", nextEnabled ? I18n.t("list_active") : I18n.t("list_inactive"));
           flash(nextEnabled ? I18n.t("list_active") : I18n.t("list_inactive"));
         } catch (error) {
@@ -1225,7 +1380,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
 
       refreshBtn.addEventListener("click", () => refreshOneList(l.id, refreshBtn));
-      card.querySelector(".btn-edit").addEventListener("click", () => openListForm(l));
+      editBtn.addEventListener("click", () => openListForm(l));
       els.lCont.appendChild(card);
     });
     filterLists();

@@ -40,19 +40,27 @@ document.addEventListener("DOMContentLoaded", async () => {
     function renderLines() {
       const lines = textarea.value.replace(/\r\n/g, "\n").split("\n");
       const count = Math.max(lines.length, 1);
-      const gutterFrag = [];
-      const backdropFrag = [];
+      const gutterFrag = document.createDocumentFragment();
+      const backdropFrag = document.createDocumentFragment();
 
       for (let i = 0; i < count; i++) {
         const lineNum = i + 1;
         const isInvalid = invalidSet.has(lineNum);
-        const cls = isInvalid ? " invalid" : "";
-        gutterFrag.push(`<div class="gutter-line${cls}">${lineNum}</div>`);
-        backdropFrag.push(`<div class="hl-line${cls}"></div>`);
+        
+        const gDiv = document.createElement("div");
+        gDiv.className = `gutter-line${isInvalid ? " invalid" : ""}`;
+        gDiv.textContent = String(lineNum);
+        gutterFrag.appendChild(gDiv);
+
+        const bDiv = document.createElement("div");
+        bDiv.className = `hl-line${isInvalid ? " invalid" : ""}`;
+        backdropFrag.appendChild(bDiv);
       }
 
-      gutter.innerHTML = gutterFrag.join("");
-      backdrop.innerHTML = backdropFrag.join("");
+      gutter.textContent = "";
+      gutter.appendChild(gutterFrag);
+      backdrop.textContent = "";
+      backdrop.appendChild(backdropFrag);
       container.classList.toggle("has-error", invalidSet.size > 0);
       syncScroll();
     }
