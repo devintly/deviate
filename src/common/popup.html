@@ -263,25 +263,16 @@
     .domain-line .mode-wrap .switch input:checked + .switch-ui::after { left: 17px; }
 
     .domain-node { position: relative; }
-    .domain-children { display: none; position: relative; padding-left: 0; margin-left: 0; margin-top: 2px; }
+    .domain-children { display: none; position: relative; padding-left: 22px; margin-top: 2px; }
     .domain-children::before {
       content: "";
       position: absolute;
-      left: 29px;
+      left: 7px;
       top: 0;
       bottom: 4px;
       width: 1px;
       background: rgba(255, 255, 255, 0.12);
       pointer-events: none;
-    }
-    .domain-children > .domain-node > .domain-line > input.domain-pick {
-      margin-right: 18px;
-    }
-    .domain-children .domain-children::before {
-      left: 53px;
-    }
-    .domain-children .domain-children > .domain-node > .domain-line > input.domain-pick {
-      margin-right: 42px;
     }
     .domain-node.expanded > .domain-children { display: block; }
     .domains-actions { margin-top: 12px; flex: none; }
