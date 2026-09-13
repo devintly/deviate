@@ -304,7 +304,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     list: '<svg class="mark-list" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4.5 8.4l7.5-3.4 7.5 3.4-7.5 3.4-7.5-3.4z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M4.5 12.4l7.5 3.4 7.5-3.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 16.4l7.5 3.4 7.5-3.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><polyline points="21 3 21 9 15 9"/></svg>',
     edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>',
-    chevron: '<svg class="expander-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg>'
+    chevron: '<svg class="expander-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg>',
+    globe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>'
   };
 
   function escapeHtml(s) {
@@ -760,7 +761,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         ? ""
         : `<button type="button" class="wildcard-btn domain-wildcard-btn ${isWild ? "active" : ""}" title="${wildBtnTitle}">*.</button>`;
       const loadedBadgeHtml = isLoaded
-        ? `<span class="loaded-dot" title="${escapeHtml(I18n.t("loaded_domain"))}"></span>`
+        ? `<span class="loaded-globe" title="${escapeHtml(I18n.t("loaded_domain"))}">${SVGS.globe}</span>`
         : "";
 
       const line = document.createElement("div");
@@ -848,14 +849,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     const pageApexKey = (pageApex || (pageHostKey ? apexDomain(pageHostKey) || pageHostKey : "")).toLowerCase();
 
     if (!showDomainTree) {
-      // Flat list mode: sort pageHost first, then alphabetically
+      // Flat list mode: sort pageHost first, then by apex domain, then subdomains left-to-right
       const sorted = uniq.slice().sort((a, b) => {
         const aPage = pageHostKey && a === pageHostKey;
         const bPage = pageHostKey && b === pageHostKey;
         if (aPage !== bPage) return aPage ? -1 : 1;
-        const aApex = pageApexKey && a === pageApexKey;
-        const bApex = pageApexKey && b === pageApexKey;
-        if (aApex !== bApex) return aApex ? -1 : 1;
+
+        const aApex = apexDomain(a) || a;
+        const bApex = apexDomain(b) || b;
+        const aPageApex = pageApexKey && aApex === pageApexKey;
+        const bPageApex = pageApexKey && bApex === pageApexKey;
+        if (aPageApex !== bPageApex) return aPageApex ? -1 : 1;
+
+        if (aApex !== bApex) {
+          return aApex.localeCompare(bApex);
+        }
         return a.localeCompare(b);
       });
       sorted.forEach(host => {
@@ -1611,8 +1619,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     els.toggleDomainTree.addEventListener("click", () => {
       showDomainTree = !showDomainTree;
       els.toggleDomainTree.classList.toggle("active", showDomainTree);
-      const titleKey = showDomainTree ? "btn_show_flat" : "btn_show_tree";
-      const titleText = I18n.t(titleKey);
+      const titleText = I18n.t("btn_show_tree");
       els.toggleDomainTree.title = titleText;
       els.toggleDomainTree.setAttribute("aria-label", titleText);
       renderDomainsList(lastFetchedDomains, domainCovers);

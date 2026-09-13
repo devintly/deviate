@@ -270,16 +270,21 @@
     .domain-line.loaded .domain-apex { color: #dbdee1; }
     .domain-line.picked .domain-name,
     .domain-line.picked .domain-apex { font-weight: 700; color: #ffffff; }
-    .domain-line .loaded-dot {
-      width: 6px;
-      height: 6px;
-      min-width: 6px;
-      min-height: 6px;
-      border-radius: 50%;
-      background: #57f287;
-      box-shadow: 0 0 6px rgba(87, 242, 135, 0.45);
+    .domain-line .loaded-globe {
+      width: 14px;
+      height: 14px;
+      min-width: 14px;
+      min-height: 14px;
+      color: #57f287;
       flex: none;
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .domain-line .loaded-globe svg {
+      width: 13px;
+      height: 13px;
+      display: block;
     }
     .domain-line.has-children { cursor: pointer; }
     .domain-line.has-children .domain-name, .domain-line.has-children .domain-apex { cursor: pointer; }
