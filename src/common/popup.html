@@ -176,6 +176,24 @@
     .domains-overlay { display: none; position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,0.55); padding: 16px; overflow: hidden; }
     .domains-overlay.open { display: flex; flex-direction: column; }
     .domains-modal { background: #2b2d31; border-radius: 14px; padding: 12px; flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,0.45); overflow: hidden; }
+    .domains-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .domains-header .label { margin: 0; }
+    .domain-tree-btn {
+      width: 28px;
+      height: 28px;
+      min-width: 28px;
+      min-height: 28px;
+      padding: 0;
+      border-radius: 6px;
+      background: #35373c;
+      color: #949ba4;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .domain-tree-btn:hover { background: #404249; color: #f2f3f5; }
+    .domain-tree-btn.active { background: #017df1; color: #ffffff; }
+    .domain-tree-btn svg { width: 16px; height: 16px; }
     .domains-list { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; }
     .domains-empty { font-size: 12px; color: #b5bac1; text-align: center; padding: 8px 4px; }
     input.search-box[type="text"] {
@@ -246,10 +264,23 @@
     .domain-line input.domain-pick { width: 16px; height: 16px; min-width: 16px; max-width: 16px; min-height: 16px; max-height: 16px; margin: 0; flex-shrink: 0; accent-color: #017df1; cursor: pointer; }
     .domain-line .domain-wildcard-btn { display: none; width: 16px; height: 16px; min-width: 16px; max-width: 16px; min-height: 16px; max-height: 16px; padding: 0; font-size: 9px; line-height: 1; letter-spacing: -0.5px; border-radius: 3px; box-sizing: border-box; }
     .domain-line.picked .domain-wildcard-btn { display: inline-flex; }
-    .domain-line .domain-name { font-weight: 400; color: #b5bac1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; cursor: default; flex-shrink: 1; }
-    .domain-line .domain-apex { font-weight: 400; color: #b5bac1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; cursor: default; flex-shrink: 1; }
+    .domain-line .domain-name { font-weight: 400; color: #80848e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; cursor: default; flex-shrink: 1; }
+    .domain-line .domain-apex { font-weight: 400; color: #80848e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; cursor: default; flex-shrink: 1; }
+    .domain-line.loaded .domain-name,
+    .domain-line.loaded .domain-apex { color: #dbdee1; }
     .domain-line.picked .domain-name,
     .domain-line.picked .domain-apex { font-weight: 700; color: #ffffff; }
+    .domain-line .loaded-dot {
+      width: 6px;
+      height: 6px;
+      min-width: 6px;
+      min-height: 6px;
+      border-radius: 50%;
+      background: #57f287;
+      box-shadow: 0 0 6px rgba(87, 242, 135, 0.45);
+      flex: none;
+      display: inline-block;
+    }
     .domain-line.has-children { cursor: pointer; }
     .domain-line.has-children .domain-name, .domain-line.has-children .domain-apex { cursor: pointer; }
     .domain-line .mini-status { flex: none; min-width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; }
@@ -549,7 +580,12 @@
   </div>
   <div id="domainsPanel" class="domains-overlay">
     <div class="domains-modal" role="dialog" aria-modal="true" aria-labelledby="domainsModalTitle">
-      <div id="domainsModalTitle" class="label" data-i18n="btn_tab_domains">Домены вкладки</div>
+      <div class="domains-header">
+        <div id="domainsModalTitle" class="label" data-i18n="btn_tab_domains">Домены вкладки</div>
+        <button id="toggleDomainTreeBtn" class="icon-btn domain-tree-btn" type="button" data-i18n-title="btn_show_tree" data-i18n-aria-label="btn_show_tree" title="Показать дерево" aria-label="Показать дерево">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="6" height="5" rx="1"/><rect x="15" y="3" width="6" height="5" rx="1"/><rect x="15" y="15" width="6" height="5" rx="1"/><path d="M6 8v6a2 2 0 0 0 2 2h7m0-11h-4a2 2 0 0 0-2 2"/></svg>
+        </button>
+      </div>
       <input id="domainsSearch" class="search-box" type="text" data-i18n-placeholder="search_domains" placeholder="Поиск домена" autocomplete="off" spellcheck="false">
       <div id="domainsEmpty" class="domains-empty" data-i18n="empty_domains">Нет доменов. Откройте сайт и обновите страницу.</div>
       <div id="domainsList" class="domains-list"></div>

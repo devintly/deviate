@@ -73,7 +73,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     scopeHost: document.getElementById("scopeHostBtn"), scopeApex: document.getElementById("scopeApexBtn"),
     domainScope: document.getElementById("domainScope"),
     domainsPanel: document.getElementById("domainsPanel"), domainsList: document.getElementById("domainsList"),
-    domainsSearch: document.getElementById("domainsSearch"),
+    domainsSearch: document.getElementById("domainsSearch"), toggleDomainTree: document.getElementById("toggleDomainTreeBtn"),
     domainsEmpty: document.getElementById("domainsEmpty"), saveDomains: document.getElementById("saveDomainsBtn"),
     cancelDomains: document.getElementById("cancelDomainsBtn"),
     rulesStatus: document.getElementById("rulesStatus"), openList: document.getElementById("openListBtn"),
@@ -111,6 +111,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   let currentPingResults = {};
   let activeTab = null;
   let domainsPanelOpen = false;
+  let showDomainTree = false;
+  let loadedTabHosts = new Set();
+  let lastFetchedDomains = [];
   let pageHost = "";
   let pageApex = "";
   let scopeMode = "host";
@@ -665,24 +668,35 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function fetchTabDomains() {
     const set = new Set();
+    const requestedSet = new Set();
     const webUrl = getTabWebUrl(activeTab);
     if (webUrl) {
       try {
         const host = new URL(webUrl).hostname;
-        if (host && !HostRules.isIgnoredHost(host)) set.add(host.toLowerCase());
+        if (host && !HostRules.isIgnoredHost(host)) {
+          const h = host.toLowerCase();
+          set.add(h);
+          requestedSet.add(h);
+        }
       } catch (_) {}
     } else if (pageHost && !HostRules.isIgnoredHost(pageHost)) {
-      set.add(pageHost.toLowerCase());
+      const h = pageHost.toLowerCase();
+      set.add(h);
+      requestedSet.add(h);
     }
     if (activeTab && activeTab.id != null && activeTab.id >= 0) {
       try {
         const res = await browser.runtime.sendMessage({ action: "getTabDomains", tabId: activeTab.id });
         (res && res.domains ? res.domains : []).forEach(d => {
           const h = String(d || "").trim().toLowerCase();
-          if (h && !HostRules.isIgnoredHost(h)) set.add(h);
+          if (h && !HostRules.isIgnoredHost(h)) {
+            set.add(h);
+            requestedSet.add(h);
+          }
         });
       } catch (_) {}
     }
+    loadedTabHosts = requestedSet;
     return Array.from(set).sort();
   }
 
@@ -731,6 +745,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const existing = existingUserRule(host);
       const isDirect = existing && isDirectRule(existing);
       const isWild = isIp ? false : (existing ? existing.startsWith("*.") : true);
+      const isLoaded = loadedTabHosts.has(host);
 
       const nodeEl = document.createElement("div");
       nodeEl.className = "domain-node";
@@ -744,14 +759,18 @@ document.addEventListener("DOMContentLoaded", async () => {
       const wildBtnHtml = isIp
         ? ""
         : `<button type="button" class="wildcard-btn domain-wildcard-btn ${isWild ? "active" : ""}" title="${wildBtnTitle}">*.</button>`;
+      const loadedBadgeHtml = isLoaded
+        ? `<span class="loaded-dot" title="${escapeHtml(I18n.t("loaded_domain"))}"></span>`
+        : "";
 
       const line = document.createElement("div");
-      line.className = `domain-line${existing ? " picked" : ""}${hasChildren ? " has-children" : ""}`;
+      line.className = `domain-line${existing ? " picked" : ""}${hasChildren ? " has-children" : ""}${isLoaded ? " loaded" : ""}`;
       line.innerHTML = `
         <input type="checkbox" class="domain-pick" aria-label="${escapeHtml(host)}" data-host="${escapeHtml(host)}" data-kind="${kind}" data-apex="${escapeHtml(apex)}" ${existing ? "checked" : ""}>
         ${expanderHtml}
         ${wildBtnHtml}
         <span class="${isBold ? "domain-name" : "domain-apex"}" title="${escapeHtml(host)}">${escapeHtml(host)}</span>
+        ${loadedBadgeHtml}
         <span class="mini-status"></span>
         <span class="domain-spacer"></span>
         <label class="mode-wrap" title="${escapeHtml(I18n.t("mode_proxy_direct"))}">
@@ -827,46 +846,70 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const pageHostKey = (pageHost || "").toLowerCase();
     const pageApexKey = (pageApex || (pageHostKey ? apexDomain(pageHostKey) || pageHostKey : "")).toLowerCase();
-    const groups = new Map();
-    uniq.forEach(host => {
-      const apex = apexDomain(host) || host;
-      if (!groups.has(apex)) groups.set(apex, []);
-      const list = groups.get(apex);
-      if (list.indexOf(host) < 0) list.push(host);
-    });
-    Array.from(groups.keys()).sort((a, b) => {
-      const aPage = pageApexKey && a === pageApexKey;
-      const bPage = pageApexKey && b === pageApexKey;
-      if (aPage !== bPage) return aPage ? -1 : 1;
-      return a.localeCompare(b);
-    }).forEach(apex => {
-      const hosts = groups.get(apex).slice().sort((a, b) => {
+
+    if (!showDomainTree) {
+      // Flat list mode: sort pageHost first, then alphabetically
+      const sorted = uniq.slice().sort((a, b) => {
         const aPage = pageHostKey && a === pageHostKey;
         const bPage = pageHostKey && b === pageHostKey;
         if (aPage !== bPage) return aPage ? -1 : 1;
+        const aApex = pageApexKey && a === pageApexKey;
+        const bApex = pageApexKey && b === pageApexKey;
+        if (aApex !== bApex) return aApex ? -1 : 1;
         return a.localeCompare(b);
       });
-      const item = document.createElement("div");
-      item.className = "domain-item";
-      const searchBits = [apex];
-      if (isIpHost(apex)) {
-        renderDomainNode(item, normalize(apex), "apex", apex, 0, true, []);
-      } else {
-        const tree = buildDomainTree(hosts, apex);
-        function addTreeSearchBits(node) {
-          searchBits.push(node.host);
-          node.children.forEach(addTreeSearchBits);
+      sorted.forEach(host => {
+        const item = document.createElement("div");
+        item.className = "domain-item";
+        item.dataset.search = host;
+        const apex = apexDomain(host) || host;
+        renderDomainNode(item, host, "host", apex, 0, true, []);
+        els.domainsList.appendChild(item);
+      });
+    } else {
+      // Tree mode: hierarchical structure grouped by apex
+      const groups = new Map();
+      uniq.forEach(host => {
+        const apex = apexDomain(host) || host;
+        if (!groups.has(apex)) groups.set(apex, []);
+        const list = groups.get(apex);
+        if (list.indexOf(host) < 0) list.push(host);
+      });
+      Array.from(groups.keys()).sort((a, b) => {
+        const aPage = pageApexKey && a === pageApexKey;
+        const bPage = pageApexKey && b === pageApexKey;
+        if (aPage !== bPage) return aPage ? -1 : 1;
+        return a.localeCompare(b);
+      }).forEach(apex => {
+        const hosts = groups.get(apex).slice().sort((a, b) => {
+          const aPage = pageHostKey && a === pageHostKey;
+          const bPage = pageHostKey && b === pageHostKey;
+          if (aPage !== bPage) return aPage ? -1 : 1;
+          return a.localeCompare(b);
+        });
+        const item = document.createElement("div");
+        item.className = "domain-item";
+        const searchBits = [apex];
+        if (isIpHost(apex)) {
+          renderDomainNode(item, normalize(apex), "apex", apex, 0, true, []);
+        } else {
+          const tree = buildDomainTree(hosts, apex);
+          function addTreeSearchBits(node) {
+            searchBits.push(node.host);
+            node.children.forEach(addTreeSearchBits);
+          }
+          tree.forEach(addTreeSearchBits);
+          const apexNode = renderDomainNode(item, apex, "apex", apex, 0, true, tree);
+          if (tree.length > 0) {
+            apexNode.classList.add("expanded");
+          }
         }
-        tree.forEach(addTreeSearchBits);
-        const apexNode = renderDomainNode(item, apex, "apex", apex, 0, true, tree);
-        if (tree.length > 0) {
-          apexNode.classList.add("expanded");
-        }
-      }
-      hosts.forEach(h => { if (searchBits.indexOf(h) < 0) searchBits.push(h); });
-      item.dataset.search = searchBits.join(" ");
-      els.domainsList.appendChild(item);
-    });
+        hosts.forEach(h => { if (searchBits.indexOf(h) < 0) searchBits.push(h); });
+        item.dataset.search = searchBits.join(" ");
+        els.domainsList.appendChild(item);
+      });
+    }
+
     refreshAllDomainLines();
     filterDomainsList();
   }
@@ -922,6 +965,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function refreshDomainsPanel() {
     if (!domainsPanelOpen) return;
     const domains = await fetchTabDomains();
+    lastFetchedDomains = domains;
     const hosts = [];
     (domains || []).forEach(d => {
       const h = String(d || "").trim().toLowerCase();
@@ -1563,6 +1607,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (added || removed || changed) await reloadActiveTab();
   });
   els.cancelDomains.addEventListener("click", () => closeDomainsPanel());
+  if (els.toggleDomainTree) {
+    els.toggleDomainTree.addEventListener("click", () => {
+      showDomainTree = !showDomainTree;
+      els.toggleDomainTree.classList.toggle("active", showDomainTree);
+      const titleKey = showDomainTree ? "btn_show_flat" : "btn_show_tree";
+      const titleText = I18n.t(titleKey);
+      els.toggleDomainTree.title = titleText;
+      els.toggleDomainTree.setAttribute("aria-label", titleText);
+      renderDomainsList(lastFetchedDomains, domainCovers);
+    });
+  }
   if (els.domainsSearch) els.domainsSearch.addEventListener("input", filterDomainsList);
   if (els.proxySearch) els.proxySearch.addEventListener("input", filterProxies);
   if (els.listsSearch) els.listsSearch.addEventListener("input", filterLists);
