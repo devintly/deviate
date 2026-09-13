@@ -354,7 +354,7 @@ browser.tabs.onUpdated.addListener((tabId, change, tab) => {
   const explicitUrl = (change && change.url) || (tab && tab.pendingUrl) || "";
   if (explicitUrl && (explicitUrl.startsWith("http:") || explicitUrl.startsWith("https:"))) {
     tabTargetUrl[tabId] = explicitUrl;
-  } else if (tab && tab.url && (tab.url.startsWith("http:") || tab.url.startsWith("https:"))) {
+  } else if (change && change.status === "complete" && tab && tab.url && (tab.url.startsWith("http:") || tab.url.startsWith("https:"))) {
     tabTargetUrl[tabId] = tab.url;
   }
   if (explicitUrl) {

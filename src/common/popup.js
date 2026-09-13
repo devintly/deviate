@@ -609,8 +609,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Allow background proxy settings (PAC script) to be committed before reloading tab
     await new Promise(r => setTimeout(r, 120));
     try {
+      const targetUrl = (activeTab && activeTab._targetUrl) || "";
+      if (targetUrl) {
+        let targetHost = "";
+        try { targetHost = new URL(targetUrl).hostname.toLowerCase(); } catch (_) {}
+        const currentTabUrl = (activeTab && activeTab.url) || "";
+        let currentHost = "";
+        try { currentHost = new URL(currentTabUrl).hostname.toLowerCase(); } catch (_) {}
+        // If tab errored out, or user navigated to a different site that failed/pending
+        if (isErrorTab(activeTab) || (targetHost && currentHost && targetHost !== currentHost)) {
+          await browser.tabs.update(tabId, { url: targetUrl });
+          return;
+        }
+      }
       if (activeTab && isErrorTab(activeTab)) {
-        const webUrl = (activeTab && activeTab._targetUrl) || getTabWebUrl(activeTab);
+        const webUrl = getTabWebUrl(activeTab);
         if (webUrl) {
           await browser.tabs.update(tabId, { url: webUrl });
           return;
@@ -625,7 +638,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function checkAutoReload(rule) {
     if (!activeTab || activeTab.id == null) return;
     try {
-      const tabWebUrl = getTabWebUrl(activeTab);
+      const tabWebUrl = (activeTab && activeTab._targetUrl) || getTabWebUrl(activeTab);
       let shouldReload = false;
       const targetRuleHost = hostOfRule(rule) || String(rule || "").replace(/^\*\./, "").toLowerCase();
 
@@ -1261,40 +1274,55 @@ document.addEventListener("DOMContentLoaded", async () => {
         activeTab = tab;
         let host = "";
         let currentUrl = "";
-
-        // 1. If tab has a valid loaded web URL (including after redirects like youtu.be -> youtube.com), use it!
-        const tabUrl = String(tab.url || "");
-        if (tabUrl.startsWith("http://") || tabUrl.startsWith("https://")) {
-          currentUrl = tabUrl;
-          try { host = new URL(tabUrl).hostname; } catch (_) {}
-        }
-
-        // 2. If tab is navigating and has pendingUrl
-        if (!host) {
-          const pending = String(tab.pendingUrl || "");
-          if (pending.startsWith("http://") || pending.startsWith("https://")) {
-            currentUrl = pending;
-            try { host = new URL(pending).hostname; } catch (_) {}
-          }
-        }
-
-        // 3. If tab failed to load (chrome-error://, about:neterror, etc.), query background for target URL
-        if (!host && isErrorTab(tab)) {
+        let bgTarget = null;
+        if (tab.id != null && tab.id >= 0) {
           try {
-            const res = await browser.runtime.sendMessage({ action: "getTabTarget", tabId: tab.id });
-            if (res && res.targetHost) {
-              host = res.targetHost;
-              currentUrl = res.targetUrl || currentUrl;
-            }
+            bgTarget = await browser.runtime.sendMessage({ action: "getTabTarget", tabId: tab.id });
           } catch (_) {}
+        }
 
-          // 4. Fallback to tab.title if it looks like a domain
-          if (!host && tab.title && !tab.title.includes(" ") && tab.title.includes(".")) {
-            try {
-              const h = HostRules.canonHost(tab.title);
-              if (h && HostRules.isAcceptableHost(h) && !HostRules.isIgnoredHost(h)) host = h;
-            } catch (_) {}
-          }
+        const tabUrl = String(tab.url || "");
+        const pendingUrl = String(tab.pendingUrl || "");
+        let tabUrlHost = "";
+        try { if (tabUrl.startsWith("http://") || tabUrl.startsWith("https://")) tabUrlHost = new URL(tabUrl).hostname; } catch (_) {}
+        let pendingHost = "";
+        try { if (pendingUrl.startsWith("http://") || pendingUrl.startsWith("https://")) pendingHost = new URL(pendingUrl).hostname; } catch (_) {}
+
+        const targetHost = (bgTarget && bgTarget.targetHost) || "";
+        const targetUrl = (bgTarget && bgTarget.targetUrl) || "";
+
+        // Determine if targetHost represents a new navigation away from previous page:
+        // E.g. user was on google.com, then typed rutor.info.
+        // If tab.status === "loading", OR isErrorTab(tab), OR targetHost is not sub/parent of tabUrlHost while targetUrl is set:
+        const isRedirectOrSameSite = !!(tabUrlHost && targetHost && (
+          tabUrlHost === targetHost ||
+          tabUrlHost.endsWith("." + targetHost) ||
+          targetHost.endsWith("." + tabUrlHost) ||
+          apexDomain(tabUrlHost) === apexDomain(targetHost)
+        ));
+
+        if (targetHost && (!tabUrlHost || isErrorTab(tab) || tab.status === "loading" || !isRedirectOrSameSite)) {
+          // Navigation to a new site (like rutor.info from google.com) or error/loading tab
+          host = targetHost;
+          currentUrl = targetUrl || pendingUrl || tabUrl;
+        } else if (tabUrlHost) {
+          // Normal page loaded or successfully redirected (e.g. youtu.be -> youtube.com)
+          host = tabUrlHost;
+          currentUrl = tabUrl;
+        } else if (pendingHost) {
+          host = pendingHost;
+          currentUrl = pendingUrl;
+        } else if (targetHost) {
+          host = targetHost;
+          currentUrl = targetUrl;
+        }
+
+        // Fallback to tab.title if error page and host not found
+        if (!host && isErrorTab(tab) && tab.title && !tab.title.includes(" ") && tab.title.includes(".")) {
+          try {
+            const h = HostRules.canonHost(tab.title);
+            if (h && HostRules.isAcceptableHost(h) && !HostRules.isIgnoredHost(h)) host = h;
+          } catch (_) {}
         }
 
         if (currentUrl) {
