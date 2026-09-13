@@ -1709,14 +1709,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     const existing = existingUserRule(rule);
     if (existing) {
       removeUserRulesForHost(existing);
-      await saveRules();
       refreshIcon();
       flash(I18n.t("msg_deleted"));
+      await saveRules();
     } else {
       setUserRule(rule, "proxy");
-      await saveRules();
       refreshIcon();
       flash(I18n.t("msg_rule_added"));
+      await saveRules();
     }
     syncOpenDomainLine(existing || rule);
     checkAutoReload(existing || rule);
@@ -1730,9 +1730,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
     setUserRule(existing, els.domainDirect.checked ? "direct" : "proxy");
-    await saveRules();
     refreshIcon();
     flash(els.domainDirect.checked ? I18n.t("rule_direct") : I18n.t("rule_proxy"));
+    await saveRules();
     syncOpenDomainLine(existing);
     checkAutoReload(existing);
   });

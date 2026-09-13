@@ -56,7 +56,7 @@
     .status-mark.proxy { color: #57f287; filter: drop-shadow(0 0 5px rgba(87, 242, 135, 0.55)); }
     .status-mark.direct { color: #ffb020; filter: drop-shadow(0 0 5px rgba(255, 176, 32, 0.55)); }
 
-    button { appearance: none; border: 0; border-radius: 8px; padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer; transition: 0.15s ease; display: flex; flex-direction: row; align-items: center; justify-content: center; text-align: center; line-height: 1.2; min-height: 32px; }
+    button { appearance: none; border: 0; border-radius: 8px; padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer; transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease; display: flex; flex-direction: row; align-items: center; justify-content: center; text-align: center; line-height: 1.2; min-height: 32px; }
 
     .primary { background: #017df1; color: #fff; flex: 1; min-width: 0; }
     .primary:hover { background: #016bcf; }
@@ -328,6 +328,7 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      transition: color 0.15s ease;
     }
     .domain-mode .domain-mode-off { color: #57f287; }
     .domain-mode .domain-mode-on { color: #b5bac1; }
@@ -336,6 +337,7 @@
     .domain-mode .switch { width: 36px; height: 20px; flex-shrink: 0; }
     .domain-mode .switch-ui::after { width: 14px; height: 14px; left: 3px; top: 3px; }
     .domain-mode .switch input:checked + .switch-ui::after { left: 19px; }
+    #toggleRuleBtn { transition: background-color 0.15s ease, color 0.15s ease; }
     .row.has-rule #toggleRuleBtn { flex: 0 1 auto; min-width: 0; max-width: 80px; padding-left: 8px; padding-right: 8px; }
     .row.has-rule #domainModeSwitch { flex: 1 1 0; min-width: 0; }
 
